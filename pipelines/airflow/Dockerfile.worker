@@ -1,0 +1,18 @@
+# Image Airflow tùy biến cho Edu-Knowledge Pipeline.
+# Pin chính xác Airflow + Python để khớp constraints file (tránh dependency hell).
+FROM apache/airflow:2.10.4-python3.11
+
+ARG AIRFLOW_VERSION=2.10.4
+ARG PYTHON_VERSION=3.11
+
+# Tesseract OCR + gói tiếng Việt (cho Hybrid OCR môn ít công thức).
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-vie \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+USER airflow
+
+# Cài thêm thư viện xử lý PDF/embedding/vector — luôn kèm constraints của Airflow.
+COPY requirements.airflow.txt /tmp/requirements.airflow.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.airflow.txt \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"

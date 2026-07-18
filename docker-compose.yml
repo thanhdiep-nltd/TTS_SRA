@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    # Backend ĐỌC Qdrant từ QDRANT_URL/QDRANT_API_KEY trong .env (Qdrant Cloud dùng chung).
+    # Embedding query qua OpenAI API (EMBEDDING_PROVIDER=openai trong .env) — KHÔNG cần sidecar nữa.
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Sidecar BGE-m3 — chỉ còn dùng khi EMBEDDING_PROVIDER=local (vd: chạy lại Airflow ingestion $0).
+  # Backend mặc định KHÔNG phụ thuộc service này nữa (đã chuyển embedding sang OpenAI API).
+  # Chạy thủ công khi cần: docker compose up embedding-service
+  embedding-service:
+    build:
+      context: ./services/embedding
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - hf-cache:/opt/hf_cache  # cache model ~2.2GB (chỉ tải 1 lần)
+    restart: unless-stopped
+    profiles: ["local-embedding"]  # không tự chạy theo `docker compose up`; cần `--profile local-embedding`
+
+  # AgentOps — Giai đoạn 4: dashboard nhẹ (Prometheus scrape /metrics + Grafana hiển thị).
+  # KHÔNG dùng Alertmanager: cảnh báo bắn thẳng Discord Webhook từ code backend (src/services/alerting.py).
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--config.expand-env'
+      - '--storage.tsdb.path=/prometheus'
+    environment:
+      PROMETHEUS_TARGET_HOST: ${PROMETHEUS_TARGET_HOST:-host.docker.internal:8000}
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
+      GRAFANA_CLOUD_USERNAME: ${GRAFANA_CLOUD_USERNAME:-}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY:-}
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    # KHÔNG depends_on backend: Prometheus tự retry scrape khi backend chưa sẵn sàng,
+    # không cần ép buộc thứ tự khởi động (và tránh kéo theo build backend/embedding-service
+    # khi chỉ muốn chạy riêng prometheus+grafana, ví dụ lúc 2 service kia đang chạy local).
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3002:3000"  # 3001 dùng cho stack Langfuse self-hosted khác (nếu có) trên máy dev
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Bỏ qua đăng nhập khi click "Mở Grafana" từ app — CHỈ AN TOÀN vì Grafana không
+      # expose port ra Internet (chỉ network nội bộ/VPN cùng server với backend). Nếu sau
+      # này expose Grafana ra ngoài, PHẢI bỏ 3 dòng anonymous này và dùng SSO/IP allowlist.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Vào thẳng dashboard AgentOps thay vì trang "Welcome to Grafana" trống.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/agentops-overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./monitoring/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  hf-cache:
+  prometheus-data:
+  grafana-data:

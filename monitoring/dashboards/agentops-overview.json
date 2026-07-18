@@ -1,0 +1,171 @@
+{
+  "title": "AgentOps Overview - AI20K",
+  "uid": "agentops-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "tags": ["agentops", "ai20k"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tổng số request chat",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus-agentops" }, "expr": "sum(agent_requests_total)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "title": "Tổng chi phí LLM (USD)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus-agentops" }, "expr": "sum(cost_per_task_total)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4, "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "title": "Tool Success Rate",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "sum(tool_calls_total{status=\"success\"}) / sum(tool_calls_total)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Faithfulness (RAG) gần nhất",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "eval_score{metric_name=\"faithfulness\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "green", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Latency P50 / P95 / P99 (giây)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "histogram_quantile(0.50, sum(rate(agent_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P50",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "histogram_quantile(0.95, sum(rate(agent_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P95",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "histogram_quantile(0.99, sum(rate(agent_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "title": "Token sử dụng (input/output, theo phút)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "sum(rate(agent_tokens_total[5m])) by (direction)",
+          "legendFormat": "{{direction}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "title": "Request theo trạng thái (success/error)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "sum(rate(agent_requests_total[5m])) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "title": "Chi phí LLM theo thời gian (USD/5 phút)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-agentops" },
+          "expr": "sum(increase(cost_per_task_total[5m]))",
+          "legendFormat": "cost",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    }
+  ]
+}

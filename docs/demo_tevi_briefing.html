@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liên kết đề thi với điểm số — Tóm tắt demo</title>
+<style>
+  :root {
+    --brand: #0d4d8b;
+    --accent: #c72127;
+    --ink: #1a2233;
+    --ink-soft: #4b5568;
+    --paper: #f7f8fa;
+    --paper-raised: #ffffff;
+    --line: #d7dce4;
+    --good: #1f7a54;
+    --warn: #a35d09;
+    --bad: #b3261e;
+    --rail: var(--brand);
+  }
+  :root[data-theme="dark"] {
+    --ink: #e6e9ef;
+    --ink-soft: #a7b0c0;
+    --paper: #10151f;
+    --paper-raised: #171d2a;
+    --line: #2b3446;
+    --good: #4fbf8f;
+    --warn: #d99a3d;
+    --bad: #e5645c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e6e9ef;
+      --ink-soft: #a7b0c0;
+      --paper: #10151f;
+      --paper-raised: #171d2a;
+      --line: #2b3446;
+      --good: #4fbf8f;
+      --warn: #d99a3d;
+      --bad: #e5645c;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+
+  .sheet { max-width: 760px; margin: 0 auto; padding: 3.5rem 1.75rem 5rem; }
+  h1, h2, h3, .num { font-family: Cambria, Georgia, "Times New Roman", serif; text-wrap: balance; }
+
+  .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 1.5rem; margin-bottom: 2.75rem; }
+  .eyebrow {
+    font-family: Consolas, "Cascadia Code", monospace;
+    font-size: 0.72rem; letter-spacing: 0.11em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 0.6rem; font-weight: 600;
+  }
+  h1 { font-size: 2.05rem; font-weight: 700; line-height: 1.18; margin: 0 0 0.5rem; color: var(--brand); }
+  :root[data-theme="dark"] h1 { color: #6fa8de; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) h1 { color: #6fa8de; } }
+  .subtitle { font-size: 1.05rem; color: var(--ink-soft); margin: 0 0 1.1rem; max-width: 58ch; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; font-family: Consolas, "Cascadia Code", monospace; font-size: 0.78rem; color: var(--ink-soft); }
+  .meta-row span b { color: var(--ink); font-weight: 600; }
+
+  section { margin-bottom: 3rem; }
+  .section-title { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin: 0 0 0.3rem; }
+  .section-kicker {
+    font-family: Consolas, "Cascadia Code", monospace;
+    font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--brand); font-weight: 600; margin: 0 0 0.4rem;
+  }
+  :root[data-theme="dark"] .section-kicker { color: #6fa8de; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .section-kicker { color: #6fa8de; } }
+  .section-intro { color: var(--ink-soft); max-width: 66ch; margin: 0 0 1.6rem; }
+
+  .thesis { font-size: 1.12rem; max-width: 62ch; }
+  .thesis strong { color: var(--brand); }
+  :root[data-theme="dark"] .thesis strong { color: #6fa8de; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .thesis strong { color: #6fa8de; } }
+
+  /* analogy strip: what raw average score hides */
+  .analogy {
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.9rem;
+    align-items: center; padding: 1.1rem 1.2rem; margin-top: 1.3rem;
+    border: 1px solid var(--line); background: var(--paper-raised);
+  }
+  .analogy .side { font-size: 0.92rem; }
+  .analogy .side .score { font-family: Cambria, Georgia, serif; font-size: 1.7rem; font-weight: 700; color: var(--ink); display: block; }
+  .analogy .side .cap { color: var(--ink-soft); }
+  .analogy .vs { font-family: Consolas, monospace; font-size: 0.75rem; color: var(--ink-soft); text-align: center; }
+  @media (max-width: 520px) { .analogy { grid-template-columns: 1fr; } .analogy .vs { display: none; } }
+
+  /* flow rail — genuine 3-step user action sequence */
+  .flow { position: relative; }
+  .flow-step { display: grid; grid-template-columns: 3.2rem 1fr; gap: 0.25rem 1.25rem; position: relative; padding-bottom: 2.1rem; }
+  .flow-step:last-child { padding-bottom: 0; }
+  .flow-step::before { content: ""; position: absolute; left: 1.5rem; top: 2.6rem; bottom: -0.3rem; width: 1px; background: var(--line); }
+  .flow-step:last-child::before { display: none; }
+  .num { font-size: 1.7rem; font-weight: 700; color: var(--rail); line-height: 1; grid-row: span 2; }
+  .flow-step h3 { margin: 0.15rem 0 0.3rem; font-size: 1.12rem; font-weight: 700; color: var(--ink); }
+  .flow-step p { margin: 0; color: var(--ink-soft); max-width: 54ch; }
+  .flow-step .who {
+    display: inline-block; margin-top: 0.5rem; font-size: 0.75rem;
+    font-family: Consolas, monospace; color: var(--ink-soft);
+    border: 1px solid var(--line); padding: 0.15rem 0.5rem;
+  }
+
+  /* pipeline (internal mechanics, temporal sequence) */
+  .pipeline { display: flex; align-items: stretch; gap: 0; overflow-x: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 1.4rem 0; margin-bottom: 1rem; }
+  .pipe-stage { flex: 1 0 145px; padding: 0 1rem; position: relative; }
+  .pipe-stage:not(:last-child)::after { content: "→"; position: absolute; right: -0.05rem; top: 0.15rem; color: var(--line); font-size: 1.1rem; }
+  .pipe-stage .k { font-family: Consolas, "Cascadia Code", monospace; font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 0.3rem; }
+  .pipe-stage .v { font-weight: 600; font-size: 0.9rem; color: var(--ink); }
+  .pipe-stage .d { font-size: 0.78rem; color: var(--ink-soft); margin-top: 0.25rem; }
+  .pipe-note { font-size: 0.85rem; color: var(--ink-soft); margin: 0; }
+  .pipe-note code { font-family: Consolas, "Cascadia Code", monospace; background: var(--paper-raised); border: 1px solid var(--line); padding: 0.05rem 0.32rem; border-radius: 3px; font-size: 0.83rem; color: var(--ink); }
+
+  /* flag legend — semantic color is separate from accent */
+  .flags { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line); }
+  .flag-row { display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.2rem 1.25rem; padding: 0.85rem 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .flag-row .chip {
+    font-family: Consolas, monospace; font-size: 0.72rem; font-weight: 700;
+    padding: 0.15rem 0.5rem; width: fit-content; letter-spacing: 0.02em;
+    border: 1px solid currentColor;
+  }
+  .chip.valid { color: var(--good); }
+  .chip.gap { color: var(--warn); }
+  .chip.inflate { color: var(--bad); }
+  .chip.low { color: var(--ink-soft); }
+  .flag-row p { margin: 0; color: var(--ink-soft); }
+  @media (max-width: 560px) { .flag-row { grid-template-columns: 1fr; } }
+
+  .highlights { border-top: 1px solid var(--line); }
+  .hl { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.2rem 1.25rem; padding: 1.05rem 0; border-bottom: 1px solid var(--line); }
+  .hl .tag { font-family: Consolas, "Cascadia Code", monospace; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); font-weight: 700; padding-top: 0.15rem; }
+  .hl .body b { color: var(--ink); }
+  .hl .body p { margin: 0.2rem 0 0; color: var(--ink-soft); }
+  @media (max-width: 560px) { .hl { grid-template-columns: 1fr; } }
+
+  .qa { border-top: 1px solid var(--line); }
+  .qa-item { padding: 1.15rem 0; border-bottom: 1px solid var(--line); }
+  .qa-item .q { font-family: Cambria, Georgia, serif; font-style: italic; font-size: 1.02rem; color: var(--ink); margin: 0 0 0.45rem; }
+  .qa-item .q::before { content: "H — "; font-style: normal; color: var(--accent); font-weight: 700; }
+  .qa-item .a { margin: 0; color: var(--ink-soft); padding-left: 1.6rem; }
+  .qa-item .a::before { content: "Đ — "; color: var(--good); font-weight: 700; font-family: Consolas, monospace; font-size: 0.85em; }
+
+  .linkback {
+    margin-top: 0.4rem; padding: 0.9rem 1.1rem; border: 1px dashed var(--line);
+    font-size: 0.88rem; color: var(--ink-soft);
+  }
+  .linkback b { color: var(--ink); }
+
+  footer { border-top: 2px solid var(--ink); padding-top: 1.4rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.2rem; font-size: 0.85rem; }
+  footer .f-num { font-family: Cambria, Georgia, serif; font-size: 1.5rem; font-weight: 700; color: var(--brand); display: block; line-height: 1.1; }
+  :root[data-theme="dark"] footer .f-num { color: #6fa8de; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) footer .f-num { color: #6fa8de; } }
+  footer .f-label { color: var(--ink-soft); }
+
+  a { color: var(--brand); }
+  :root[data-theme="dark"] a { color: #6fa8de; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) a { color: #6fa8de; } }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="masthead">
+    <p class="eyebrow">Tài liệu chuẩn bị demo · Phần 2 · AI20K-075 Build Phase</p>
+    <h1>Liên kết đề thi với điểm số</h1>
+    <p class="subtitle">Đánh giá năng lực thật của trường bằng cách đối chiếu độ khó đề thi với kết quả thi thật — tên nội bộ: <b>TEVI</b> (Triangulated Exam Validity).</p>
+    <div class="meta-row">
+      <span>Module: <b>Exam Validity / TEVI</b></span>
+      <span>Vai trò xem: <b>Trưởng bộ môn · BGH</b></span>
+      <span>Dữ liệu nhạy cảm: <b>có — phân quyền chặt</b></span>
+    </div>
+  </div>
+
+  <section>
+    <p class="section-kicker">Bối cảnh</p>
+    <h2 class="section-title">Điểm trung bình cao chưa chắc là học sinh giỏi</h2>
+    <p class="thesis">Hai lớp cùng đạt điểm trung bình 8/10 — nhưng nếu một lớp thi đề dễ và một lớp thi đề khó, thực lực hai lớp rõ ràng không bằng nhau. Nhìn điểm số một mình không phân biệt được. <strong>TEVI</strong> đọc chính nội dung đề thi bằng AI để biết đề đó khó cỡ nào một cách độc lập, rồi đối chiếu với điểm thi thật — từ đó tính ra một con số thực lực đáng tin hơn, và tự phát hiện những trường hợp điểm số bất thường.</p>
+    <div class="analogy">
+      <div class="side">
+        <span class="score">8.0<span style="font-size:0.95rem;color:var(--ink-soft);">/10</span></span>
+        <span class="cap">Lớp 8A — đề dễ (CDI 0.30)</span>
+      </div>
+      <div class="vs">so với</div>
+      <div class="side">
+        <span class="score">8.0<span style="font-size:0.95rem;color:var(--ink-soft);">/10</span></span>
+        <span class="cap">Lớp 8B — đề khó (CDI 0.65)</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="section-kicker">Luồng thao tác</p>
+    <h2 class="section-title">3 bước, từ nộp đề đến có báo cáo đối chiếu</h2>
+    <p class="section-intro">Phần lớn chạy nền tự động — giáo viên gần như không phải làm thêm việc gì ngoài quy trình vốn đã quen.</p>
+    <div class="flow">
+      <div class="flow-step">
+        <span class="num">1</span>
+        <h3>Nộp đề như bình thường</h3>
+        <p>Giáo viên upload file đề (PDF/Word/ảnh chụp) khi tạo hồ sơ đề thi — không thêm thao tác nào mới. Hệ tự OCR và phân tích nội dung ở nền ngay sau đó.</p>
+        <span class="who">nền · không chặn giáo viên</span>
+      </div>
+      <div class="flow-step">
+        <span class="num">2</span>
+        <h3>Map đề vào đúng cột điểm</h3>
+        <p>Giáo viên bộ môn gắn đề vào cột điểm thường xuyên của lớp; Trưởng bộ môn gắn đề Giữa kỳ/Cuối kỳ cho cả khối. Đây là bước "liên kết" — cho hệ biết cột điểm này ứng với đề nào.</p>
+        <span class="who">thao tác 1 lần / đề</span>
+      </div>
+      <div class="flow-step">
+        <span class="num">3</span>
+        <h3>Xem báo cáo đối chiếu</h3>
+        <p>Hỏi trực tiếp trợ lý AI ("điểm môn Toán khối 8 kỳ này có đáng tin không?"), hoặc gọi API báo cáo — nhận ngay bảng đối chiếu, cờ cảnh báo, và xếp hạng thực lực các lớp.</p>
+        <span class="who">BGH · Trưởng bộ môn</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="section-kicker">Cơ chế bên trong</p>
+    <h2 class="section-title">Từ file đề đến con số thực lực</h2>
+    <p class="section-intro">Vế "nội dung" (CDI) và vế "thực nghiệm" (EDI) được tính hoàn toàn độc lập với nhau — đó là lý do đối chiếu được.</p>
+    <div class="pipeline">
+      <div class="pipe-stage">
+        <span class="k">Vế nội dung</span>
+        <span class="v">OCR + AI đọc đề</span>
+        <p class="d">Trích văn bản đề, LLM tách thành từng ý: chủ đề, mức Bloom 1–6, tỉ trọng điểm.</p>
+      </div>
+      <div class="pipe-stage">
+        <span class="k">Vế nội dung</span>
+        <span class="v">Neo chuẩn chương trình</span>
+        <p class="d">Đối chiếu từng ý với chương/bài đã seed; nếu có RAG, tìm bằng chứng SGK — phát hiện luôn câu hỏi ngoài chương trình.</p>
+      </div>
+      <div class="pipe-stage">
+        <span class="k">→ CDI</span>
+        <span class="v">Độ khó nội dung</span>
+        <p class="d">Σ(Bloom × tỉ trọng) / 6 — một số 0–1, không phụ thuộc điểm số học sinh.</p>
+      </div>
+      <div class="pipe-stage">
+        <span class="k">Vế thực nghiệm</span>
+        <span class="v">→ EDI</span>
+        <p class="d">1 − (điểm trung bình chuẩn hóa/10), tính từ điểm thi thật đã duyệt của đúng cột đã map.</p>
+      </div>
+      <div class="pipe-stage">
+        <span class="k">Đối chiếu</span>
+        <span class="v">EDI − CDI</span>
+        <p class="d">Độ phân kỳ — dùng để gắn cờ và hiệu chỉnh điểm thô thành thực lực thật.</p>
+      </div>
+    </div>
+    <p class="pipe-note">Ngưỡng gắn cờ: lệch ≥ <code>0.25</code> theo một trong hai chiều; mẫu điểm dưới <code>30</code> luôn báo độ tin cậy thấp dù không lệch.</p>
+  </section>
+
+  <section>
+    <p class="section-kicker">Đầu ra</p>
+    <h2 class="section-title">Các cờ cảnh báo</h2>
+    <div class="flags">
+      <div class="flag-row">
+        <span class="chip valid">VALID</span>
+        <p>Độ khó nội dung và kết quả thi khớp nhau trong biên độ cho phép — điểm số đáng tin.</p>
+      </div>
+      <div class="flag-row">
+        <span class="chip inflate">INFLATION_OR_LEAK</span>
+        <p>Điểm cao hơn nhiều so với độ khó đề dự kiến — nghi lạm phát điểm hoặc lộ đề, đáng rà soát trước tiên.</p>
+      </div>
+      <div class="flag-row">
+        <span class="chip gap">LEARNING_GAP</span>
+        <p>Điểm thấp hơn nhiều so với độ khó đề dự kiến — nghi lỗ hổng dạy-học thật sự, không phải đề quá khó.</p>
+      </div>
+      <div class="flag-row">
+        <span class="chip low">LOW_SAMPLE / NO_CONTENT</span>
+        <p>Mẫu điểm quá ít, hoặc đề chưa được phân tích nội dung — chưa đủ căn cứ kết luận.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="section-kicker">Gợi ý trình bày</p>
+    <h2 class="section-title">Những điểm nên nhấn khi demo</h2>
+    <div class="highlights">
+      <div class="hl">
+        <span class="tag">Độc lập</span>
+        <div class="body"><b>Độ khó không suy ngược từ điểm.</b><p>CDI đến từ việc AI đọc chính đề thi — nếu chỉ suy độ khó từ điểm số thì không thể phát hiện được lạm phát điểm, vì đó là vòng lặp tự xác nhận.</p></div>
+      </div>
+      <div class="hl">
+        <span class="tag">Truy vết được</span>
+        <div class="body"><b>Mỗi ý trong đề đều gắn về đúng chương/bài, kèm trích dẫn SGK làm bằng chứng.</b><p>Không phải "hộp đen" — có thể lật lại xem AI dựa vào đâu để gán mức Bloom.</p></div>
+      </div>
+      <div class="hl">
+        <span class="tag">Phát hiện sớm</span>
+        <div class="body"><b>Tự động khoanh vùng đề đáng rà soát nhất.</b><p>BGH không phải dò từng lớp — bảng tổng hợp toàn trường tự xếp cờ nghiêm trọng lên đầu.</p></div>
+      </div>
+      <div class="hl">
+        <span class="tag">Công bằng</span>
+        <div class="body"><b>Xếp hạng lớp theo thực lực, không theo may rủi đề thi.</b><p>content_adjusted_ability hiệu chỉnh điểm thô theo đúng độ khó đề lớp đó đã gặp — lớp thi đề khó không bị thiệt khi so sánh.</p></div>
+      </div>
+      <div class="hl">
+        <span class="tag">Phân quyền</span>
+        <div class="body"><b>Dữ liệu nhạy cảm được khóa đúng tầng.</b><p>Trưởng bộ môn chỉ xem môn mình; bảng tổng hợp toàn trường và xếp hạng chỉ BGH — vì đây có thể liên quan đến nghi vấn tiêu cực.</p></div>
+      </div>
+    </div>
+    <div class="linkback">
+      <b>Nối với phần Exam Builder:</b> chính con số thực lực (<code>content_adjusted_ability</code>) ở đây là "năng lực khối" mà AI dùng để tính độ khó mục tiêu khi gợi ý ma trận đề — hai tính năng dùng chung một nguồn sự thật, không phải hai module rời nhau.
+    </div>
+  </section>
+
+  <section>
+    <p class="section-kicker">Chuẩn bị ứng biến</p>
+    <h2 class="section-title">Câu hỏi Ban Giám Khảo có thể hỏi</h2>
+    <div class="qa">
+      <div class="qa-item">
+        <p class="q">Nếu đề thi không được tạo qua Exam Builder mà GV tự soạn ngoài thì sao?</p>
+        <p class="a">Vẫn phân tích được — pipeline chỉ cần file đề (PDF/Word/ảnh) đã upload vào hồ sơ, không phụ thuộc đề có được tạo từ ngân hàng câu hỏi hay không.</p>
+      </div>
+      <div class="qa-item">
+        <p class="q">Làm sao chắc AI gán mức Bloom cho từng câu là đúng?</p>
+        <p class="a">Mỗi ý được đối chiếu với danh mục chương/bài đã chuẩn hóa sẵn, và nếu có RAG thì kèm trích dẫn SGK gần nhất làm bằng chứng — người dùng xem lại được, không phải tin suông.</p>
+      </div>
+      <div class="qa-item">
+        <p class="q">Cờ "nghi lộ đề" có kết luận chắc chắn có tiêu cực không?</p>
+        <p class="a">Không — đây là tín hiệu rà soát để BGH kiểm tra thêm, không phải kết luận đã xác nhận. Hệ thống cố tình không dùng ngôn từ buộc tội.</p>
+      </div>
+      <div class="qa-item">
+        <p class="q">Giáo viên có thấy được báo cáo này không, hay chỉ BGH?</p>
+        <p class="a">Trưởng bộ môn xem được bảng chi tiết của đúng môn mình phụ trách; bảng tổng hợp toàn trường và xếp hạng lớp chỉ BGH (ADMIN/PRINCIPAL) mới xem được.</p>
+      </div>
+      <div class="qa-item">
+        <p class="q">Hiện đã có giao diện trực quan riêng cho tính năng này chưa?</p>
+        <p class="a">Đường truy cập chính hiện tại là hỏi trực tiếp trợ lý AI hoặc gọi API; dữ liệu và endpoint đã sẵn sàng đầy đủ, dựng thêm dashboard trực quan là hướng phát triển tiếp theo.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div><span class="f-num">3</span><span class="f-label">bước thao tác chính</span></div>
+    <div><span class="f-num">0.25</span><span class="f-label">ngưỡng phân kỳ để gắn cờ</span></div>
+    <div><span class="f-num">30</span><span class="f-label">mẫu điểm tối thiểu để tin cậy cao</span></div>
+    <div><span class="f-num">4</span><span class="f-label">loại cờ: Valid · Lạm phát · Lỗ hổng · Thiếu dữ liệu</span></div>
+  </footer>
+
+</div>
+</body>
+</html>

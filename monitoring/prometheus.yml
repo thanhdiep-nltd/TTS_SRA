@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  # Backend chạy qua `uvicorn` trực tiếp trên máy host (xem CLAUDE.md §4), KHÔNG chạy như
+  # service "backend" trong docker-compose này — nên dùng host.docker.internal (DNS đặc biệt
+  # của Docker Desktop để container gọi ra host) thay vì tên service "backend".
+  # Nếu sau này chạy backend NHƯ container thật trong cùng docker-compose, đổi lại "backend:8000".
+  #
+  # METRICS_TOKEN (nếu đặt trong .env) chỉ chặn truy cập từ NGOÀI host (port 8000 publish
+  # ra ngoài) — scrape nội bộ này KHÔNG gửi header token. Nếu production set METRICS_TOKEN,
+  # cần thêm header xác thực ở job này (Prometheus >=2.51 hỗ trợ `http_headers`) hoặc tách
+  # Prometheus vào network riêng không publish port 8000 ra ngoài.
+  - job_name: "ai20k-backend"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["${PROMETHEUS_TARGET_HOST:-host.docker.internal:8000}"]
+
+# Để đẩy dữ liệu lên Grafana Cloud (Production), cấu hình các biến môi trường này
+# Nếu biến trống, remote_write sẽ lỗi nhỏ nhưng Prometheus vẫn chạy bình thường.
+# Bạn nên chỉ bật remote_write khi thực sự cấu hình GRAFANA_CLOUD_PROMETHEUS_URL.
+# remote_write:
+#   - url: "${GRAFANA_CLOUD_PROMETHEUS_URL}"
+#     basic_auth:
+#       username: "${GRAFANA_CLOUD_USERNAME}"
+#       password: "${GRAFANA_CLOUD_API_KEY}"

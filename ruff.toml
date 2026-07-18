@@ -1,0 +1,12 @@
+target-version = "py311"
+line-length = 120
+# Migration files tự sinh bởi Alembic (template dùng typing.Union, Sequence...)
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

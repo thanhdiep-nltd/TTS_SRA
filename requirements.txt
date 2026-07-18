@@ -1,0 +1,54 @@
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.0.0
+
+# AI / LangChain
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langgraph>=0.2.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.14.0
+psycopg[binary]>=3.2.0
+python-dotenv>=1.0.0
+
+# Auth
+pyjwt>=2.9.0
+bcrypt>=4.2.0
+email-validator>=2.2.0
+python-multipart>=0.0.9
+
+# RAG ingestion trigger (upload MinIO + gọi Airflow REST API)
+boto3>=1.35.0
+httpx>=0.28.0
+
+# Dev tools
+ruff==0.15.20
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0
+sqlglot>=25.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+python-docx>=1.1.0
+
+# Phân tích nội dung đề thi (CDI pipeline — TEVI)
+pymupdf>=1.24.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+openpyxl>=3.1.0
+
+# Observability & Monitoring (AgentOps)
+structlog>=24.1.0
+prometheus-client>=0.20.0
+langfuse>=2.50.0
+
+# Phân tích ghi âm bài giảng (AI Evaluation)
+replicate>=1.0.0
+supabase>=1.0.3
+# Eval-as-a-Metric: KHÔNG dùng ragas (kéo theo langchain-community xung đột với
+# langchain 1.x đang dùng) — Judge tự viết bằng get_llm() + structured output, xem src/services/eval.py
