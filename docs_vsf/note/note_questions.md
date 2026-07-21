@@ -15,3 +15,13 @@ CÁC BẢNG chưa hiểu rõ:
 
 + fact_so_subject_mastery: các thông số percent_... có ý nghĩa là gì.
 + fact_subject_academic_records.
+
+
+
+# CÁC Bảng sẽ tạm thời bỏ qua
+
+merged_vsf_sra_schema.sql
+ bảng này sau khi merge quá nhiều thông tin nên tạm thời lên plan loại bỏ bớt để tập trung vào phần điểm trước vì agent của tôi trong 
+
+src
+ đang có text-to-sql nên tôi đang muốn test agent làm việc với 6 thang điểm mà hôm qua tôi đã liệt kê, thang 4, thang 6, thang 10, thang 100, thang chữ A...F, thang đạt/không đạt
