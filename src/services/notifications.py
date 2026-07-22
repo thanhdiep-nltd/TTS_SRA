@@ -35,15 +35,16 @@ class AnnouncementPermissionError(Exception):
 # ============================================================
 
 
-def _active_users_in_school(db: Session, school_id: UUID) -> list[UUID]:
-    stmt = select(User.id).where(User.school_id == school_id, User.is_active.is_(True))
+def _active_users_in_school(db: Session, school_id: int) -> list[int]:
+    stmt = select(User.id).where(User.so_school_id == school_id, User.is_active.is_(True))
     return list(db.execute(stmt).scalars().all())
 
 
-def _subject_member_ids(db: Session, school_id: UUID, subject_id: UUID) -> list[UUID]:
+def _subject_member_ids(db: Session, school_id: int, subject_id: int) -> list[int]:
     """Thành viên bộ môn = GV có môn phụ trách (users.subject_id) khớp, cùng trường, đang hoạt động."""
-    stmt = select(User.id).where(User.school_id == school_id, User.subject_id == subject_id, User.is_active.is_(True))
+    stmt = select(User.id).where(User.so_school_id == school_id, User.subject_id == subject_id, User.is_active.is_(True))
     return list(db.execute(stmt).scalars().all())
+
 
 
 def _subject_head_id(db: Session, subject_id: UUID) -> UUID | None:

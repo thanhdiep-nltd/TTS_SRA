@@ -10,6 +10,7 @@
 -- ============================================================
 
 -- Create Extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- Create Schemas
@@ -18,6 +19,7 @@ CREATE SCHEMA IF NOT EXISTS s360;
 
 -- Drop Old Tables (if exists)
 DROP TABLE IF EXISTS alembic_version CASCADE;
+DROP TABLE IF EXISTS public.ai_session_attachments CASCADE;
 DROP TABLE IF EXISTS public.ai_messages CASCADE;
 DROP TABLE IF EXISTS public.ai_sessions CASCADE;
 DROP TABLE IF EXISTS public.classroom_recordings CASCADE;
@@ -61,6 +63,9 @@ DROP TYPE IF EXISTS public.difficulty_enum CASCADE;
 DROP TYPE IF EXISTS public.ai_session_role_enum CASCADE;
 DROP TYPE IF EXISTS public.guardrail_status_enum CASCADE;
 DROP TYPE IF EXISTS public.recording_rank_enum CASCADE;
+DROP TYPE IF EXISTS public.file_type_enum CASCADE;
+
+CREATE TYPE public.file_type_enum AS ENUM ('PDF', 'WORD', 'IMAGE', 'OTHER');
 
 CREATE TYPE public.school_level_enum AS ENUM ('PRIMARY', 'SECONDARY', 'HIGH', 'ALL');
 
@@ -249,7 +254,7 @@ CREATE INDEX idx_recordings_class   ON public.classroom_recordings(class_id);
 
 -- 9. Phiên Hội thoại AI Chat Text-to-SQL Agent
 CREATE TABLE public.ai_sessions (
-    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id         BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     title           VARCHAR(500),
     context_filter  JSONB NOT NULL DEFAULT '{}',
@@ -262,7 +267,7 @@ CREATE INDEX idx_session_user ON public.ai_sessions(user_id);
 -- 10. Nhật ký Tin nhắn AI Chat & Guardrails Telemetry
 CREATE TABLE public.ai_messages (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    session_id      BIGINT NOT NULL REFERENCES public.ai_sessions(id) ON DELETE CASCADE,
+    session_id      UUID NOT NULL REFERENCES public.ai_sessions(id) ON DELETE CASCADE,
     role            public.ai_session_role_enum NOT NULL,
     content         TEXT NOT NULL,
     generated_sql   TEXT,
@@ -274,9 +279,31 @@ CREATE TABLE public.ai_messages (
     rating          SMALLINT CHECK (rating IN (1, -1)),
     feedback_tag    VARCHAR(100),
     feedback_text   TEXT,
+    feedback_at     TIMESTAMPTZ,
+    thought_trace   JSONB,
+    input_token_count INTEGER,
+    output_token_count INTEGER,
+    cost            NUMERIC(10, 6),
+    llm_provider    VARCHAR(50),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_message_session ON public.ai_messages(session_id);
+
+-- 10b. Tệp Đính kèm Phiên Hội thoại AI (Attachments)
+CREATE TABLE public.ai_session_attachments (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    session_id      UUID NOT NULL REFERENCES public.ai_sessions(id) ON DELETE CASCADE,
+    uploaded_by     BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
+    file_name       VARCHAR(255) NOT NULL,
+    stored_name     VARCHAR(255) NOT NULL,
+    file_type       public.file_type_enum NOT NULL,
+    extracted_text  TEXT,
+    char_count      INTEGER NOT NULL DEFAULT 0,
+    truncated       BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_attachment_session ON public.ai_session_attachments(session_id);
+
 
 -- ============================================================
 -- SCHEMA: s360 (STUDENT 360 DWH SCORE-FOCUSED - 14 TABLES)

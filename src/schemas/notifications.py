@@ -13,14 +13,14 @@ from src.schemas.common import ORMBase
 
 
 class NotificationRead(ORMBase):
-    id: UUID
-    sender_id: UUID | None
+    id: int
+    sender_id: int | None
     sender_name: str | None = None
     type: enums.NotificationType
     title: str
     message: str
     entity_type: str | None
-    entity_id: UUID | None
+    entity_id: int | None
     read_at: datetime | None
     created_at: datetime
 
@@ -30,18 +30,12 @@ class UnreadCountRead(BaseModel):
 
 
 class AnnouncementCreate(BaseModel):
-    """Soạn thông báo chủ động. ``scope`` quyết định field bắt buộc đi kèm.
-
-    - SCHOOL: không cần subject_id/recipient_user_id (chỉ ADMIN/PRINCIPAL).
-    - SUBJECT: cần subject_id (BGH chọn môn bất kỳ; Trưởng BM bị ép về môn mình ở service).
-    - INDIVIDUAL: cần recipient_user_id.
-    """
-
     scope: enums.AnnouncementScope
     title: str = Field(min_length=1, max_length=255)
     message: str = Field(min_length=1)
-    subject_id: UUID | None = None
-    recipient_user_id: UUID | None = None
+    subject_id: int | None = None
+    recipient_user_id: int | None = None
+
 
     @model_validator(mode="after")
     def _check_required_target(self) -> "AnnouncementCreate":

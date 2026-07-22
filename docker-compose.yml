@@ -1,6 +1,19 @@
 version: "3.8"
 
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: tts_sra_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: neondb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -84,3 +97,5 @@ volumes:
   hf-cache:
   prometheus-data:
   grafana-data:
+  postgres-data:
+

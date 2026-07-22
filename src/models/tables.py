@@ -67,13 +67,15 @@ class School(Base):
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        Index("idx_users_school", "school_id"),
+        Index("idx_users_school", "so_school_id"),
         Index("idx_users_role", "role"),
         Index("idx_users_email", "email"),
+        Index("idx_users_tcode", "teacher_code"),
+        Index("idx_users_scode", "student_code"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
     email = Column(String(255), unique=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
@@ -81,8 +83,10 @@ class User(Base):
     avatar_url = Column(Text)
     role = Column(pg_enum(enums.UserRole, "user_role_enum"), nullable=False)
     school_level = Column(pg_enum(enums.SchoolLevel, "school_level_enum"), nullable=False, server_default=text("'ALL'"))
-    # Môn phụ trách (chuyên môn của GV) — chủ nhiệm sẽ mặc định dạy môn này cho lớp mình.
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="SET NULL"))
+    subject_id = Column(Integer)
+    teacher_code = Column(String(50))
+    student_code = Column(String(50))
+    so_student_id = Column(BigInteger)
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     last_login_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
@@ -92,12 +96,13 @@ class User(Base):
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     token_hash = Column(String(255), nullable=False, unique=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
 
 
 # ============================================================
@@ -663,20 +668,21 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         Index("idx_notif_recipient", "recipient_id", "read_at"),
-        Index("idx_notif_school", "school_id"),
+        Index("idx_notif_school", "so_school_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
-    recipient_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    sender_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # NULL = hệ thống tự động
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    recipient_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    sender_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     type = Column(pg_enum(enums.NotificationType, "notification_type_enum"), nullable=False)
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
-    entity_type = Column(String(50))  # vd "question_item", "generated_exam" — tham chiếu lỏng, không FK
-    entity_id = Column(UUID(as_uuid=True))
+    entity_type = Column(String(50))
+    entity_id = Column(BigInteger)
     read_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
 
 
 # ============================================================
@@ -689,7 +695,7 @@ class AiSession(Base):
     __table_args__ = (Index("idx_session_user", "user_id"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(500))
     context_filter = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
@@ -704,7 +710,7 @@ class AiMessage(Base):
         CheckConstraint("rating IN (1, -1)", name="chk_aimessage_rating"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("ai_sessions.id", ondelete="CASCADE"), nullable=False)
     role = Column(pg_enum(enums.AiSessionRole, "ai_session_role_enum"), nullable=False)
     content = Column(Text, nullable=False)
@@ -743,8 +749,8 @@ class ReportSchedule(Base):
         ),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     report_type = Column(String(50), nullable=False)
     filter_params = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
@@ -757,9 +763,7 @@ class ReportSchedule(Base):
 
 
 # ============================================================
-# AGENTOPS OBSERVABILITY (snapshot định kỳ từ Prometheus REGISTRY trong process,
-# phục vụ trend chart trong app — KHÔNG theo school_id vì backend chạy 1 instance
-# dùng chung cho mọi trường, không phải dữ liệu nghiệp vụ theo tenant)
+# AGENTOPS OBSERVABILITY
 # ============================================================
 
 
@@ -767,7 +771,7 @@ class AiObservabilitySnapshot(Base):
     __tablename__ = "ai_observability_snapshots"
     __table_args__ = (Index("idx_observability_captured_at", "captured_at"),)
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     captured_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     daily_cost_usd = Column(Numeric(10, 6), nullable=False, server_default=text("0"))
     daily_budget_usd = Column(Numeric(10, 2), nullable=False)
@@ -779,8 +783,9 @@ class AiObservabilitySnapshot(Base):
     total_requests = Column(Integer, nullable=False, server_default=text("0"))
     total_tokens_in = Column(BigInteger, nullable=False, server_default=text("0"))
     total_tokens_out = Column(BigInteger, nullable=False, server_default=text("0"))
-    agent_routes = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))  # {agent_name: count}
-    agent_step_p95_ms = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))  # {agent_name: ms|None}
+    agent_routes = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    agent_step_p95_ms = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
 
 
 # ============================================================
@@ -794,9 +799,9 @@ class AiSessionAttachment(Base):
     __tablename__ = "ai_session_attachments"
     __table_args__ = (Index("idx_attachment_session", "session_id"),)
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("ai_sessions.id", ondelete="CASCADE"), nullable=False)
-    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    uploaded_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     file_name = Column(String(255), nullable=False)
     stored_name = Column(String(255), nullable=False)
     file_type = Column(pg_enum(enums.FileType, "file_type_enum"), nullable=False)
@@ -804,6 +809,7 @@ class AiSessionAttachment(Base):
     char_count = Column(Integer, nullable=False, server_default=text("0"))
     truncated = Column(Boolean, nullable=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
 
 
 # ============================================================
@@ -814,18 +820,17 @@ class AiSessionAttachment(Base):
 class ClassroomRecording(Base):
     __tablename__ = "classroom_recordings"
     __table_args__ = (
-        Index("idx_recordings_school", "school_id"),
         Index("idx_recordings_teacher", "teacher_id"),
         Index("idx_recordings_class", "class_id"),
-        Index("idx_recordings_subject", "subject_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
-    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"), nullable=False)
-    semester_id = Column(UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="CASCADE"), nullable=False)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    teacher_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    class_id = Column(Integer, nullable=False)
+    semester_id = Column(Integer, nullable=False)
+
 
     lesson_name = Column(String(255), nullable=False)
     period = Column(Integer, nullable=False)  # Tiết học (ví dụ: 1, 2, 3...)

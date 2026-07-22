@@ -11,9 +11,12 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from sqlalchemy import create_engine, text
+from src.core.security import hash_password
 
 # Set deterministic seed for reproducible mock generation
 random.seed(42)
+DEFAULT_HASHED_PASSWORD = hash_password("password123")
+
 
 class VietnameseNameGenerator:
     """Sinh họ tên học sinh và giáo viên chuẩn Việt Nam"""
@@ -666,8 +669,8 @@ def run_mock_generation(db_url: str = None):
         print("[4/9] Seeding public.users & Student Records...")
         conn.execute(text("""
             INSERT INTO public.users (so_school_id, email, hashed_password, full_name, role, school_level, teacher_code, subject_id)
-            VALUES (1, :email, 'hashed_pass_123', :name, CAST(:role AS public.user_role_enum), CAST(:slevel AS public.school_level_enum), :tcode, :sid);
-        """), users_data)
+            VALUES (1, :email, :hpwd, :name, CAST(:role AS public.user_role_enum), CAST(:slevel AS public.school_level_enum), :tcode, :sid);
+        """), [{**u, "hpwd": DEFAULT_HASHED_PASSWORD} for u in users_data])
 
         conn.execute(text("""
             INSERT INTO s360.dim_homeroom_class (id, so_school_id, school_year_id, grade_id, code, fullname, teacher_code)
@@ -676,8 +679,9 @@ def run_mock_generation(db_url: str = None):
 
         conn.execute(text("""
             INSERT INTO public.users (so_school_id, email, hashed_password, full_name, role, school_level, student_code, so_student_id)
-            VALUES (1, :email, 'hashed_pass_123', :name, CAST('STUDENT' AS public.user_role_enum), CAST(:slevel AS public.school_level_enum), :scode, :sid);
-        """), student_users_data)
+            VALUES (1, :email, :hpwd, :name, CAST('STUDENT' AS public.user_role_enum), CAST(:slevel AS public.school_level_enum), :scode, :sid);
+        """), [{**u, "hpwd": DEFAULT_HASHED_PASSWORD} for u in student_users_data])
+
 
         conn.execute(text("""
             INSERT INTO s360.dim_homeroom_class_student 

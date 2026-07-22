@@ -97,38 +97,6 @@ def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserRead)
-def me(user: CurrentUser, db: Session = Depends(get_db)):
-    from src.models.tables import School
+def me(user: CurrentUser):
+    return UserRead.model_validate(user)
 
-    school = db.get(School, user.school_id)
-
-    from src.models.tables import User as DBUser
-
-    principal = (
-        db.execute(select(DBUser).where(DBUser.school_id == user.school_id, DBUser.role == "PRINCIPAL"))
-        .scalars()
-        .first()
-    )
-
-    from src.models import enums as db_enums
-    from src.models.tables import TeacherAssignment
-
-    homeroom_assignment = (
-        db.execute(
-            select(TeacherAssignment).where(
-                TeacherAssignment.user_id == user.id,
-                TeacherAssignment.role_context.in_(
-                    [db_enums.RoleContext.HOMEROOM_PRIMARY, db_enums.RoleContext.HOMEROOM_SECONDARY]
-                ),
-                TeacherAssignment.is_active.is_(True),
-            )
-        )
-        .scalars()
-        .first()
-    )
-
-    user_read = UserRead.model_validate(user)
-    user_read.school_name = school.name if school else None
-    user_read.principal_name = principal.full_name if principal else "Nguyễn Minh Triết"
-    user_read.homeroom_class_id = homeroom_assignment.class_id if homeroom_assignment else None
-    return user_read

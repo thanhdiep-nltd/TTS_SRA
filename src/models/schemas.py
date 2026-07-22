@@ -159,10 +159,12 @@ class ObservabilityHistoryResponse(BaseModel):
 
 
 class AiSessionAttachmentResponse(ORMBase):
-    id: UUID
+    id: int
     session_id: UUID
     file_name: str
     file_type: str
     char_count: int
     truncated: bool
     created_at: datetime
+
+

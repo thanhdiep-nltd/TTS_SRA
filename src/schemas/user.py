@@ -8,14 +8,17 @@ from src.schemas.common import ORMBase
 
 
 class UserCreate(BaseModel):
-    school_id: UUID
+    so_school_id: int
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     full_name: str = Field(max_length=255)
     role: enums.UserRole
     school_level: enums.SchoolLevel = enums.SchoolLevel.ALL
     phone: str | None = Field(default=None, max_length=20)
-    subject_id: UUID | None = None  # môn phụ trách (chuyên môn của GV)
+    subject_id: int | None = None
+    teacher_code: str | None = Field(default=None, max_length=50)
+    student_code: str | None = Field(default=None, max_length=50)
+    so_student_id: int | None = None
 
 
 class UserUpdate(BaseModel):
@@ -23,44 +26,47 @@ class UserUpdate(BaseModel):
     role: enums.UserRole | None = None
     school_level: enums.SchoolLevel | None = None
     phone: str | None = Field(default=None, max_length=20)
-    subject_id: UUID | None = None
+    subject_id: int | None = None
+    teacher_code: str | None = Field(default=None, max_length=50)
+    student_code: str | None = Field(default=None, max_length=50)
+    so_student_id: int | None = None
     is_active: bool | None = None
 
 
 class UserRead(ORMBase):
-    id: UUID
-    school_id: UUID
-    school_name: str | None = None
-    principal_name: str | None = None
+    id: int
+    so_school_id: int
     email: EmailStr
     full_name: str
     role: enums.UserRole
     school_level: enums.SchoolLevel
     phone: str | None
-    subject_id: UUID | None
+    subject_id: int | None
+    teacher_code: str | None = None
+    student_code: str | None = None
+    so_student_id: int | None = None
     is_active: bool
     last_login_at: datetime | None
     created_at: datetime
-    homeroom_class_id: UUID | None = None
 
 
 class AssignmentCreate(BaseModel):
-    user_id: UUID
-    academic_year_id: UUID
+    user_id: int
+    academic_year_id: int
     role_context: enums.RoleContext
-    class_id: UUID | None = None
-    grade_id: UUID | None = None
-    subject_id: UUID | None = None
+    class_id: int | None = None
+    grade_id: int | None = None
+    subject_id: int | None = None
 
 
 class AssignmentRead(ORMBase):
-    id: UUID
-    user_id: UUID
-    academic_year_id: UUID
+    id: int
+    user_id: int
+    academic_year_id: int
     role_context: enums.RoleContext
-    class_id: UUID | None
-    grade_id: UUID | None
-    subject_id: UUID | None
+    class_id: int | None
+    grade_id: int | None
+    subject_id: int | None
     is_active: bool
 
 
@@ -70,9 +76,10 @@ class UserListParams(BaseModel):
     q: str | None = None
     role: enums.UserRole | None = None
     is_active: bool | None = None
-    school_id: UUID | None = None
+    so_school_id: int | None = None
     page: int = Field(default=1, ge=1)
     limit: int = Field(default=20, ge=1, le=100)
+
 
 
 class UserListPage(BaseModel):

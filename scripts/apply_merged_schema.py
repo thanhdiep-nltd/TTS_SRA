@@ -20,7 +20,9 @@ print(f"[INFO] Connecting to Database: {db_url[:40]}...")
 
 import psycopg
 
-sql_file = Path(__file__).resolve().parent.parent / "docs_vsf" / "schemas" / "merged" / "merged_vsf_sra_schema.sql"
+sql_file = Path(__file__).resolve().parent.parent / "docs_vsf" / "schemas" / "merged" / "score_focused_schema.sql"
+if not sql_file.exists():
+    sql_file = Path(__file__).resolve().parent.parent / "docs_vsf" / "schemas" / "merged" / "merged_vsf_sra_schema.sql"
 
 if not sql_file.exists():
     print(f"[ERROR] SQL file not found at {sql_file}")
@@ -33,7 +35,7 @@ with open(sql_file, "r", encoding="utf-8") as f:
 try:
     with psycopg.connect(db_url, autocommit=True) as conn:
         with conn.cursor() as cur:
-            print("[INFO] Resetting Schemas (public, s360, t360, default)...")
+            print("[INFO] Resetting Schemas (public, s360)...")
             cur.execute("""
                 DROP SCHEMA IF EXISTS s360 CASCADE;
                 DROP SCHEMA IF EXISTS t360 CASCADE;
@@ -41,12 +43,11 @@ try:
                 DROP SCHEMA IF EXISTS public CASCADE;
                 CREATE SCHEMA public;
                 CREATE SCHEMA s360;
-                CREATE SCHEMA t360;
-                CREATE SCHEMA "default";
             """)
-            print("[INFO] Executing 55-table merged DDL schema on Neon PostgreSQL...")
+            print("[INFO] Executing DDL schema on PostgreSQL...")
             cur.execute(sql_ddl)
-            print("[SUCCESS] 55-table Schema, Enums, Triggers, and Comments created successfully!")
+            print("[SUCCESS] Schema, Enums, Triggers, and Comments created successfully!")
+
 except Exception as e:
     print(f"[ERROR] FAILED to execute DDL: {e}")
     sys.exit(1)
