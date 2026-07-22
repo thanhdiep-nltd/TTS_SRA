@@ -16,6 +16,35 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE SCHEMA IF NOT EXISTS public;
 CREATE SCHEMA IF NOT EXISTS s360;
 
+-- Drop Old Tables (if exists)
+DROP TABLE IF EXISTS alembic_version CASCADE;
+DROP TABLE IF EXISTS public.ai_messages CASCADE;
+DROP TABLE IF EXISTS public.ai_sessions CASCADE;
+DROP TABLE IF EXISTS public.classroom_recordings CASCADE;
+DROP TABLE IF EXISTS public.report_schedules CASCADE;
+DROP TABLE IF EXISTS public.audit_logs CASCADE;
+DROP TABLE IF EXISTS public.exam_competencies CASCADE;
+DROP TABLE IF EXISTS public.curriculum_units CASCADE;
+DROP TABLE IF EXISTS public.exam_papers CASCADE;
+DROP TABLE IF EXISTS public.refresh_tokens CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+
+DROP TABLE IF EXISTS s360.fact_course_enrolls CASCADE;
+DROP TABLE IF EXISTS s360.fact_so_evaluate_process_subjects CASCADE;
+DROP TABLE IF EXISTS s360.fact_overall_academic_records CASCADE;
+DROP TABLE IF EXISTS s360.fact_subject_academic_records CASCADE;
+DROP TABLE IF EXISTS s360.fact_so_assignment_grade CASCADE;
+DROP TABLE IF EXISTS s360.fact_gradebooks_moet CASCADE;
+DROP TABLE IF EXISTS s360.fact_gradebooks CASCADE;
+DROP TABLE IF EXISTS s360.dim_grade_scale_detail CASCADE;
+DROP TABLE IF EXISTS s360.dim_so_assignment CASCADE;
+DROP TABLE IF EXISTS s360.dim_exam_moet CASCADE;
+DROP TABLE IF EXISTS s360.dim_exam CASCADE;
+DROP TABLE IF EXISTS s360.dim_subject CASCADE;
+DROP TABLE IF EXISTS s360.dim_homeroom_class_student CASCADE;
+DROP TABLE IF EXISTS s360.dim_homeroom_class CASCADE;
+DROP TABLE IF EXISTS s360.dim_school_year CASCADE;
+
 -- ============================================================
 -- ENUMS & TYPES (Schema: public)
 -- ============================================================
@@ -42,7 +71,9 @@ CREATE TYPE public.user_role_enum AS ENUM (
     'HOMEROOM_TEACHER_PRIMARY',
     'SUBJECT_TEACHER',
     'HOMEROOM_TEACHER_SECONDARY',
-    'SUBJECT_HEAD'
+    'SUBJECT_HEAD',
+    'STUDENT',
+    'PARENT'
 );
 
 CREATE TYPE public.role_context_enum AS ENUM (
@@ -543,6 +574,24 @@ CREATE TABLE s360.fact_so_evaluate_process_subjects (
     source_system           VARCHAR(50) DEFAULT 'SCHOOL_ONLINE'
 );
 COMMENT ON TABLE s360.fact_so_evaluate_process_subjects IS 'Báo cáo đánh giá nhận xét tiến trình học tập môn học định kỳ';
+
+-- 25. [NHẬT KÝ ĐĂNG KÝ HỌC PHẦN] Nhật ký ghi nhận học sinh đăng ký / hủy môn học phần tự chọn
+CREATE TABLE s360.fact_course_enrolls (
+    id                      BIGINT PRIMARY KEY,
+    so_school_id            INTEGER NOT NULL DEFAULT 1,
+    student_code            VARCHAR(50) NOT NULL,
+    subject_id              INTEGER NOT NULL REFERENCES s360.dim_subject(id),
+    grade_id                INTEGER NOT NULL,
+    is_moved_out            INTEGER DEFAULT 0, -- 1: Đã rút môn/chuyển lớp học phần, 0: Đang học
+    moved_out_at            TIMESTAMPTZ,
+    is_student              INTEGER DEFAULT 1,
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW(),
+    source_system           VARCHAR(50) DEFAULT 'LMS'
+);
+CREATE INDEX idx_fce_student ON s360.fact_course_enrolls(student_code);
+CREATE INDEX idx_fce_subject ON s360.fact_course_enrolls(subject_id);
+COMMENT ON TABLE s360.fact_course_enrolls IS 'Nhật ký ghi nhận lịch sử học sinh đăng ký và rút môn học phần tự chọn';
 
 -- ============================================================
 -- SEED DATA: Cấu hình Ma trận Quy đổi 6 Thang Điểm

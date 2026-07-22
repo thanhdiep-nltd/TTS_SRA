@@ -23,6 +23,7 @@ pipelines/airflow/logs/
 
 # Dữ liệu SGK PDF (nặng ~GB) — không commit; nguồn cho pipeline RAG
 data_mock/book/
+data_mock/scripts/
 
 # IDE
 .vscode/
