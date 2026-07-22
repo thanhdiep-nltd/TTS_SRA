@@ -19,6 +19,7 @@ CREATE SCHEMA IF NOT EXISTS s360;
 
 -- Drop Old Tables (if exists)
 DROP TABLE IF EXISTS alembic_version CASCADE;
+DROP TABLE IF EXISTS public.ai_observability_snapshots CASCADE;
 DROP TABLE IF EXISTS public.ai_session_attachments CASCADE;
 DROP TABLE IF EXISTS public.ai_messages CASCADE;
 DROP TABLE IF EXISTS public.ai_sessions CASCADE;
@@ -303,6 +304,26 @@ CREATE TABLE public.ai_session_attachments (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_attachment_session ON public.ai_session_attachments(session_id);
+
+-- 10c. AgentOps Observability Snapshots (Dashboard Giám sát AI Agent)
+CREATE TABLE public.ai_observability_snapshots (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    captured_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    daily_cost_usd  NUMERIC(10, 6) NOT NULL DEFAULT 0,
+    daily_budget_usd NUMERIC(10, 2) NOT NULL,
+    latency_p95_ms  INTEGER,
+    ttft_p95_ms     INTEGER,
+    faithfulness_avg NUMERIC(4, 3),
+    groundedness_avg NUMERIC(4, 3),
+    tool_success_rate NUMERIC(4, 3),
+    total_requests  INTEGER NOT NULL DEFAULT 0,
+    total_tokens_in BIGINT NOT NULL DEFAULT 0,
+    total_tokens_out BIGINT NOT NULL DEFAULT 0,
+    agent_routes    JSONB NOT NULL DEFAULT '{}',
+    agent_step_p95_ms JSONB NOT NULL DEFAULT '{}'
+);
+CREATE INDEX idx_observability_captured_at ON public.ai_observability_snapshots(captured_at);
+
 
 
 -- ============================================================
