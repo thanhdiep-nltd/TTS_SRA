@@ -12,11 +12,11 @@ from src.models import enums
 from src.models.tables import ClassroomRecording, User
 
 # Mock users
-mock_school_id = uuid4()
+mock_school_id = 1
 
 teacher_user = User(
-    id=uuid4(),
-    school_id=mock_school_id,
+    id=1,
+    so_school_id=1,
     email="teacher@school.edu.vn",
     full_name="Cô Lê Hoa",
     role=enums.UserRole.SUBJECT_TEACHER,
@@ -24,8 +24,8 @@ teacher_user = User(
 )
 
 bgh_user = User(
-    id=uuid4(),
-    school_id=mock_school_id,
+    id=2,
+    so_school_id=1,
     email="principal@school.edu.vn",
     full_name="Thầy Hiệu Trưởng",
     role=enums.UserRole.PRINCIPAL,

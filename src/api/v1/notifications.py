@@ -39,7 +39,7 @@ def mark_all_read(user: CurrentUser, db: Session = Depends(get_db)):
 
 
 @router.post("/{notification_id}/read")
-def mark_read(notification_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+def mark_read(notification_id: int, user: CurrentUser, db: Session = Depends(get_db)):
     ok = notifications.mark_read(db, user.id, notification_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Thông báo không tồn tại")
@@ -57,7 +57,8 @@ def create_announcement(payload: AnnouncementCreate, user: CurrentUser, db: Sess
 
 
 @router.get("/recipients", response_model=list[RecipientOption])
-def list_recipients(user: CurrentUser, db: Session = Depends(get_db), subject_id: UUID | None = None):
+def list_recipients(user: CurrentUser, db: Session = Depends(get_db), subject_id: int | None = None):
+
     """Danh sách người có thể chọn làm người nhận khi soạn thông báo phạm vi INDIVIDUAL."""
     try:
         return notifications.list_recipient_candidates(db, user, subject_id)

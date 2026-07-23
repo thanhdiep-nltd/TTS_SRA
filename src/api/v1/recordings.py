@@ -107,7 +107,7 @@ def list_recordings(
         .join(User, ClassroomRecording.teacher_id == User.id)
         .join(Subject, ClassroomRecording.subject_id == Subject.id)
         .join(Class, ClassroomRecording.class_id == Class.id)
-        .where(ClassroomRecording.school_id == user.school_id)
+        .where(ClassroomRecording.so_school_id == user.so_school_id)
     )
 
     if not is_bgh:

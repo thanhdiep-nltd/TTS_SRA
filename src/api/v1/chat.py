@@ -91,7 +91,7 @@ def _build_attachment_block(db: Session, session_id: UUID) -> str | None:
     )
 
 
-def _check_session_ownership(db: Session, session_id: UUID, user_id: UUID):
+def _check_session_ownership(db: Session, session_id: UUID, user_id: int):
     session = chat_repo.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phiên chat")
@@ -156,7 +156,7 @@ def list_attachments(session_id: UUID, user: CurrentUser, db: Session = Depends(
 
 
 @router.delete("/sessions/{session_id}/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_attachment(session_id: UUID, attachment_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+def delete_attachment(session_id: UUID, attachment_id: int, user: CurrentUser, db: Session = Depends(get_db)):
     """Xoá 1 file đính kèm khỏi phiên chat (không còn được chèn vào các lượt hỏi sau)."""
     _check_session_ownership(db, session_id, user.id)
     attachment = chat_repo.get_attachment(db, attachment_id)
@@ -168,11 +168,13 @@ def delete_attachment(session_id: UUID, attachment_id: UUID, user: CurrentUser, 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[AiMessageResponse])
 def get_session_messages(session_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+
+
     """Lấy lịch sử tin nhắn của một phiên chat cụ thể (yêu cầu sở hữu)."""
     session = chat_repo.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phiên chat")
-    if session.user_id != user.id:
+    if str(session.user_id) != str(user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền truy cập phiên chat này",
@@ -259,7 +261,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
     async def event_generator():
         # Đồng bộ ContextVars để các tool tự động nhận diện phạm vi dữ liệu bảo mật
-        token_school = current_user_school_id.set(user.school_id)
+        token_school = current_user_school_id.set(user.so_school_id)
         token_role = current_user_role.set(user.role.value if hasattr(user.role, "value") else str(user.role))
 
         # Gửi trước session_id để Frontend đồng bộ URL và quản lý session
@@ -306,12 +308,13 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     "query": request.message,
                     "messages": langchain_messages,
                     "school_context": {
-                        "school_id": str(user.school_id),
+                        "school_id": str(user.so_school_id),
                         "role": user.role.value if hasattr(user.role, "value") else str(user.role),
                         "user_id": str(user.id),
                     },
                 },
                 config={
+                    "recursion_limit": 50,
                     "callbacks": callbacks,
                     "metadata": {
                         "langfuse_session_id": str(session_id),
@@ -567,7 +570,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
 @router.post("/messages/{message_id}/feedback", response_model=AiMessageResponse)
 def give_message_feedback(
-    message_id: UUID,
+    message_id: int | str,
     payload: MessageFeedbackRequest,
     user: CurrentUser,
     db: Session = Depends(get_db),
@@ -575,12 +578,20 @@ def give_message_feedback(
     """Gửi đánh giá phản hồi (rating, nhãn phân loại feedback_tag và feedback_text) cho tin nhắn AI."""
     from src.models.tables import AiMessage, AiSession
 
-    message = db.get(AiMessage, message_id)
+    try:
+        m_id: int | UUID | str = int(message_id)
+    except (ValueError, TypeError):
+        try:
+            m_id = UUID(str(message_id))
+        except (ValueError, TypeError):
+            m_id = message_id
+
+    message = db.get(AiMessage, m_id)
     if not message:
         raise HTTPException(status_code=404, detail="Không tìm thấy tin nhắn")
 
     session = db.get(AiSession, message.session_id)
-    if not session or session.user_id != user.id:
+    if not session or str(session.user_id) != str(user.id):
         raise HTTPException(status_code=403, detail="Bạn không có quyền đánh giá tin nhắn này")
 
     # Kiểm tra ràng buộc nhãn "Khác" bắt buộc nhập text đóng góp chi tiết
@@ -693,13 +704,12 @@ def get_admin_telemetry_by_school(
 
     from datetime import datetime, timedelta
 
-    from src.models.tables import AiMessage, AiSession, School, User
+    from src.models.tables import AiMessage, AiSession, User
 
     stmt = (
-        select(School.id, School.name, AiMessage)
+        select(User.so_school_id, AiMessage)
         .join(AiSession, AiMessage.session_id == AiSession.id)
         .join(User, AiSession.user_id == User.id)
-        .join(School, User.school_id == School.id)
         .where(AiMessage.role == enums.AiSessionRole.assistant)
     )
     if days is not None:
@@ -709,11 +719,11 @@ def get_admin_telemetry_by_school(
     rows = db.execute(stmt).all()
 
     by_school: dict = {}
-    for school_id, school_name, msg in rows:
+    for school_id, msg in rows:
         agg = by_school.setdefault(
             school_id,
             {
-                "school_name": school_name,
+                "school_name": f"Trường #{school_id}",
                 "total_requests": 0,
                 "total_errors": 0,
                 "total_cost": 0.0,

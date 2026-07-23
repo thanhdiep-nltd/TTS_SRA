@@ -14,10 +14,10 @@ from src.models.tables import AiMessage, AiSession, User
 from src.repositories import chat_repo
 
 # Tạo user test cố định
-test_user_id = uuid4()
+test_user_id = 1
 test_user = User(
-    id=test_user_id,
-    school_id=uuid4(),
+    id=1,
+    so_school_id=1,
     email="teacher_test@school.edu.vn",
     full_name="Giáo Viên Test",
     role=enums.UserRole.SUBJECT_TEACHER,

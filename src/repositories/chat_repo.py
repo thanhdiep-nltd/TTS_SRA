@@ -9,7 +9,7 @@ from src.models import enums
 from src.models.tables import AiMessage, AiSession, AiSessionAttachment
 
 
-def get_active_sessions(db: Session, user_id: UUID) -> list[AiSession]:
+def get_active_sessions(db: Session, user_id: int) -> list[AiSession]:
     """Lấy danh sách các session đang hoạt động của user, xếp theo updated_at mới nhất."""
     stmt = (
         select(AiSession).where(AiSession.user_id == user_id, AiSession.is_active).order_by(AiSession.updated_at.desc())
@@ -22,13 +22,14 @@ def get_session(db: Session, session_id: UUID) -> AiSession | None:
     return db.get(AiSession, session_id)
 
 
-def create_session(db: Session, user_id: UUID, title: str | None = None) -> AiSession:
+def create_session(db: Session, user_id: int, title: str | None = None) -> AiSession:
     """Tạo một chat session mới."""
     session = AiSession(user_id=user_id, title=title)
     db.add(session)
     db.commit()
     db.refresh(session)
     return session
+
 
 
 def get_session_messages(db: Session, session_id: UUID, limit: int = 10) -> list[AiMessage]:
@@ -89,7 +90,7 @@ def create_message(
 
 def update_message_feedback(
     db: Session,
-    message_id: UUID,
+    message_id: int | str,
     rating: int,
     feedback_tag: str | None = None,
     feedback_text: str | None = None,
@@ -131,7 +132,7 @@ def count_attachments(db: Session, session_id: UUID) -> int:
 def create_attachment(
     db: Session,
     session_id: UUID,
-    uploaded_by: UUID,
+    uploaded_by: int,
     file_name: str,
     stored_name: str,
     file_type: enums.FileType,
@@ -166,8 +167,10 @@ def get_session_attachments(db: Session, session_id: UUID) -> list[AiSessionAtta
     return list(db.execute(stmt).scalars().all())
 
 
-def get_attachment(db: Session, attachment_id: UUID) -> AiSessionAttachment | None:
+
+def get_attachment(db: Session, attachment_id: int) -> AiSessionAttachment | None:
     return db.get(AiSessionAttachment, attachment_id)
+
 
 
 def delete_attachment(db: Session, attachment: AiSessionAttachment) -> None:

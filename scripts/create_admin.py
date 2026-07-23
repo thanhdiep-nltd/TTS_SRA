@@ -12,9 +12,9 @@ from sqlalchemy import select
 from src.core.security import hash_password
 from src.db.session import SessionLocal
 from src.models import enums
-from src.models.tables import School, User
+from src.models.tables import User
 
-DEFAULT_SCHOOL_ID = "00000000-0000-0000-0000-000000000001"
+DEFAULT_SO_SCHOOL_ID = 1
 
 
 def main() -> int:
@@ -22,19 +22,16 @@ def main() -> int:
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--name", default="Quản trị viên")
-    parser.add_argument("--school-id", default=DEFAULT_SCHOOL_ID)
+    parser.add_argument("--so-school-id", type=int, default=DEFAULT_SO_SCHOOL_ID)
     args = parser.parse_args()
 
     db = SessionLocal()
     try:
-        if db.get(School, args.school_id) is None:
-            print(f"[LỖI] Không tìm thấy trường id={args.school_id}. Hãy seed trường trước.")
-            return 1
         if db.execute(select(User).where(User.email == args.email)).scalar_one_or_none():
             print(f"[BỎ QUA] Tài khoản {args.email} đã tồn tại.")
             return 0
         user = User(
-            school_id=args.school_id,
+            so_school_id=args.so_school_id,
             email=args.email,
             hashed_password=hash_password(args.password),
             full_name=args.name,
@@ -46,6 +43,7 @@ def main() -> int:
         return 0
     finally:
         db.close()
+
 
 
 if __name__ == "__main__":

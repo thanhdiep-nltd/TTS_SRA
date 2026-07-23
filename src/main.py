@@ -23,6 +23,15 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
 
+    # Auto-create missing helper tables (e.g. ai_observability_snapshots)
+    try:
+        from src.db.session import engine
+        from src.db.base import Base
+        import src.models.tables  # noqa: F401
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:
+        print(f"Table creation check: {exc}")
+
     # Startup Self-Healing for stuck camera tasks
     if settings.app_env != "test" and "pytest" not in sys.modules:
         try:

@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Copy,
   Eye,
   FileText,
   HelpCircle,
@@ -235,6 +236,22 @@ function ChatContent() {
   const [feedbackForm, setFeedbackForm] = useState({ tag: "", text: "" });
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+
+  const handleCopyMessage = (id: string, text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text);
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    }
+    setCopiedMsgId(id);
+    setTimeout(() => setCopiedMsgId(null), 2000);
+  };
 
   const handleRatePositive = async (messageId: string) => {
     try {
@@ -1137,6 +1154,21 @@ function ChatContent() {
                                     >
                                       <ThumbsDown className="w-3.5 h-3.5" />
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                                      className="p-1 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition cursor-pointer flex items-center gap-1"
+                                      title="Sao chép câu trả lời"
+                                    >
+                                      {copiedMsgId === msg.id ? (
+                                        <>
+                                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                          <span className="text-[10px] text-emerald-500 font-medium">Đã chép</span>
+                                        </>
+                                      ) : (
+                                        <Copy className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
                                   </div>
                                 )
                               ) : (
@@ -1164,6 +1196,25 @@ function ChatContent() {
                                       className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-350 hover:underline text-[10px] ml-2 cursor-pointer"
                                     >
                                       Đánh giá lại
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                                      className="inline-flex items-center gap-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 text-xs ml-3 cursor-pointer transition"
+                                      title="Sao chép câu trả lời"
+                                    >
+                                      {copiedMsgId === msg.id ? (
+                                        <>
+                                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                          <span className="text-[10px] text-emerald-500 font-medium">Đã chép</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="w-3.5 h-3.5" />
+                                          <span className="text-[11px]">Sao chép</span>
+                                        </>
+                                      )}
                                     </button>
                                   </div>
 

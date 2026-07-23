@@ -37,7 +37,7 @@ def get_current_user(
     except InvalidTokenError as exc:
         raise _CRED_EXC from exc
 
-    user = db.get(User, UUID(user_id)) if user_id else None
+    user = db.get(User, int(user_id)) if user_id else None
     if user is None or not user.is_active:
         raise _CRED_EXC
     return user
