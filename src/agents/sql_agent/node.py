@@ -24,16 +24,16 @@ SƠ ĐỒ CƠ SỞ DỮ LIỆU KHO DỮ LIỆU HỌC SINH STUDENT 360 (S360 & PU
    - Các cột: `id` (INT PK, vd: 2025), `code` (vd: '2025_2026'), `fullname` (vd: 'Năm học 2025 - 2026').
 
 4. Bảng `s360.dim_homeroom_class`: Lớp học chủ nhiệm.
-   - Các cột: `id` (INT PK), `school_year_id` (FK -> s360.dim_school_year.id), `so_school_id` (INT), `class_code`, `class_name` (vd: '8A1', '10A2'), `grade_number` (Khối 6 đến 12).
+   - Các cột: `id` (INT PK), `school_year_id` (FK -> s360.dim_school_year.id), `so_school_id` (INT), `grade_id` (INT, Khối 6 đến 12), `code` (Mã lớp, vd: '10A1', '8A1'), `fullname` (Tên lớp, vd: 'Lớp 10A1', 'Lớp 8A1'). (LƯU Ý: Cột tên lớp là `fullname` và mã lớp là `code`, KHÔNG dùng class_code/class_name/grade_number!).
 
 5. Bảng `s360.dim_homeroom_class_student`: Danh sách Học sinh thuộc lớp chủ nhiệm.
-   - Các cột: `id` (BIGINT PK), `homeroom_class_id` (FK -> s360.dim_homeroom_class.id), `so_student_id`, `student_code`, `full_name`, `gender` ('MALE', 'FEMALE'), `is_active` (1/0).
+   - Các cột: `id` (BIGINT PK), `homeroom_class_id` (FK -> s360.dim_homeroom_class.id), `so_student_id`, `student_code`, `student_name` (Họ tên học sinh - BẮT BUỘC DÙNG CỘT NÀY CHO TÊN HỌC SINH!), `class_name`, `grade_id`, `gender` ('MALE', 'FEMALE'), `is_active` (1/0).
 
 6. Bảng `s360.dim_subject`: Danh mục Môn học.
-   - Các cột: `id` (INT PK), `code` (vd: 'LS_DL', 'NGU_VAN_10'), `name` (vd: 'Toán học', 'Ngữ văn', 'Tiếng Anh'), `assessment_type` ('SCORED' cho điểm, 'REMARK' Đạt/Chưa đạt), `default_scale_name`.
+   - Các cột: `id` (INT PK), `code` (vd: 'ROBOTICS', 'TOAN_10'), `name` (vd: 'STEM & Robotics', 'Toán học Khối 10', 'Ngữ văn'), `assessment_type` ('SCORED' cho điểm, 'REMARK' Đạt/Chưa đạt), `default_scale_name`.
 
 7. Bảng `s360.dim_exam`: Danh mục Kỳ thi & Đầu điểm kiểm tra định kỳ LMS Vinschool.
-   - Các cột: `id` (BIGINT PK), `so_exam_id`, `school_year_id`, `subject_id` (FK), `grade_id`, `exam_code`, `exam_name` (vd: 'Kiểm tra giữa kỳ 1', 'Kiểm tra cuối kỳ 1'), `coefficient`, `moet_semester_index` (1 hoặc 2), `max_grade`.
+   - Các cột: `id` (BIGINT PK), `so_exam_id`, `school_year_id`, `subject_id` (FK), `grade_id`, `exam_code`, `exam_name` (vd: 'Progress Check 1 HK1 Khối 10 - Môn STEM & Robotics'), `coefficient`, `moet_semester_index` (1 hoặc 2), `max_grade`.
 
 8. Bảng `s360.dim_exam_moet`: Đầu điểm kiểm tra định kỳ chuẩn Bộ GD&ĐT (MOET).
    - Các cột: `gradebook_type_item_id` (BIGINT PK), `gradebook_type_items_fullname` (tên đầu điểm), `moet_semester_index` (1 hoặc 2).
@@ -46,7 +46,8 @@ SƠ ĐỒ CƠ SỞ DỮ LIỆU KHO DỮ LIỆU HỌC SINH STUDENT 360 (S360 & PU
 
 [SCHEMA: s360 - FACTS]
 11. Bảng `s360.fact_gradebooks`: Sổ điểm kiểm tra định kỳ Vinschool trên lớp.
-    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `semester_index` (1 hoặc 2), `student_code`, `homeroom_class_id` (FK), `subject_id` (FK), `so_exam_id` (FK -> s360.dim_exam.id - Nối với dim_exam để biết tên kỳ thi 'exam_name'), `final_grade` (Điểm số 0.00 đến 10.00).
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `semester_index` (1 hoặc 2), `student_code`, `homeroom_class_id` (FK), `subject_id` (FK), `so_exam_id` (FK -> s360.dim_exam.id), `final_grade` (Điểm số), `final_grade_letter`, `pass_fail_status`.
+    - LẤY HỌ TÊN HỌC SINH BẰNG CÁCH JOIN: `LEFT JOIN s360.dim_homeroom_class_student st ON fg.student_code = st.student_code AND fg.homeroom_class_id = st.homeroom_class_id` (lấy `st.student_name`).
 
 12. Bảng `s360.fact_gradebooks_moet`: Sổ điểm chuẩn Bộ GD&ĐT (MOET).
     - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `semester_index` (1 hoặc 2), `grade_id`, `subject_id` (FK), `student_code`, `homeroom_class_id` (FK), `gradebook_type_item_id` (FK -> s360.dim_exam_moet.gradebook_type_item_id), `final_grade` (0.0 đến 10.0).
@@ -58,7 +59,7 @@ SƠ ĐỒ CƠ SỞ DỮ LIỆU KHO DỮ LIỆU HỌC SINH STUDENT 360 (S360 & PU
     - Các cột: `id` (BIGINT PK), `overall_record_id` (FK -> s360.fact_overall_academic_records.id), `subject_id` (FK), `student_code`, `final_grade` (ĐTB môn cả năm), `s1_final_grade` (ĐTB môn HK1), `s2_final_grade` (ĐTB môn HK2).
 
 15. Bảng `s360.fact_overall_academic_records`: Học bạ tổng kết toàn diện (Học lực, Hạnh kiểm, ĐTB toàn diện).
-    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `grade_id`, `homeroom_class_id` (FK), `student_id` (FK -> public.users.id), `student_code`, `final_grade` (ĐTB cả năm), `s1_final_grade` (HK1), `s2_final_grade` (HK2), `conduct` ('EXCELLENT', 'GOOD', 'AVERAGE', 'POOR' / Hạnh kiểm cả năm), `s1_conduct`, `s2_conduct`, `learning_capacity` ('Xuất sắc', 'Giỏi', 'Khá', 'Trung bình', 'Yếu', 'Kém' - Học lực cả năm), `s1_learning_capacity`, `s2_learning_capacity`.
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `grade_id`, `homeroom_class_id` (FK), `student_id` (FK -> public.users.id), `student_code`, `final_grade` (ĐTB cả năm), `s1_final_grade` (HK1), `s2_final_grade` (HK2), `conduct`, `s1_conduct`, `s2_conduct`, `learning_capacity`, `s1_learning_capacity`, `s2_learning_capacity`.
 
 QUY TẮC VẬN HÀNH BẮT BUỘC:
 1. CHẾ ĐỘ SINGLE-SHOT QUERY EXECUTION:

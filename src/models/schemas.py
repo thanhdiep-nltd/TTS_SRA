@@ -30,7 +30,7 @@ class AiSessionUpdate(BaseModel):
 
 
 class AiMessageResponse(ORMBase):
-    id: UUID
+    id: int | str | UUID
     role: str
     content: str
     generated_sql: str | None = None
@@ -58,7 +58,7 @@ class MessageFeedbackRequest(BaseModel):
 
 
 class TelemetryMessageDetail(BaseModel):
-    id: UUID
+    id: int | str | UUID
     session_id: UUID
     role: str
     content: str

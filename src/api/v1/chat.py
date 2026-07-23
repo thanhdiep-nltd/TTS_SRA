@@ -174,7 +174,7 @@ def get_session_messages(session_id: UUID, user: CurrentUser, db: Session = Depe
     session = chat_repo.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy phiên chat")
-    if session.user_id != user.id:
+    if str(session.user_id) != str(user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bạn không có quyền truy cập phiên chat này",
@@ -314,6 +314,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     },
                 },
                 config={
+                    "recursion_limit": 50,
                     "callbacks": callbacks,
                     "metadata": {
                         "langfuse_session_id": str(session_id),
@@ -569,7 +570,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
 @router.post("/messages/{message_id}/feedback", response_model=AiMessageResponse)
 def give_message_feedback(
-    message_id: UUID,
+    message_id: int | str,
     payload: MessageFeedbackRequest,
     user: CurrentUser,
     db: Session = Depends(get_db),
@@ -577,12 +578,20 @@ def give_message_feedback(
     """Gửi đánh giá phản hồi (rating, nhãn phân loại feedback_tag và feedback_text) cho tin nhắn AI."""
     from src.models.tables import AiMessage, AiSession
 
-    message = db.get(AiMessage, message_id)
+    try:
+        m_id: int | UUID | str = int(message_id)
+    except (ValueError, TypeError):
+        try:
+            m_id = UUID(str(message_id))
+        except (ValueError, TypeError):
+            m_id = message_id
+
+    message = db.get(AiMessage, m_id)
     if not message:
         raise HTTPException(status_code=404, detail="Không tìm thấy tin nhắn")
 
     session = db.get(AiSession, message.session_id)
-    if not session or session.user_id != user.id:
+    if not session or str(session.user_id) != str(user.id):
         raise HTTPException(status_code=403, detail="Bạn không có quyền đánh giá tin nhắn này")
 
     # Kiểm tra ràng buộc nhãn "Khác" bắt buộc nhập text đóng góp chi tiết

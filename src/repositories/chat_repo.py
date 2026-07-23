@@ -90,7 +90,7 @@ def create_message(
 
 def update_message_feedback(
     db: Session,
-    message_id: UUID,
+    message_id: int | str,
     rating: int,
     feedback_tag: str | None = None,
     feedback_text: str | None = None,

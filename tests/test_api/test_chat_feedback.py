@@ -14,7 +14,6 @@ from src.models.tables import AiMessage, AiSession, User
 from src.repositories import chat_repo
 
 # Tạo user test cố định
-test_user_id = uuid4()
 test_user = User(
     id=1,
     so_school_id=1,
@@ -23,6 +22,7 @@ test_user = User(
     role=enums.UserRole.SUBJECT_TEACHER,
     is_active=True,
 )
+test_user_id = test_user.id
 
 test_admin = User(
     id=2,
