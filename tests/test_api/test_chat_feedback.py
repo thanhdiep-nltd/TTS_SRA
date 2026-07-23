@@ -16,8 +16,8 @@ from src.repositories import chat_repo
 # Tạo user test cố định
 test_user_id = uuid4()
 test_user = User(
-    id=test_user_id,
-    school_id=uuid4(),
+    id=1,
+    so_school_id=1,
     email="teacher_test@school.edu.vn",
     full_name="Giáo Viên Test",
     role=enums.UserRole.SUBJECT_TEACHER,
@@ -25,8 +25,8 @@ test_user = User(
 )
 
 test_admin = User(
-    id=uuid4(),
-    school_id=uuid4(),
+    id=2,
+    so_school_id=1,
     email="admin_test@school.edu.vn",
     full_name="Admin Test",
     role=enums.UserRole.ADMIN,

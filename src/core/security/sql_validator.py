@@ -4,9 +4,41 @@ import sqlglot.expressions as exp
 from src.observability import logger, sql_guardrail_rejections_total
 
 ALLOWED_TABLES = {
+    # Metadata / System tables for LLM self-correction
+    "columns",
+    "tables",
+
+    # Public schema tables
     "schools",
     "users",
     "refresh_tokens",
+    "classroom_recordings",
+    "audit_logs",
+    "ai_sessions",
+    "ai_messages",
+    "ai_session_attachments",
+    "report_schedules",
+
+    # S360 Dimensions
+    "dim_school_year",
+    "dim_homeroom_class",
+    "dim_homeroom_class_student",
+    "dim_subject",
+    "dim_exam",
+    "dim_exam_moet",
+    "dim_so_assignment",
+    "dim_grade_scale_detail",
+
+    # S360 Facts
+    "fact_gradebooks",
+    "fact_gradebooks_moet",
+    "fact_so_assignment_grade",
+    "fact_subject_academic_records",
+    "fact_overall_academic_records",
+    "fact_course_enrolls",
+    "fact_so_evaluate_process_subjects",
+
+    # Legacy support
     "academic_years",
     "semesters",
     "grades",
@@ -22,15 +54,24 @@ ALLOWED_TABLES = {
     "exam_column_mappings",
     "subject_evaluations",
     "student_term_reports",
-    "audit_logs",
-    "ai_sessions",
-    "ai_messages",
-    "report_schedules",
+}
+
+SO_SCHOOL_ID_TABLES = {
+    "users",
+    "classroom_recordings",
+    "dim_homeroom_class",
+    "dim_so_assignment",
+    "dim_grade_scale_detail",
+    "fact_gradebooks",
+    "fact_gradebooks_moet",
+    "fact_so_assignment_grade",
+    "fact_overall_academic_records",
+    "fact_course_enrolls",
+    "fact_so_evaluate_process_subjects",
 }
 
 DIRECT_SCHOOL_ID_TABLES = {
     "schools",
-    "users",
     "academic_years",
     "grades",
     "students",
@@ -114,7 +155,15 @@ def validate_and_secure_sql(query: str, current_school_id: str) -> str:
             if t_name in cte_names:
                 continue
 
-            if t_name in DIRECT_SCHOOL_ID_TABLES:
+            if t_name in SO_SCHOOL_ID_TABLES:
+                constraints.append(f"{alias}.so_school_id = {current_school_id}")
+            elif t_name == "dim_exam":
+                constraints.append(f"{alias}.id IN (SELECT so_exam_id FROM s360.fact_gradebooks)")
+            elif t_name == "fact_subject_academic_records":
+                constraints.append(f"{alias}.overall_record_id IN (SELECT id FROM s360.fact_overall_academic_records)")
+            elif t_name == "dim_homeroom_class_student":
+                constraints.append(f"{alias}.homeroom_class_id IN (SELECT id FROM s360.dim_homeroom_class)")
+            elif t_name in DIRECT_SCHOOL_ID_TABLES:
                 if t_name == "schools":
                     constraints.append(f"{alias}.id = '{current_school_id}'")
                 else:

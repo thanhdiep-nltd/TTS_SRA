@@ -12,6 +12,7 @@
 -- Create Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- Create Schemas
 CREATE SCHEMA IF NOT EXISTS public;
@@ -669,5 +670,24 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 CREATE TRIGGER trg_ai_sessions_updated BEFORE UPDATE ON public.ai_sessions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ============================================================
+-- METADATA INDEX: Bảng Index Danh Mục Chuẩn Hóa Cho Dynamic Entity Resolution (Hybrid Search)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS s360.metadata_index (
+    id              BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    so_school_id    INTEGER NOT NULL,
+    entity_type     VARCHAR(50) NOT NULL, -- 'SCHOOL_YEAR', 'CLASS', 'SUBJECT', 'EXAM', 'ASSIGNMENT', 'GRADE_SCALE'
+    entity_name     VARCHAR(255) NOT NULL, -- '7A1', 'Năm học 2025 - 2026', 'Kiểm tra giữa kỳ 1', 'Toán học'
+    exact_code      VARCHAR(100),          -- '2025_2026', 'TOAN_7', 'GK1_TOAN_7', '7A1'
+    exact_id        BIGINT NOT NULL,       -- 2025, 1, 16, 29
+    extra_metadata  JSONB,                 -- {"grade_number": 7, "semester_index": 1}
+    embedding       vector(3072),          -- Vector Gemini Embedding (gemini-embedding-2)
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_meta_trgm ON s360.metadata_index USING gin (entity_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_meta_school ON s360.metadata_index(so_school_id, entity_type);
 
 -- End of score_focused_schema.sql DDL

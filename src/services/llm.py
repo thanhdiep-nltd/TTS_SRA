@@ -77,9 +77,11 @@ def clean_dsml_content(text: str) -> str:
     """Strips raw DSML tags block from message content."""
     pipe = r"(?:\||\uff5c|\s)+"
     pattern = re.compile(
-        r"<" + pipe + r"DSML" + pipe + r"tool_calls\s*>.*?</" + pipe + r"DSML" + pipe + r"tool_calls\s*>", re.DOTALL
+        r"<" + pipe + r"DSML" + pipe + r"(?:invoke|tool_calls)\s+name=.*?/DSML" + pipe + r"(?:invoke|tool_calls)\s*>", re.DOTALL
     )
-    return pattern.sub("", text).strip()
+    # Also remove generic DSML blocks
+    text_cleaned = re.sub(r"<" + pipe + r"DSML" + pipe + r".*?</" + pipe + r"DSML" + pipe + r"[^>]*>", "", text, flags=re.DOTALL)
+    return text_cleaned.strip()
 
 
 class DeepSeekDSMLWrapper(ChatOpenAI):
@@ -92,7 +94,7 @@ class DeepSeekDSMLWrapper(ChatOpenAI):
         res = super().invoke(input, config, **kwargs)
         latency = time.time() - start
         print(
-            f"⏱️ [LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (DeepSeek) phản hồi sau {latency:.2f} s"
+            f"[LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (DeepSeek) phan hoi sau {latency:.2f} s"
         )
         return self._process_message(res)
 
@@ -103,7 +105,7 @@ class DeepSeekDSMLWrapper(ChatOpenAI):
         res = await super().ainvoke(input, config, **kwargs)
         latency = time.time() - start
         print(
-            f"⏱️ [LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (DeepSeek) phản hồi sau {latency:.2f} s"
+            f"[LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (DeepSeek) phan hoi sau {latency:.2f} s"
         )
         return self._process_message(res)
 
@@ -111,7 +113,7 @@ class DeepSeekDSMLWrapper(ChatOpenAI):
         if isinstance(message, AIMessage) and message.content and isinstance(message.content, str):
             content = message.content
             pipe = r"(?:\||\uff5c|\s)+"
-            if re.search(r"<" + pipe + r"DSML" + pipe + r"tool_calls", content):
+            if re.search(r"<" + pipe + r"DSML" + pipe + r"(?:invoke|parameter|tool_calls)", content):
                 tool_calls = parse_dsml_tool_calls(content)
                 if tool_calls:
                     # Append parsed tool calls
@@ -131,7 +133,7 @@ class TimedChatOpenAI(ChatOpenAI):
         res = super().invoke(input, config, **kwargs)
         latency = time.time() - start
         print(
-            f"⏱️ [LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (OpenAI) phản hồi sau {latency:.2f} s"
+            f"[LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (OpenAI) phan hoi sau {latency:.2f} s"
         )
         return res
 
@@ -142,7 +144,7 @@ class TimedChatOpenAI(ChatOpenAI):
         res = await super().ainvoke(input, config, **kwargs)
         latency = time.time() - start
         print(
-            f"⏱️ [LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (OpenAI) phản hồi sau {latency:.2f} s"
+            f"[LLM Call Latency]: Model {self.model or getattr(self, 'model_name', 'unknown')} (OpenAI) phan hoi sau {latency:.2f} s"
         )
         return res
 

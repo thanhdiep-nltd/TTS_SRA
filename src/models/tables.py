@@ -852,3 +852,26 @@ class ClassroomRecording(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+# ============================================================
+# DYNAMIC ENTITY RESOLUTION METADATA INDEX (s360.metadata_index)
+# ============================================================
+
+
+class MetadataIndex(Base):
+    __tablename__ = "metadata_index"
+    __table_args__ = (
+        Index("idx_meta_trgm", "entity_name", postgresql_using="gin", postgresql_ops={"entity_name": "gin_trgm_ops"}),
+        Index("idx_meta_school", "so_school_id", "entity_type"),
+        {"schema": "s360"},
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    entity_type = Column(String(50), nullable=False)
+    entity_name = Column(String(255), nullable=False)
+    exact_code = Column(String(100))
+    exact_id = Column(BigInteger, nullable=False)
+    extra_metadata = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
