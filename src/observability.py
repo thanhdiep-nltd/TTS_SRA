@@ -67,9 +67,9 @@ sql_guardrail_rejections_total = Counter(
 # Map tool_name -> agent_name sở hữu tool đó, dùng để gắn nhãn agent_name cho tool_calls_total/
 # tool_latency_seconds (LangGraph event không kèm sẵn tên node sở hữu tool trong on_tool_* event).
 TOOL_AGENT_MAP = {
-    "get_student_info": "data_agent",
-    "get_student_grades": "data_agent",
-    "get_class_grades": "data_agent",
+    "get_student_info": "data_service_agent",
+    "get_student_grades": "data_service_agent",
+    "get_class_grades": "data_service_agent",
     "calculate_grade_statistics": "stat_agent",
     "find_top_students": "stat_agent",
     "find_struggling_students": "stat_agent",
@@ -79,8 +79,8 @@ TOOL_AGENT_MAP = {
     "get_grade_inflation_report": "stat_agent",
     "get_evaluation_momentum": "stat_agent",
     "get_exam_validity_report": "stat_agent",
-    "execute_read_only_query": "sql_agent",
-    "validate_and_secure_sql": "sql_agent",
+    "execute_read_only_query": "data_service_agent",
+    "validate_and_secure_sql": "data_service_agent",
     "search_textbook": "knowledge_agent",
     "get_report_data_summary": "report_agent",
     "generate_custom_report_docx": "report_agent",

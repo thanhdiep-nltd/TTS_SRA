@@ -284,7 +284,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
         rag_context: str | None = None
         groundedness_context_parts: list[str] = []
         supervisor_step_count = 0
-        agent_node_names = {"supervisor", "data_agent", "stat_agent", "sql_agent", "knowledge_agent", "report_agent"}
+        agent_node_names = {"supervisor", "data_service_agent", "stat_agent", "knowledge_agent", "report_agent"}
 
         try:
             # Lưu trước tin nhắn của người dùng vào CSDL
@@ -333,12 +333,10 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     if name == "supervisor":
                         supervisor_step_count += 1
                         status_msg = "Đang phân tích yêu cầu của bạn..."
-                    elif name == "data_agent":
-                        status_msg = "Đang tra cứu hồ sơ học sinh và điểm số..."
+                    elif name == "data_service_agent":
+                        status_msg = "Đang truy vấn cơ sở dữ liệu và điểm số..."
                     elif name == "stat_agent":
                         status_msg = "Đang tính toán thống kê và phân tích..."
-                    elif name == "sql_agent":
-                        status_msg = "Đang truy vấn dữ liệu từ PostgreSQL..."
                     elif name == "report_agent":
                         status_msg = "Đang lập dữ liệu cho báo cáo..."
 
@@ -403,10 +401,8 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     if tool_name == "search_textbook":
                         # Lưu context RAG để chấm Faithfulness sau khi có câu trả lời cuối
                         rag_context = tool_output
-                    elif agent_name in ("data_agent", "stat_agent", "sql_agent", "report_agent"):
-                        # Lưu dữ liệu thô để chấm Groundedness (câu trả lời có khớp số liệu DB không).
-                        # report_agent tổng hợp báo cáo dạng văn xuôi từ dữ liệu thô -> rủi ro bịa nội
-                        # dung cao nhất trong các sub-agent, trước đây không được judge nào theo dõi.
+                    elif agent_name in ("data_service_agent", "stat_agent", "report_agent"):
+                        # Lưu dữ liệu thô để chấm Groundedness
                         groundedness_context_parts.append(f"[{tool_name}]: {tool_output}")
 
                     content_preview = tool_output[:400] + "\n   ..." if len(tool_output) > 400 else tool_output

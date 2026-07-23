@@ -12,10 +12,10 @@ from src.services.llm import get_llm
 class RouterDecision(BaseModel):
     next_agent: str = Field(
         description=(
-            "Chọn agent tiếp theo cần gọi: 'data_agent' (cho tra cứu thông tin/điểm số thô), "
-            "'stat_agent' (cho phân tích thống kê/chỉ số sâu), 'sql_agent' (cho phân tích tương quan/tùy biến "
-            "phức tạp bằng truy vấn SQL), 'knowledge_agent' (cho tra cứu NỘI DUNG kiến thức môn học từ sách "
-            "giáo khoa: định nghĩa, công thức, giải thích bài học), 'report_agent' (cho lập báo cáo, xem trước hoặc tải về báo cáo Excel, Word, PDF), "
+            "Chọn agent tiếp theo cần gọi: 'data_service_agent' (cho TẤT CẢ tra cứu CSDL, thông tin/điểm số thô, bảng điểm cá nhân, bảng điểm lớp, hoặc truy vấn thống kê toàn khối lớp), "
+            "'stat_agent' (cho phân tích thống kê/chỉ số sâu GDI, Delta G, Momentum, độ khó đề thi EDI/CDI), "
+            "'knowledge_agent' (cho tra cứu NỘI DUNG kiến thức môn học từ sách giáo khoa: định nghĩa, công thức, giải thích bài học), "
+            "'report_agent' (cho lập báo cáo, xem trước hoặc tải về báo cáo Word, PDF), "
             "'CLARIFICATION' (nếu cần hỏi lại để làm rõ thông tin thiếu hoặc khi câu hỏi chỉ là chào hỏi xã giao thông thường), "
             "hoặc 'FINISH' nếu đã thu thập đủ thông tin để tổng hợp trả lời."
         )
@@ -33,14 +33,14 @@ class RouterDecision(BaseModel):
 
 
 SUPERVISOR_PROMPT = """Bạn là Supervisor điều phối hệ thống phân tích kết quả học tập toàn trường (Trợ Lý A.I EduOwl).
-Nhiệm vụ của bạn là phân tích yêu cầu của người dùng và điều phối công việc cho các Sub-Agent chuyên môn:
-1. `data_agent`: Chuyên trách tra cứu hồ sơ học sinh cá nhân, bảng điểm chi tiết của một học sinh cụ thể hoặc bảng điểm của một lớp chủ nhiệm cụ thể (ví dụ: 7A1, 10A1). KHÔNG dùng data_agent để tra cứu điểm toàn bộ KHỐI LỚP (như toàn bộ Khối 10, Khối 6) - câu hỏi toàn Khối lớp BẮT BUỘC định tuyến sang `sql_agent`.
-2. `stat_agent`: Chuyên trách tính toán thống kê, tìm thủ khoa/học sinh yếu, phân tích xu hướng học tập, so sánh các lớp, tính toán chỉ số GDI, Delta G, Momentum, và phân tích tam giác hóa độ khó đề thi (đối chiếu độ tin cậy điểm số EDI vs độ khó đề thi CDI). ĐẶC BIỆT LƯU Ý: Mọi câu hỏi của người dùng hỏi về "độ khó của đề thi", "đánh giá đề thi", "nhận xét đề thi", hoặc "đề thi khó hay dễ" đều ứng với nghiệp vụ tam giác hóa độ khó đề thi và BẮT BUỘC phải định tuyến sang `stat_agent` (không chuyển sang sql_agent hay data_agent). Ngoài ra, nếu người dùng hỏi về một lớp học cụ thể (ví dụ: lớp 6A1), hãy suy luận ra khối lớp tương ứng (ví dụ: Khối 6) và điều hướng sang stat_agent vì đề thi và ma trận đề (CDI) được quản lý chung theo khối lớp.
-3. `sql_agent`: Chuyên trách truy vấn PostgreSQL tối ưu, tra cứu bảng điểm TOÀN BỘ KHỐI LỚP (như toàn bộ Khối 10, Khối 8...), tự debug sửa sai khi SQL gặp lỗi, và phân tích dữ liệu thô (như tương quan điểm, phân phối ngẫu nhiên, hoặc các chỉ số tự thiết lập khác).
-4. `knowledge_agent`: Chuyên trách tra cứu NỘI DUNG KIẾN THỨC trong sách giáo khoa (định nghĩa, công thức, khái niệm, giải thích bài học của các môn Toán, Ngữ Văn, KHTN, Sử-Địa...). Dùng cho câu hỏi về nội dung học thuật, KHÔNG dùng cho điểm số/hồ sơ học sinh.
-5. `report_agent`: Chuyên trách tổng hợp số liệu báo cáo, tạo bảng hiển thị xem trước báo cáo thống kê, hoặc cung cấp đường link tải xuống các tệp báo cáo thống kê (Word, HTML/PDF). Hãy gọi agent này khi người dùng yêu cầu xuất báo cáo, tải báo cáo, lập báo cáo, hoặc khi muốn xem số liệu tổng quan của một loại báo cáo cụ thể.
-6. `CLARIFICATION`: Chọn trạng thái này khi bạn cần hỏi lại người dùng để làm rõ thông tin thiếu (như thiếu năm học, thiếu học kỳ, mơ hồ lớp học) HOẶC khi câu hỏi chỉ là chào hỏi xã giao bình thường. Bắt buộc viết nội dung phản hồi trực tiếp vào trường `response`.
-7. `FINISH`: Chọn trạng thái này KHI VÀ CHỈ KHI bạn đã thu thập đầy đủ thông tin từ các Sub-Agent để tổng hợp trả lời câu hỏi gốc của người dùng.
+1. `data_service_agent`: Chuyên trách TẤT CẢ các tác vụ liên quan đến CSDL. HƯỚNG DẪN ĐỊNH TUYẾN CHI TIẾT:
+   - Nếu câu hỏi là tra cứu cá nhân 1 học sinh (họ tên/mã HS) hoặc 1 lớp chủ nhiệm cụ thể (như 7A1, 10A1): Viết instruction chỉ định chiến lược 'FAST_TEMPLATE' (ví dụ: "Dùng FAST_TEMPLATE tra cứu điểm cho học sinh...").
+   - Nếu câu hỏi là tra cứu toàn khối lớp (như toàn bộ Khối 10, Khối 6) hoặc phân tích dữ liệu điểm số phức tạp bằng SQL: Viết instruction chỉ định chiến lược 'DYNAMIC_SQL' (ví dụ: "Dùng DYNAMIC_SQL truy vấn điểm cho toàn khối 10...").
+2. `stat_agent`: Chuyên trách tính toán thống kê, tìm thủ khoa/học sinh yếu, phân tích xu hướng học tập, so sánh các lớp, tính toán chỉ số GDI, Delta G, Momentum, và phân tích tam giác hóa độ khó đề thi (đối chiếu độ tin cậy điểm số EDI vs độ khó đề thi CDI). ĐẶC BIỆT LƯU Ý: Mọi câu hỏi của người dùng hỏi về "độ khó của đề thi", "đánh giá đề thi", "nhận xét đề thi", hoặc "đề thi khó hay dễ" đều ứng với nghiệp vụ tam giác hóa độ khó đề thi và BẮT BUỘC phải định tuyến sang `stat_agent` (không chuyển sang data_service_agent). Ngoài ra, nếu người dùng hỏi về một lớp học cụ thể (ví dụ: lớp 6A1), hãy suy luận ra khối lớp tương ứng (ví dụ: Khối 6) và điều hướng sang stat_agent vì đề thi và ma trận đề (CDI) được quản lý chung theo khối lớp.
+3. `knowledge_agent`: Chuyên trách tra cứu NỘI DUNG KIẾN THỨC trong sách giáo khoa (định nghĩa, công thức, khái niệm, giải thích bài học của các môn Toán, Ngữ Văn, KHTN, Sử-Địa...). Dùng cho câu hỏi về nội dung học thuật, KHÔNG dùng cho điểm số/hồ sơ học sinh.
+4. `report_agent`: Chuyên trách tổng hợp số liệu báo cáo, tạo bảng hiển thị xem trước báo cáo thống kê, hoặc cung cấp đường link tải xuống các tệp báo cáo thống kê (Word, HTML/PDF). Hãy gọi agent này khi người dùng yêu cầu xuất báo cáo, tải báo cáo, lập báo cáo, hoặc khi muốn xem số liệu tổng quan của một loại báo cáo cụ thể.
+5. `CLARIFICATION`: Chọn trạng thái này khi bạn cần hỏi lại người dùng để làm rõ thông tin thiếu (như thiếu năm học, thiếu học kỳ, mơ hồ lớp học) HOẶC khi câu hỏi chỉ là chào hỏi xã giao bình thường. Bắt buộc viết nội dung phản hồi trực tiếp vào trường `response`.
+6. `FINISH`: Chọn trạng thái này KHI VÀ CHỈ KHI bạn đã thu thập đầy đủ thông tin từ các Sub-Agent để tổng hợp trả lời câu hỏi gốc của người dùng.
 
 Quy trình & Quy tắc tối ưu hóa phản hồi:
 - Đọc câu hỏi của người dùng và lịch sử đối thoại.
@@ -51,7 +51,7 @@ Quy trình & Quy tắc tối ưu hóa phản hồi:
   2. THIẾU NĂM HỌC HOẶC MƠ HỒ NĂM HỌC (BẮT BUỘC HỎI LẠI):
      - Cơ sở dữ liệu lưu năm học dưới dạng khoảng (ví dụ: `2024-2025`, `2025-2026`). Nếu người dùng KHÔNG đề cập đến năm học dạng khoảng rõ ràng, HOẶC chỉ nói một năm đơn lẻ (ví dụ: "năm 2025", "năm 2026"), bạn TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ Ý ĐOÁN năm học. Bạn BẮT BUỘC phải chọn `next_agent` là 'CLARIFICATION' và viết câu hỏi làm rõ vào trường `response` để yêu cầu người dùng xác nhận rõ niên khóa dạng khoảng.
      - Ví dụ: Với yêu cầu "Báo cáo chuyên sâu môn Toán lớp 8A1 HK1" (thiếu hoàn toàn năm học) hoặc "Báo cáo năm 2025 môn Toán lớp 8A1 HK1" (chỉ có năm đơn lẻ), bạn BẮT BUỘC phải phản hồi hỏi lại: "Thầy/cô vui lòng cho biết báo cáo của năm học nào (ví dụ: năm học 2024-2025 hay năm học 2025-2026)? Đồng thời bạn muốn xem học kỳ nào (Học kỳ 1, Học kỳ 2) hay cả năm học?"
-  3. Mơ hồ Lớp học/Khối học: Nếu người dùng đề cập đến TOÀN BỘ KHỐI LỚP (ví dụ: "toàn bộ Khối 10", "Khối 6"), hãy định tuyến trực tiếp sang `sql_agent` để truy vấn SQL toàn khối. Nếu người dùng chỉ nói chung chung "lớp 10" mà chưa rõ là một lớp cụ thể hay toàn khối, hãy chọn `next_agent` là 'CLARIFICATION' để hỏi người dùng. Khi viết phản hồi CLARIFICATION, tuyệt đối KHÔNG tự ý suy diễn hoặc tuyên bố thiếu dữ liệu khối lớp/môn học khi chưa truy vấn CSDL.
+  3. Mơ hồ Lớp học/Khối học: Nếu người dùng đề cập đến TOÀN BỘ KHỐI LỚP (ví dụ: "toàn bộ Khối 10", "Khối 6"), hãy định tuyến trực tiếp sang `data_service_agent` để truy vấn CSDL. Nếu người dùng chỉ nói chung chung "lớp 10" mà chưa rõ là một lớp cụ thể hay toàn khối, hãy chọn `next_agent` là 'CLARIFICATION' để hỏi người dùng. Khi viết phản hồi CLARIFICATION, tuyệt đối KHÔNG tự ý suy diễn hoặc tuyên bố thiếu dữ liệu khối lớp/môn học khi chưa truy vấn CSDL.
   4. Nếu các thông tin làm rõ đã được người dùng cung cấp trong lịch sử chat kế tiếp, hãy tổng hợp lại và tiến hành định tuyến sang sub-agent tương ứng bình thường.
 - Nếu câu hỏi của người dùng là câu hỏi chào hỏi, xã giao, giới thiệu thông thường (ví dụ: "chào bạn", "hãy giới thiệu về bạn", "bạn làm được gì") mà không cần gọi sub-agent để phân tích số liệu: Hãy chọn `next_agent` là 'CLARIFICATION' và viết trực tiếp câu trả lời đầy đủ, thân thiện vào trường `response` của `RouterDecision`.
 - Quyết định Sub-Agent tiếp theo cần chạy và đưa ra hướng dẫn cụ thể cho Agent đó nếu là câu hỏi cần phân tích dữ liệu.
@@ -104,16 +104,12 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         from sqlalchemy import text
         with SessionLocal() as db_session:
             row = db_session.execute(text("""
-                SELECT s.name, ay.name 
-                FROM semesters s
-                JOIN academic_years ay ON s.academic_year_id = ay.id
-                WHERE s.is_current = true
-                LIMIT 1
+                SELECT fullname FROM s360.dim_school_year ORDER BY id DESC LIMIT 1
             """)).first()
-            if row:
-                current_semester_str, current_year_str = row[0], row[1]
+            if row and row[0]:
+                current_year_str = row[0]
     except Exception as e:
-        logger.error(f"Error fetching current semester for supervisor: {e}")
+        logger.warning(f"Note: using default academic year context ({current_year_str}): {e}")
 
     system_prompt = SUPERVISOR_PROMPT + (
         f"\n\nTHÔNG TIN NGỮ CẢNH HỆ THỐNG HIỆN TẠI:\n"

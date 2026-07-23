@@ -53,12 +53,14 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""
     qdrant_collection: str = "edu_knowledge"
-    embedding_provider: Literal["openai", "gemini", "local"] = "gemini"
+    embedding_provider: str = "openai"
     embedding_service_url: str = "http://localhost:8001"
     gemini_api_key: str = ""
     gemini_embed_model: str = "text-embedding-004"
-    openai_embed_model: str = "text-embedding-3-small"
-    embedding_dim: int = Field(default=768, ge=1)  # Gemini default = 768, OpenAI = 1536, BGE-m3 = 1024
+    openai_embed_model: str = "text-embedding-3-large"
+    embedding_dim: int = Field(default=1536, ge=1)  # Default = 1536
+    embedding_url: str = Field(default="https://api.shopaikey.com/v1", validation_alias="EMBEDDING_URL")
+    embedding_openai_api_key: str = Field(default="", validation_alias="EMBEDDING_OPENAI_API_KEY")
     retrieval_top_k: int = Field(default=5, ge=1, le=50)
     retrieval_score_floor: float = Field(default=0.35, ge=0.0, le=1.0)  # chặn kết quả off-topic
     retrieval_timeout_s: float = Field(default=20.0, gt=0.0)

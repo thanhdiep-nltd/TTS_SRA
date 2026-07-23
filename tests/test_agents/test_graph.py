@@ -12,9 +12,8 @@ def mock_llm():
     """Mock get_llm to prevent real OpenAI API calls during unit tests."""
     with (
         patch("src.agents.supervisor.node.get_llm") as mock_get_llm_sup,
-        patch("src.agents.data_agent.node.get_llm") as mock_get_llm_data,
+        patch("src.agents.data_service_agent.node.get_llm") as mock_get_llm_data_svc,
         patch("src.agents.stat_agent.node.get_llm") as mock_get_llm_stat,
-        patch("src.agents.sql_agent.node.get_llm") as mock_get_llm_sql,
         patch("src.agents.report_agent.node.get_llm") as mock_get_llm_report,
     ):
         mock_chat = MagicMock()
@@ -32,9 +31,8 @@ def mock_llm():
         mock_chat.with_structured_output = MagicMock(return_value=mock_structured)
 
         mock_get_llm_sup.return_value = mock_chat
-        mock_get_llm_data.return_value = mock_chat
+        mock_get_llm_data_svc.return_value = mock_chat
         mock_get_llm_stat.return_value = mock_chat
-        mock_get_llm_sql.return_value = mock_chat
         mock_get_llm_report.return_value = mock_chat
         yield mock_chat
 
