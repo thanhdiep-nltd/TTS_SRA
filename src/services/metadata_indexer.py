@@ -102,27 +102,34 @@ def sync_school_metadata(so_school_id: int) -> int:
             {"sid": so_school_id},
         ).fetchall()
         for c in classes:
-            c_id, c_code, c_name, g_id = c[0], c[1], c[2], c[3]
+            c_id, c_code, c_fullname, g_id = c[0], c[1], c[2], c[3]
+            c_name_clean = str(c_fullname).strip()
+            while c_name_clean.lower().startswith("lớp lớp"):
+                c_name_clean = c_name_clean[4:].strip()
+            if not c_name_clean.lower().startswith("lớp "):
+                c_name_clean = f"Lớp {c_name_clean}"
+
             records_to_insert.append(
                 {
                     "so_school_id": so_school_id,
                     "entity_type": "CLASS",
-                    "entity_name": f"Lớp {c_name}",
+                    "entity_name": c_name_clean,
                     "exact_code": str(c_code),
                     "exact_id": int(c_id),
-                    "extra_metadata": {"class_name": c_name, "grade_id": g_id},
+                    "extra_metadata": {"class_name": c_fullname, "grade_id": g_id},
                 }
             )
-            records_to_insert.append(
-                {
-                    "so_school_id": so_school_id,
-                    "entity_type": "CLASS",
-                    "entity_name": str(c_name),
-                    "exact_code": str(c_code),
-                    "exact_id": int(c_id),
-                    "extra_metadata": {"class_name": c_name, "grade_id": g_id},
-                }
-            )
+            if str(c_code) and str(c_code) != c_name_clean:
+                records_to_insert.append(
+                    {
+                        "so_school_id": so_school_id,
+                        "entity_type": "CLASS",
+                        "entity_name": str(c_code),
+                        "exact_code": str(c_code),
+                        "exact_id": int(c_id),
+                        "extra_metadata": {"class_name": c_fullname, "grade_id": g_id},
+                    }
+                )
 
         # 3. Subjects (s360.dim_subject) - Nạp động 100% từ CSDL
         subjects = db.execute(text("SELECT id, code, name FROM s360.dim_subject")).fetchall()
@@ -186,10 +193,10 @@ def sync_school_metadata(so_school_id: int) -> int:
 
         # 6. MOET Exam Items (s360.dim_exam_moet)
         moet_exams = db.execute(
-            text("SELECT gradebook_type_item_id, gradebook_type_items_fullname, moet_semester_index FROM s360.dim_exam_moet")
+            text("SELECT gradebook_type_item_id, gradebook_type_items_fullname, moet_semester_index, gradebook_type_items_code FROM s360.dim_exam_moet")
         ).fetchall()
         for m in moet_exams:
-            m_id, m_name, sem = m[0], m[1], m[2]
+            m_id, m_name, sem, m_code = m[0], m[1], m[2], m[3]
             em_subj_id = None
             for s in subjects:
                 if s[2] and str(s[2]).lower() in str(m_name).lower():
@@ -200,9 +207,9 @@ def sync_school_metadata(so_school_id: int) -> int:
                     "so_school_id": so_school_id,
                     "entity_type": "EXAM_MOET",
                     "entity_name": str(m_name),
-                    "exact_code": str(m_id),
+                    "exact_code": str(m_code) if m_code else str(m_id),
                     "exact_id": int(m_id),
-                    "extra_metadata": {"fullname": m_name, "semester_index": sem, "subject_id": em_subj_id},
+                    "extra_metadata": {"fullname": m_name, "semester_index": sem, "subject_id": em_subj_id, "code": m_code},
                 }
             )
 
