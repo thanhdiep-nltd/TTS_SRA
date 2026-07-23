@@ -90,11 +90,30 @@ def is_direct_table(table: exp.Table, select_node: exp.Select) -> bool:
     return False
 
 
+DANGEROUS_FUNCTIONS = {
+    "pg_sleep",
+    "dblink",
+    "dblink_connect",
+    "pg_read_file",
+    "pg_ls_dir",
+    "query_to_xml",
+    "pg_read_binary_file",
+}
+
+
 def validate_and_secure_sql(query: str, current_school_id: str) -> str:
     """Kiểm tra cú pháp SQL, chỉ cho phép SELECT từ danh sách bảng hợp lệ,
 
     và tự động chèn bộ lọc school_id để đảm bảo phân quyền trường học (Tenant Isolation).
     """
+    # 0. Chặn nhanh từ khóa / hàm nguy hiểm (Chống DoS & System File Access)
+    q_lower = query.lower()
+    for fn in DANGEROUS_FUNCTIONS:
+        if fn in q_lower:
+            logger.warning("sql_guardrail_reject", reason="dangerous_function", func=fn, query=query)
+            sql_guardrail_rejections_total.labels(reason="dangerous_function").inc()
+            raise ValueError(f"Không được phép sử dụng hàm nguy hiểm: {fn}")
+
     try:
         expression = sqlglot.parse_one(query, read="postgres")
     except Exception as e:

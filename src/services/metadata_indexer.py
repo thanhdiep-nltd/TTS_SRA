@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from sqlalchemy import text
 from src.config import get_settings
 from src.db.session import SessionLocal
@@ -141,6 +142,18 @@ def sync_school_metadata(so_school_id: int) -> int:
                 if len(base_code) >= 2:
                     names_to_add.add(base_code)
 
+            s_grade_id = None
+            grade_match = re.search(r"\b(\d{1,2})\b", str(s_code or "") + " " + str(s_name or ""))
+            if grade_match:
+                try:
+                    s_grade_id = int(grade_match.group(1))
+                except Exception:
+                    pass
+
+            extra = {"subject_name": s_name}
+            if s_grade_id:
+                extra["grade_id"] = s_grade_id
+
             for entry_name in names_to_add:
                 records_to_insert.append(
                     {
@@ -149,7 +162,7 @@ def sync_school_metadata(so_school_id: int) -> int:
                         "entity_name": entry_name,
                         "exact_code": str(s_code),
                         "exact_id": int(s_id),
-                        "extra_metadata": {"subject_name": s_name},
+                        "extra_metadata": extra,
                     }
                 )
 

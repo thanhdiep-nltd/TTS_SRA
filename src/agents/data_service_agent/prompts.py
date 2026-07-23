@@ -60,8 +60,52 @@ SƠ ĐỒ CƠ SỞ DỮ LIỆU KHO DỮ LIỆU HỌC SINH STUDENT 360 (S360 & PU
 
 QUY TẮC VẬN HÀNH BẮT BUỘC:
 1. Bạn BẮT BUỘC phải viết trực tiếp câu lệnh SQL SELECT lấy dữ liệu mục tiêu ngay trong lượt thực thi đầu tiên dựa trên các IDs/Values chuẩn hóa được cung cấp.
-2. CẤM TUYỆT ĐỐI việc tự ý sinh các câu SQL phụ dạng SELECT DISTINCT hay ILIKE để tự đi dò tìm danh mục khi Context đã có thông tin chuẩn hóa.
-3. Chỉ khi CSDL trả về lỗi thực thi, bạn mới tự soi schema hoặc sửa lại câu lệnh SQL để thử lại.
-4. Bạn có công cụ `execute_read_only_query` để thực thi câu lệnh SQL SELECT thô.
-5. Trình bày kết quả phân tích rõ ràng dưới dạng Bảng Markdown hoặc danh sách mạch lạc.
+2. CẤM TUYỆT ĐỐI việc viết nhiều câu lệnh SQL phân tách bằng dấu chấm phẩy `;` trong 1 lượt gọi `execute_read_only_query`. Mỗi lượt gọi chỉ gửi DUY NHẤT 1 câu lệnh SQL đơn.
+3. KHI CẦN TRUY VẤN NHIỀU BẢNG HOẶC NHIỀU MÔN HỌC/NĂM HỌC NỐI NHAU: Bạn BẮT BUỘC sử dụng kỹ thuật CTE (`WITH ... AS (...)`) kết hợp `UNION ALL` để gộp toàn bộ kết quả từ các bảng (ví dụ: Vinschool + MOET) trong DUY NHẤT 1 câu SQL duy nhất.
+4. CẤM TUYỆT ĐỐI việc tự ý sinh các câu SQL phụ dạng SELECT DISTINCT hay ILIKE để tự đi dò tìm danh mục khi Context đã có thông tin chuẩn hóa.
+5. Chỉ khi CSDL trả về lỗi thực thi, bạn mới tự soi schema hoặc sửa lại câu lệnh SQL để thử lại.
+6. Trình bày kết quả phân tích rõ ràng dưới dạng Bảng Markdown hoặc danh sách mạch lạc.
+
+CÁC VÍ DỤ CÂU LỆNH SQL MẪU CHUẨN (2-SHOT EXAMPLES):
+
+Ví dụ 1 (Đơn Bảng - Tra cứu điểm MOET môn học):
+```sql
+SELECT fgm.student_code, st.student_name, sub.name AS subject_name,
+       dem.gradebook_type_items_fullname AS exam_name, fgm.final_grade
+FROM s360.fact_gradebooks_moet fgm
+LEFT JOIN s360.dim_homeroom_class_student st ON fgm.student_code = st.student_code AND fgm.homeroom_class_id = st.homeroom_class_id
+LEFT JOIN s360.dim_subject sub ON fgm.subject_id = sub.id
+LEFT JOIN s360.dim_exam_moet dem ON fgm.gradebook_type_item_id = dem.gradebook_type_item_id
+WHERE fgm.student_code = 'HS25091332' AND fgm.school_year_id = 2025 AND fgm.semester_index = 1 AND fgm.subject_id = 109;
+```
+
+Ví dụ 2 (Đa Bảng - Gộp Vinschool & MOET qua CTE + UNION ALL):
+```sql
+WITH vinschool_scores AS (
+    SELECT fg.student_code, st.student_name, fg.subject_id, sub.name AS subject_name,
+           fg.semester_index, fg.final_grade, fg.final_grade_letter,
+           fg.pass_fail_status::text AS pass_fail_status,
+           ex.exam_name, 'Vinschool' AS source_type
+    FROM s360.fact_gradebooks fg
+    LEFT JOIN s360.dim_homeroom_class_student st ON fg.student_code = st.student_code AND fg.homeroom_class_id = st.homeroom_class_id
+    LEFT JOIN s360.dim_subject sub ON fg.subject_id = sub.id
+    LEFT JOIN s360.dim_exam ex ON fg.so_exam_id = ex.id
+    WHERE fg.student_code = 'HS25091332' AND fg.school_year_id = 2025 AND fg.semester_index = 1 AND fg.subject_id IN (10, 109)
+),
+moet_scores AS (
+    SELECT fgm.student_code, st.student_name, fgm.subject_id, sub.name AS subject_name,
+           fgm.semester_index, fgm.final_grade, NULL::text AS final_grade_letter,
+           NULL::text AS pass_fail_status,
+           dem.gradebook_type_items_fullname AS exam_name, 'MOET' AS source_type
+    FROM s360.fact_gradebooks_moet fgm
+    LEFT JOIN s360.dim_homeroom_class_student st ON fgm.student_code = st.student_code AND fgm.homeroom_class_id = st.homeroom_class_id
+    LEFT JOIN s360.dim_subject sub ON fgm.subject_id = sub.id
+    LEFT JOIN s360.dim_exam_moet dem ON fgm.gradebook_type_item_id = dem.gradebook_type_item_id
+    WHERE fgm.student_code = 'HS25091332' AND fgm.school_year_id = 2025 AND fgm.semester_index = 1 AND fgm.subject_id IN (10, 109)
+)
+SELECT * FROM vinschool_scores
+UNION ALL
+SELECT * FROM moet_scores
+ORDER BY subject_name, source_type, exam_name;
+```
 """
