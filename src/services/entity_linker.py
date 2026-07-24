@@ -217,13 +217,13 @@ def query_slot_entity(db, so_school_id: int, entity_type: str, slot_keyword: str
 
 
 def query_student_direct(db, so_school_id: int, student_keyword: str) -> dict | None:
-    """Option 3: Query mờ pg_trgm trực tiếp trên bảng s360.dim_homeroom_class_student (0đ API Cost, Realtime 100%, ~2ms)."""
+    """Option 3: Query khớp chính xác (Case-Insensitive Exact Match) học sinh theo mã hoặc họ tên trong phạm vi trường học (0đ API Cost, Realtime 100%, ~2ms)."""
     if not student_keyword or not student_keyword.strip():
         return None
 
     k_str = student_keyword.strip()
 
-    # Nếu từ khóa có dạng mã học sinh HS...
+    # 1. Khớp chính xác theo Mã Học sinh (HS...)
     if re.match(r"^HS\d+$", k_str, re.IGNORECASE):
         sql = text("""
             SELECT st.student_code, st.student_name, st.homeroom_class_id, st.grade_id, st.so_student_id
@@ -242,25 +242,27 @@ def query_student_direct(db, so_school_id: int, student_keyword: str) -> dict | 
                 "metadata": {"class_id": int(row[2]), "grade_id": int(row[3])},
             }
 
-    # Query mờ bằng word_similarity pg_trgm trên student_name
+    # 2. Khớp chính xác 100% Họ tên không phân biệt hoa thường (Case-Insensitive Exact Match)
     sql = text("""
-        SELECT st.student_code, st.student_name, st.homeroom_class_id, st.grade_id, st.so_student_id,
-               GREATEST(word_similarity(st.student_name, :keyword), word_similarity(:keyword, st.student_name)) AS similarity
+        SELECT st.student_code, st.student_name, st.homeroom_class_id, st.grade_id, st.so_student_id
         FROM s360.dim_homeroom_class_student st
         JOIN s360.dim_homeroom_class hc ON st.homeroom_class_id = hc.id
-        WHERE hc.so_school_id = :sid AND st.is_active = 1
-        ORDER BY similarity DESC
+        WHERE hc.so_school_id = :sid 
+          AND UPPER(TRIM(st.student_name)) = UPPER(TRIM(:kname)) 
+          AND st.is_active = 1
         LIMIT 1;
     """)
-    row = db.execute(sql, {"sid": so_school_id, "keyword": k_str}).fetchone()
-    if row and float(row[5]) >= 0.2:
+    row = db.execute(sql, {"sid": so_school_id, "kname": k_str}).fetchone()
+    if row:
         return {
             "id": int(row[4]) if row[4] else 0,
             "code": str(row[0]),
             "name": str(row[1]),
-            "score": float(row[5]),
+            "score": 1.0,
             "metadata": {"class_id": int(row[2]), "grade_id": int(row[3])},
         }
+
+    # Không khớp chính xác tên ở trường hiện tại ➔ Trả về None (0 suy luận mờ lung tung sang HS khác)
     return None
 
 
