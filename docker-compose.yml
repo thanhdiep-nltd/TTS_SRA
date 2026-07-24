@@ -51,9 +51,10 @@ services:
   # KHÔNG dùng Alertmanager: cảnh báo bắn thẳng Discord Webhook từ code backend (src/services/alerting.py).
   prometheus:
     image: prom/prometheus:latest
+    profiles: ["monitoring"]
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--config.expand-env'
+      - '--enable-feature=expand-external-variables'
       - '--storage.tsdb.path=/prometheus'
     environment:
       PROMETHEUS_TARGET_HOST: ${PROMETHEUS_TARGET_HOST:-host.docker.internal:8000}
@@ -72,6 +73,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+    profiles: ["monitoring"]
     ports:
       - "3002:3000"  # 3001 dùng cho stack Langfuse self-hosted khác (nếu có) trên máy dev
     environment:
