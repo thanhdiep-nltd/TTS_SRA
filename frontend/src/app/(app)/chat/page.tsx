@@ -1004,28 +1004,112 @@ function ChatContent() {
                           {/* Sleek Terminal Thought Trace Console */}
                           {!isUser && msg.analysis && (
                             <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-                              <button
-                                onClick={() => setOpenAnalysis((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
-                                className="w-full px-5 py-2.5 bg-slate-100 dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center justify-between hover:bg-slate-200 dark:hover:bg-slate-800/80 transition"
-                              >
-                                <span className="flex items-center gap-2">
+                              {/* Header Bar with Top Controls */}
+                              <div className="w-full px-5 py-2.5 bg-slate-100 dark:bg-slate-900 text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center justify-between transition">
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenAnalysis((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
+                                  className="flex items-center gap-2 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer"
+                                >
                                   <Terminal className="w-4 h-4 text-brand-500" />
                                   <span>Nhật ký suy luận & Trace Logs của AI Agent</span>
-                                </span>
-                                {openAnalysis[msg.id] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                              </button>
+                                  {openAnalysis[msg.id] ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  {/* Top Copy Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyMessage(`trace-${msg.id}`, msg.analysis || "")}
+                                    title="Sao chép Nhật ký suy luận & Trace Logs"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-brand-600 hover:text-white dark:hover:bg-brand-600 text-slate-700 dark:text-slate-300 text-[11px] transition cursor-pointer"
+                                  >
+                                    {copiedMsgId === `trace-${msg.id}` ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+                                        <span>Đã sao chép</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>Sao chép log</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  {/* Top Close / Toggle Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenAnalysis((p) => ({ ...p, [msg.id]: !p[msg.id] }))}
+                                    title={openAnalysis[msg.id] ? "Đóng / Thu gọn" : "Xem chi tiết"}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] transition cursor-pointer"
+                                  >
+                                    {openAnalysis[msg.id] ? (
+                                      <>
+                                        <ChevronUp className="w-3.5 h-3.5" />
+                                        <span>Đóng</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                        <span>Xem</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Expanded Terminal Content Area */}
                               {openAnalysis[msg.id] && (
                                 <div className="bg-slate-950 p-4 border-t border-slate-900 font-mono text-xs text-slate-300 overflow-x-auto">
                                   {/* Terminal Header dots */}
-                                  <div className="flex gap-1.5 mb-3 border-b border-slate-800 pb-2">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
-                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
-                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
-                                    <span className="text-[10px] text-slate-500 ml-2">antigravity_agent@neon_db</span>
+                                  <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
+                                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
+                                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                                      <span className="text-[10px] text-slate-500 ml-2">antigravity_agent@neon_db</span>
+                                    </div>
                                   </div>
-                                  <pre className="whitespace-pre-wrap leading-relaxed text-slate-300 select-text font-mono">
+
+                                  <pre className="whitespace-pre-wrap leading-relaxed text-slate-300 select-text font-mono mb-4">
                                     {msg.analysis}
                                   </pre>
+
+                                  {/* Bottom Actions Bar (Quick Copy & Close at bottom) */}
+                                  <div className="flex items-center justify-between border-t border-slate-800/80 pt-3 mt-2">
+                                    <span className="text-[10px] text-slate-500">AI Agent Trace Engine v2.0</span>
+                                    <div className="flex items-center gap-2">
+                                      {/* Bottom Copy Button */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyMessage(`trace-${msg.id}`, msg.analysis || "")}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-brand-600 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                                      >
+                                        {copiedMsgId === `trace-${msg.id}` ? (
+                                          <>
+                                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>Đã sao chép log</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Copy className="w-3.5 h-3.5" />
+                                            <span>Sao chép toàn bộ log</span>
+                                          </>
+                                        )}
+                                      </button>
+
+                                      {/* Bottom Close Button (Quick Close without scrolling up) */}
+                                      <button
+                                        type="button"
+                                        onClick={() => setOpenAnalysis((p) => ({ ...p, [msg.id]: false }))}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                        <span>Đóng nhanh</span>
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               )}
                             </div>

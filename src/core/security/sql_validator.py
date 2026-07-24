@@ -114,6 +114,13 @@ def validate_and_secure_sql(query: str, current_school_id: str) -> str:
             sql_guardrail_rejections_total.labels(reason="dangerous_function").inc()
             raise ValueError(f"Không được phép sử dụng hàm nguy hiểm: {fn}")
 
+    # 0.5. Chặn câu lệnh SQL cố tình wildcard search ILIKE '%...' trên student_name
+    import re
+    if re.search(r"student_name\s+ILIKE\s+['\"]%[^'\"]*['\"]", query, re.IGNORECASE) or re.search(r"student_name\s+ILIKE\s+['\"]%[^'\"]*%['\"]", query, re.IGNORECASE):
+        logger.warning("sql_guardrail_reject", reason="student_name_wildcard_ilike", query=query)
+        sql_guardrail_rejections_total.labels(reason="student_name_wildcard_ilike").inc()
+        raise ValueError("Chặn an toàn: Không được phép sử dụng ILIKE wildcard (%...) để dò tìm mờ tên học sinh. Vui lòng tra cứu theo mã học sinh hoặc họ tên khớp chính xác.")
+
     try:
         expression = sqlglot.parse_one(query, read="postgres")
     except Exception as e:

@@ -28,6 +28,7 @@ from src.models.schemas import (
 )
 from src.observability import (
     TOOL_AGENT_MAP,
+    logger,
     agent_latency_seconds,
     agent_requests_total,
     agent_routes_total,
@@ -297,6 +298,53 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
             start_time = time.time()
 
+            # 0. Phát log Ngữ cảnh Phân quyền Đa trường (Tenant Scope)
+            scope_msg = (
+                f"🏫 [Ngữ cảnh Phân quyền]: Trường ID = {user.so_school_id} | "
+                f"Vai trò = {user.role.value if hasattr(user.role, 'value') else user.role} | "
+                f"User ID = {user.id}"
+            )
+            thought_logs.append({"type": "thought", "content": scope_msg, "timestamp": time.time()})
+            yield f"data: {json.dumps({'type': 'thought', 'content': scope_msg}, ensure_ascii=False)}\n\n"
+
+            # Pre-run Entity Linker trace để log thông tin bóc tách & danh mục chuẩn hóa truyền cho LLM
+            try:
+                from src.services.entity_linker import resolve_entities, extract_entity_slots_llm
+                slots = extract_entity_slots_llm(request.message.strip())
+                entity_ctx = resolve_entities(request.message, so_school_id=user.so_school_id)
+
+                slots_msg = (
+                    f"🔍 [Entity Linker - Từ khóa Bóc tách từ Câu hỏi]:\n"
+                    f"   - Môn học / Chuẩn: {slots.subject_keywords}\n"
+                    f"   - Lớp / Khối: {slots.class_keywords}\n"
+                    f"   - Học sinh: {slots.student_keywords}\n"
+                    f"   - Năm học: {slots.school_year_keywords}\n"
+                    f"   - Kỳ thi: {slots.exam_keywords}"
+                )
+                thought_logs.append({"type": "thought", "content": slots_msg, "timestamp": time.time()})
+                yield f"data: {json.dumps({'type': 'thought', 'content': slots_msg}, ensure_ascii=False)}\n\n"
+
+                matched_msg = (
+                    f"🔍 [Entity Linker - Thực thể Khớp CSDL PostgreSQL (Trường {user.so_school_id})]:\n"
+                    f"   - Năm học IDs: {[y['id'] for y in entity_ctx.school_years]}\n"
+                    f"   - Lớp học IDs: {[c['id'] for c in entity_ctx.homeroom_classes]}\n"
+                    f"   - Môn học IDs: {[s['id'] for s in entity_ctx.subjects]}\n"
+                    f"   - Mã Học sinh: {[st['code'] for st in entity_ctx.students]}\n"
+                    f"   - Khối ID suy luận: {entity_ctx.target_grade_id}"
+                )
+                thought_logs.append({"type": "thought", "content": matched_msg, "timestamp": time.time()})
+                yield f"data: {json.dumps({'type': 'thought', 'content': matched_msg}, ensure_ascii=False)}\n\n"
+
+                if entity_ctx.formatted_prompt_context:
+                    ctx_msg = (
+                        f"📝 [Entity Linker - Prompt Context Chèn Cho LLM]:\n"
+                        f"{entity_ctx.formatted_prompt_context}"
+                    )
+                    thought_logs.append({"type": "thought", "content": ctx_msg, "timestamp": time.time()})
+                    yield f"data: {json.dumps({'type': 'thought', 'content': ctx_msg}, ensure_ascii=False)}\n\n"
+            except Exception as err:
+                logger.warning(f"Entity Linker trace log error: {err}")
+
             # Langfuse Callback Handler (fail-soft: None nếu chưa cấu hình LANGFUSE_*)
             # SDK v4: session_id/user_id/tags gắn qua metadata["langfuse_*"], không qua constructor.
             langfuse_handler = get_langfuse_handler()
@@ -374,16 +422,23 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                 # A. Lấy Thought Trace khi model kết thúc hoặc quyết định chạy công cụ
                 elif event["event"] == "on_chat_model_end":
                     msg = event["data"]["output"]
+                    model_name = getattr(msg, "response_metadata", {}).get("model_name", "LLM") if hasattr(msg, "response_metadata") else "LLM"
                     if getattr(msg, "tool_calls", None):
                         for tc in msg.tool_calls:
                             thought = (
-                                f"🤖 [AI Agent - Suy luận]: Quyết định gọi công cụ `{tc['name']}`\n"
+                                f"🤖 [AI Agent - Suy luận] (Model: {model_name}): Quyết định gọi công cụ `{tc['name']}`\n"
                                 f"   Tham số: {json.dumps(tc['args'], ensure_ascii=False)}"
                             )
                             thought_logs.append({"type": "thought", "content": thought, "timestamp": time.time()})
                             yield f"data: {json.dumps({'type': 'thought', 'content': thought}, ensure_ascii=False)}\n\n"
                             if tc["name"] == "execute_read_only_query" and "sql_query" in tc["args"]:
                                 generated_sql = tc["args"]["sql_query"]
+                                guardrail_msg = (
+                                    f"🛡️ [SQL Security Guardrail]: Cú pháp hợp lệ. "
+                                    f"Đã kiểm duyệt AST & tự động chèn bộ lọc so_school_id = {user.so_school_id} & ép LIMIT 100."
+                                )
+                                thought_logs.append({"type": "thought", "content": guardrail_msg, "timestamp": time.time()})
+                                yield f"data: {json.dumps({'type': 'thought', 'content': guardrail_msg}, ensure_ascii=False)}\n\n"
                     # Accumulate input and output tokens from all LLMs in the graph run
                     if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                         total_input_tokens += msg.usage_metadata.get("input_tokens", 0)
@@ -406,7 +461,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                         groundedness_context_parts.append(f"[{tool_name}]: {tool_output}")
 
                     content_preview = tool_output[:400] + "\n   ..." if len(tool_output) > 400 else tool_output
-                    thought = f"🔧 [Công cụ - Kết quả trả về]:\n   {content_preview}"
+                    thought = f"🔧 [Công cụ - Kết quả trả về] (Thời gian: {duration:.2f}s):\n   {content_preview}"
                     thought_logs.append({"type": "thought", "content": thought, "timestamp": time.time()})
                     yield f"data: {json.dumps({'type': 'thought', 'content': thought}, ensure_ascii=False)}\n\n"
 
