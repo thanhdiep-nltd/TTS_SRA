@@ -58,6 +58,27 @@ SƠ ĐỒ CƠ SỞ DỮ LIỆU KHO DỮ LIỆU HỌC SINH STUDENT 360 (S360 & PU
 17. Bảng `s360.fact_so_evaluate_process_subjects`: Báo cáo đánh giá nhận xét tiến trình học tập môn học định kỳ.
     - Các cột: `id` (BIGINT PK), `subject_id` (FK -> s360.dim_subject.id), `student_code` (VARCHAR), `school_year_id` (FK -> s360.dim_school_year.id), `semester_index` (1 hoặc 2), `student_level` (Mức độ học sinh), `comment` (Lời nhận xét văn xuôi của giáo viên), `teacher_fullname` (Tên giáo viên nhận xét).
 
+18. Bảng `s360.dim_behavior`: Danh mục 22 tiêu chí hành vi rèn luyện, khen thưởng & kỷ luật.
+    - Các cột: `id` (BIGINT PK), `code` (VARCHAR), `name` (VARCHAR - Tên hành vi), `category` ('NEP_SONG', 'HOC_TAP', 'KHEN_THUONG', 'KY_LUAT'), `point_modifier` (INT).
+
+19. Bảng `s360.dim_course`: Danh mục học phần môn tự chọn.
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `subject_id` (FK), `code`, `name`.
+
+20. Bảng `s360.fact_behavior_logs`: Nhật ký vi phạm kỷ luật & khen thưởng rèn luyện học sinh.
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `student_code` (VARCHAR), `behavior_id` (FK -> s360.dim_behavior.id), `date` (DATE), `note` (TEXT), `point_deducted` (INT).
+
+21. Bảng `s360.fact_so_homeroom_class_late_attendances`: Nhật ký học sinh đi học muộn & về sớm.
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `homeroom_class_id` (FK), `student_code` (VARCHAR), `attendance_date` (DATE), `status` ('LATE', 'EARLY_LEAVE'), `minutes_late` (INT), `reason` (TEXT).
+
+22. Bảng `s360.fact_absent_logs`: Nhật ký học sinh xin nghỉ học (có phép / không phép).
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `homeroom_class_id` (FK), `student_code` (VARCHAR), `absent_date` (DATE), `is_permitted` (1: Có phép, 0: Không phép), `reason` (TEXT).
+
+23. Bảng `s360.fact_so_class_attendance_statistics`: Báo cáo thống kê tổng hợp số tiết tham gia & nghỉ học của lớp.
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `grade_id` (INT), `homeroom_class_id` (FK), `student_code` (VARCHAR), `date` (DATE), `status`, `total_lesson` (INT), `lesson_attend` (INT), `lesson_not_attend` (INT).
+
+24. Bảng `s360.fact_course_attendences`: Điểm danh chi tiết theo từng tiết học môn học phần.
+    - Các cột: `id` (BIGINT PK), `so_school_id` (INT), `school_year_id` (FK), `course_id` (FK -> s360.dim_course.id), `_date` (DATE), `student_code` (VARCHAR), `status` ('PRESENT', 'ABSENT', 'LATE'), `status_name` (VARCHAR), `comment` (TEXT).
+
 QUY TẮC VẬN HÀNH BẮT BUỘC:
 1. Bạn BẮT BUỘC phải viết trực tiếp câu lệnh SQL SELECT lấy dữ liệu mục tiêu ngay trong lượt thực thi đầu tiên dựa trên các IDs/Values chuẩn hóa được cung cấp.
 2. CẤM TUYỆT ĐỐI việc viết nhiều câu lệnh SQL phân tách bằng dấu chấm phẩy `;` trong 1 lượt gọi `execute_read_only_query`. Mỗi lượt gọi chỉ gửi DUY NHẤT 1 câu lệnh SQL đơn.

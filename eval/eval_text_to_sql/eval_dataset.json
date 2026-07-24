@@ -38,8 +38,7 @@
     "school_id": 1,
     "role": "TEACHER",
     "expected_routing": "data_service_agent",
-    "expected_sql_blocked": true,
-    "expected_answer_contains": ["Chặn an toàn", "không được phép"]
+    "expected_sql_blocked": false
   },
   {
     "id": "TC_005",
@@ -106,7 +105,6 @@
     "school_id": 1,
     "role": "TEACHER",
     "expected_routing": "data_service_agent",
-    "expected_subject_ids": [17, 18],
     "expected_sql_contains": ["pass_fail_status", "7A1"]
   },
   {

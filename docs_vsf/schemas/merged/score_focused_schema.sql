@@ -33,6 +33,15 @@ DROP TABLE IF EXISTS public.exam_papers CASCADE;
 DROP TABLE IF EXISTS public.refresh_tokens CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
 
+DROP TABLE IF EXISTS s360.fact_course_attendences CASCADE;
+DROP TABLE IF EXISTS s360.fact_so_class_attendance_statistics CASCADE;
+DROP TABLE IF EXISTS s360.fact_so_homeroom_class_late_attendances CASCADE;
+DROP TABLE IF EXISTS s360.fact_so_homeroom_class_attendances CASCADE;
+DROP TABLE IF EXISTS s360.fact_so_daily_attendance CASCADE;
+DROP TABLE IF EXISTS s360.fact_absent_logs CASCADE;
+DROP TABLE IF EXISTS s360.fact_behavior_logs CASCADE;
+DROP TABLE IF EXISTS s360.dim_course CASCADE;
+DROP TABLE IF EXISTS s360.dim_behavior CASCADE;
 DROP TABLE IF EXISTS s360.fact_course_enrolls CASCADE;
 DROP TABLE IF EXISTS s360.fact_so_evaluate_process_subjects CASCADE;
 DROP TABLE IF EXISTS s360.fact_overall_academic_records CASCADE;
@@ -641,6 +650,265 @@ CREATE TABLE s360.fact_course_enrolls (
 CREATE INDEX idx_fce_student ON s360.fact_course_enrolls(student_code);
 CREATE INDEX idx_fce_subject ON s360.fact_course_enrolls(subject_id);
 COMMENT ON TABLE s360.fact_course_enrolls IS 'Nhật ký ghi nhận lịch sử học sinh đăng ký và rút môn học phần tự chọn';
+
+-- ============================================================
+-- SCHEMAS: Attendance, Absences & Discipline/Behavior (Group 1 & 2)
+-- ============================================================
+
+-- 26. [DANH MỤC HÀNH VI KỶ LUẬT] Danh mục tiêu chí khen thưởng & vi phạm nếp sống
+CREATE TABLE s360.dim_behavior (
+    id                          BIGINT PRIMARY KEY,
+    code                        VARCHAR(100) NOT NULL,
+    name                        VARCHAR(255) NOT NULL,
+    group_code                  VARCHAR(100),
+    group_name                  VARCHAR(255),
+    point                       DOUBLE PRECISION DEFAULT 0.0,
+    point_min                   INTEGER,
+    point_max                   INTEGER,
+    is_duplicate_behavior       INTEGER DEFAULT 0,
+    count_duplicate_behavior    INTEGER DEFAULT 0,
+    scope_duplicate_behavior    INTEGER DEFAULT 0,
+    point_duplicate_behavior    DOUBLE PRECISION DEFAULT 0.0,
+    is_behavior_solve           INTEGER DEFAULT 0,
+    is_apply_student            INTEGER DEFAULT 1,
+    is_apply_teacher            INTEGER DEFAULT 0,
+    is_apply_homeroom_class     INTEGER DEFAULT 0,
+    convert_behavior_id         INTEGER,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE s360.dim_behavior IS 'Danh mục tiêu chí khen thưởng, kỷ luật và hành vi vi phạm rèn luyện';
+
+-- 27. [DANH MỤC LỚP HỌC PHẦN] Danh mục khóa học / lớp môn tự chọn
+CREATE TABLE s360.dim_course (
+    id                          BIGINT PRIMARY KEY,
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    grade_id                    INTEGER NOT NULL,
+    subject_id                  INTEGER REFERENCES s360.dim_subject(id),
+    homeroom_class_id          INTEGER REFERENCES s360.dim_homeroom_class(id),
+    code                        VARCHAR(100) NOT NULL,
+    name                        VARCHAR(255) NOT NULL,
+    type                        VARCHAR(100),
+    max_student                 INTEGER DEFAULT 40,
+    start_date                  DATE,
+    end_date                    DATE,
+    description                 TEXT,
+    status                      VARCHAR(50) DEFAULT 'ACTIVE',
+    is_online_training          INTEGER DEFAULT 0,
+    is_locked                   INTEGER DEFAULT 0,
+    is_extracurricular_activity INTEGER DEFAULT 0,
+    extracurricular_activity_id INTEGER,
+    el_course_id                BIGINT,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_dc_school_year ON s360.dim_course(so_school_id, school_year_id);
+COMMENT ON TABLE s360.dim_course IS 'Danh mục lớp học phần / khóa học môn tự chọn';
+
+-- 28. [NHẬT KÝ KỶ LUẬT & KHEN THƯỞNG] Nhật ký vi phạm nếp sống rèn luyện
+CREATE TABLE s360.fact_behavior_logs (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    student_code                VARCHAR(50) NOT NULL,
+    behavior_id                 BIGINT REFERENCES s360.dim_behavior(id),
+    behavior_before_id          BIGINT,
+    object_type                 VARCHAR(50),
+    object_id                   BIGINT,
+    behavior_code               VARCHAR(100),
+    behavior_fullname           VARCHAR(255),
+    behavior_fullname_clean     VARCHAR(255),
+    behavior_level              VARCHAR(50),
+    behavior_point              DOUBLE PRECISION DEFAULT 0.0,
+    behavior_comment            TEXT,
+    comment_date                DATE DEFAULT CURRENT_DATE,
+    sanction_code               VARCHAR(100),
+    sanction_name               VARCHAR(255),
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW(),
+    source_system               VARCHAR(50) DEFAULT 'SCHOOL_ONLINE'
+);
+CREATE INDEX idx_fbl_student ON s360.fact_behavior_logs(student_code);
+CREATE INDEX idx_fbl_date ON s360.fact_behavior_logs(comment_date);
+COMMENT ON TABLE s360.fact_behavior_logs IS 'Nhật ký ghi nhận khen thưởng rèn luyện & vi phạm kỷ luật của học sinh';
+
+-- 29. [NHẬT KÝ XIN NGHỈ HỌC] Nhật ký học sinh xin nghỉ học có phép / không phép
+CREATE TABLE s360.fact_absent_logs (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    absent_period_id            BIGINT,
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    homeroom_class_id          INTEGER NOT NULL REFERENCES s360.dim_homeroom_class(id),
+    student_code                VARCHAR(50) NOT NULL,
+    reason                      TEXT,
+    reason_norm                 TEXT,
+    reason_category             VARCHAR(100),
+    from_date                   DATE NOT NULL,
+    to_date                     DATE NOT NULL,
+    is_approved                 INTEGER DEFAULT 1,
+    approval_status             VARCHAR(50) DEFAULT 'APPROVED',
+    approved_at                 TIMESTAMPTZ,
+    is_auto_approved            INTEGER DEFAULT 0,
+    is_full_day                 INTEGER DEFAULT 1,
+    absent_date                 DATE NOT NULL,
+    timetable_period_code       VARCHAR(50),
+    timetable_period_name       VARCHAR(100),
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fal_student ON s360.fact_absent_logs(student_code);
+CREATE INDEX idx_fal_class ON s360.fact_absent_logs(homeroom_class_id);
+CREATE INDEX idx_fal_date ON s360.fact_absent_logs(absent_date);
+COMMENT ON TABLE s360.fact_absent_logs IS 'Nhật ký xin nghỉ học chi tiết của học sinh (nghỉ có phép / không phép)';
+
+-- 30. [ĐIỂM DANH HÀNG NGÀY] Thống kê tình hình điểm danh theo buổi
+CREATE TABLE s360.fact_so_daily_attendance (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    _date                       DATE NOT NULL,
+    week_start                  DATE,
+    month_start                 DATE,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    school_id                   INTEGER NOT NULL DEFAULT 1,
+    school_year                 VARCHAR(50),
+    school_year_start_date      DATE,
+    school_year_end_date        DATE,
+    student_code                VARCHAR(50) NOT NULL,
+    course_id                   BIGINT REFERENCES s360.dim_course(id),
+    subject_id                  INTEGER REFERENCES s360.dim_subject(id),
+    school_code                 VARCHAR(50),
+    homeroom_class_id          INTEGER NOT NULL REFERENCES s360.dim_homeroom_class(id),
+    class_code                  VARCHAR(50),
+    class_name                  VARCHAR(100),
+    grade_id                    INTEGER NOT NULL,
+    grade_name                  VARCHAR(50),
+    total_periods               INTEGER DEFAULT 0,
+    absent_periods              INTEGER DEFAULT 0,
+    absent_no_permission        INTEGER DEFAULT 0,
+    absent_with_permission      INTEGER DEFAULT 0,
+    any_absence_flag            INTEGER DEFAULT 0,
+    full_subject_absence_flag   INTEGER DEFAULT 0,
+    first_created_at            TIMESTAMPTZ DEFAULT NOW(),
+    last_updated_at             TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fda_student ON s360.fact_so_daily_attendance(student_code);
+CREATE INDEX idx_fda_class ON s360.fact_so_daily_attendance(homeroom_class_id);
+CREATE INDEX idx_fda_date ON s360.fact_so_daily_attendance(_date);
+COMMENT ON TABLE s360.fact_so_daily_attendance IS 'Thống kê tình hình điểm danh theo ngày của học sinh';
+
+-- 31. [ĐIỂM DANH LỚP CHỦ NHIỆM] Nhật ký điểm danh đầu giờ của giáo viên chủ nhiệm
+CREATE TABLE s360.fact_so_homeroom_class_attendances (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    tenant_id                   INTEGER DEFAULT 1,
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    campus_id                   INTEGER DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    homeroom_class_id          INTEGER NOT NULL REFERENCES s360.dim_homeroom_class(id),
+    attendance_date             DATE NOT NULL,
+    so_user_id                  BIGINT,
+    student_code                VARCHAR(50) NOT NULL,
+    status                      INTEGER DEFAULT 1,
+    comment                     TEXT,
+    comment_meal                TEXT,
+    is_push_to_app              INTEGER DEFAULT 1,
+    is_push_notification        INTEGER DEFAULT 1,
+    is_locked                   INTEGER DEFAULT 0,
+    last_attendance_update_at   TIMESTAMPTZ,
+    is_deleted                  INTEGER DEFAULT 0,
+    created_by                  BIGINT,
+    updated_by                  BIGINT,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW(),
+    source_system               VARCHAR(50) DEFAULT 'SCHOOL_ONLINE'
+);
+CREATE INDEX idx_fhca_student ON s360.fact_so_homeroom_class_attendances(student_code);
+CREATE INDEX idx_fhca_class_date ON s360.fact_so_homeroom_class_attendances(homeroom_class_id, attendance_date);
+COMMENT ON TABLE s360.fact_so_homeroom_class_attendances IS 'Nhật ký điểm danh lớp chủ nhiệm hàng ngày vào đầu giờ';
+
+-- 32. [NHẬT KÝ ĐI MUỘN] Nhật ký học sinh đi học muộn & về sớm
+CREATE TABLE s360.fact_so_homeroom_class_late_attendances (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    tenant_id                   INTEGER DEFAULT 1,
+    campus_id                   INTEGER DEFAULT 1,
+    so_school_name              VARCHAR(255),
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    grade_id                    INTEGER NOT NULL,
+    homeroom_class_id          INTEGER NOT NULL REFERENCES s360.dim_homeroom_class(id),
+    homeroom_class_name         VARCHAR(100),
+    attendance_date             DATE NOT NULL,
+    so_user_id                  BIGINT,
+    student_code                VARCHAR(50) NOT NULL,
+    user_name                   VARCHAR(100),
+    user_fullname               VARCHAR(255),
+    user_mail                   VARCHAR(100),
+    attendance_time             TIMESTAMPTZ,
+    is_late                     INTEGER DEFAULT 1,
+    status_name                 VARCHAR(50) DEFAULT 'DI_MUON',
+    ignore_late                 INTEGER DEFAULT 0,
+    reason_ignore               TEXT,
+    image_path                  VARCHAR(500),
+    time_late                   INTEGER DEFAULT 0,
+    process_status              VARCHAR(50) DEFAULT 'PROCESSED',
+    is_deleted                  INTEGER DEFAULT 0,
+    created_by                  BIGINT,
+    updated_by                  BIGINT,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW(),
+    source_system               VARCHAR(50) DEFAULT 'SCHOOL_ONLINE'
+);
+CREATE INDEX idx_fhcla_student ON s360.fact_so_homeroom_class_late_attendances(student_code);
+CREATE INDEX idx_fhcla_class ON s360.fact_so_homeroom_class_late_attendances(homeroom_class_id);
+CREATE INDEX idx_fhcla_date ON s360.fact_so_homeroom_class_late_attendances(attendance_date);
+COMMENT ON TABLE s360.fact_so_homeroom_class_late_attendances IS 'Nhật ký ghi nhận học sinh đi học muộn / về sớm';
+
+-- 33. [THỐNG KÊ CHUYÊN CẦN LỚP] Báo cáo thống kê tổng hợp tỷ lệ tham gia lớp
+CREATE TABLE s360.fact_so_class_attendance_statistics (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    so_user_id                  BIGINT,
+    student_code                VARCHAR(50) NOT NULL,
+    date                        DATE NOT NULL,
+    status                      VARCHAR(50),
+    total_lesson                INTEGER DEFAULT 0,
+    lesson_attend               INTEGER DEFAULT 0,
+    lesson_not_attend           INTEGER DEFAULT 0,
+    tenant_id                   INTEGER DEFAULT 1,
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    campus_id                   INTEGER DEFAULT 1,
+    grade_id                    INTEGER NOT NULL,
+    homeroom_class_id          INTEGER NOT NULL REFERENCES s360.dim_homeroom_class(id),
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW(),
+    source_system               VARCHAR(50) DEFAULT 'SCHOOL_ONLINE'
+);
+CREATE INDEX idx_fcas_class_date ON s360.fact_so_class_attendance_statistics(homeroom_class_id, date);
+COMMENT ON TABLE s360.fact_so_class_attendance_statistics IS 'Thống kê tổng hợp số tiết tham gia & nghỉ học của lớp';
+
+-- 34. [ĐIỂM DANH THEO TIẾT HỌC] Điểm danh môn học phần / tiết học chi tiết
+CREATE TABLE s360.fact_course_attendences (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    so_school_id                INTEGER NOT NULL DEFAULT 1,
+    school_year_id              INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    course_id                   BIGINT REFERENCES s360.dim_course(id),
+    timetable_period_code       VARCHAR(50),
+    timetable_period_name       VARCHAR(100),
+    _date                       DATE NOT NULL,
+    student_code                VARCHAR(50) NOT NULL,
+    status                      VARCHAR(50) DEFAULT 'PRESENT',
+    status_name                 VARCHAR(100) DEFAULT 'Có mặt',
+    comment                     TEXT,
+    is_push_to_app              INTEGER DEFAULT 1,
+    is_push_notification        INTEGER DEFAULT 1,
+    is_locked                   INTEGER DEFAULT 0,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW(),
+    source_system               VARCHAR(50) DEFAULT 'LMS'
+);
+CREATE INDEX idx_fca_student ON s360.fact_course_attendences(student_code);
+CREATE INDEX idx_fca_course ON s360.fact_course_attendences(course_id);
+CREATE INDEX idx_fca_date ON s360.fact_course_attendences(_date);
+COMMENT ON TABLE s360.fact_course_attendences IS 'Nhật ký điểm danh chi tiết theo từng tiết học / môn học phần';
 
 -- ============================================================
 -- SEED DATA: Cấu hình Ma trận Quy đổi 6 Thang Điểm

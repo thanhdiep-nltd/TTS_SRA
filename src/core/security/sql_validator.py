@@ -7,6 +7,7 @@ ALLOWED_TABLES = {
     # Metadata / System tables for LLM self-correction
     "columns",
     "tables",
+    "metadata_index",
 
     # Public schema tables
     "schools",
@@ -18,6 +19,8 @@ ALLOWED_TABLES = {
     "ai_messages",
     "ai_session_attachments",
     "report_schedules",
+    "ai_observability_snapshots",
+    "ai_evaluations",
 
     # S360 Dimensions
     "dim_school_year",
@@ -27,7 +30,10 @@ ALLOWED_TABLES = {
     "dim_exam",
     "dim_exam_moet",
     "dim_so_assignment",
+    "dim_grade_scale",
     "dim_grade_scale_detail",
+    "dim_behavior",
+    "dim_course",
 
     # S360 Facts
     "fact_gradebooks",
@@ -37,6 +43,11 @@ ALLOWED_TABLES = {
     "fact_overall_academic_records",
     "fact_course_enrolls",
     "fact_so_evaluate_process_subjects",
+    "fact_behavior_logs",
+    "fact_so_homeroom_class_late_attendances",
+    "fact_absent_logs",
+    "fact_so_class_attendance_statistics",
+    "fact_course_attendences",
 
     # Legacy support
     "academic_years",
@@ -62,12 +73,20 @@ SO_SCHOOL_ID_TABLES = {
     "dim_homeroom_class",
     "dim_so_assignment",
     "dim_grade_scale_detail",
+    "dim_behavior",
+    "dim_course",
     "fact_gradebooks",
     "fact_gradebooks_moet",
     "fact_so_assignment_grade",
     "fact_overall_academic_records",
     "fact_course_enrolls",
     "fact_so_evaluate_process_subjects",
+    "fact_behavior_logs",
+    "fact_so_homeroom_class_late_attendances",
+    "fact_absent_logs",
+    "fact_so_class_attendance_statistics",
+    "fact_course_attendences",
+    "metadata_index",
 }
 
 DIRECT_SCHOOL_ID_TABLES = {
