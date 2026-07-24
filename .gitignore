@@ -43,6 +43,9 @@ data/
 accounts_info.md
 temp/
 
+# Eval
+eval/eval_text_to_sql/results/
+
 # Logs
 logs/
 *.log

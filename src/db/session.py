@@ -19,7 +19,14 @@ if "postgresql" in db_url:
     # Pooler Neon (transaction-mode) chấp nhận kết nối bền; NullPool trước đây khiến mỗi
     # request mở lại TCP/TLS mới (100-300ms) kể cả /health. pool_recycle ngắn để tránh
     # kết nối bị pooler phía Neon âm thầm đóng khi idle lâu.
-    engine = create_engine(db_url, pool_size=5, max_overflow=10, pool_pre_ping=True, pool_recycle=300)
+    engine = create_engine(
+        db_url,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        connect_args={"options": "-c statement_timeout=3000ms"},
+    )
 else:
     engine = create_engine(db_url, pool_pre_ping=True)
 

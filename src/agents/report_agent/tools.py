@@ -11,7 +11,6 @@ from langchain_core.tools import tool
 from sqlalchemy import and_, func, select
 
 from src.agents.context import current_user_school_id
-from src.api.v1.analytics import _at_risk_classes, _average_gpa
 from src.db.session import SessionLocal
 from src.models.tables import (
     Class,
