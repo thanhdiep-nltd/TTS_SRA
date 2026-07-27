@@ -47,6 +47,14 @@ class FastTemplateDecision(BaseModel):
         default=None,
         description="Mã/họ tên học sinh hoặc mã lớp bóc tách được (ví dụ: '7A1', '10A1', 'HS25071001', 'Bùi Thành Hải')."
     )
+    semester: int | None = Field(
+        default=None,
+        description="Học kỳ (1 hoặc 2). Chỉ điền nếu câu hỏi đề cập rõ học kỳ. Ví dụ: 'học kỳ 1', 'HK1' -> semester=1, 'học kỳ 2', 'HK2' -> semester=2."
+    )
+    subject: str | None = Field(
+        default=None,
+        description="Tên môn học cụ thể. Chỉ điền nếu câu hỏi đề cập rõ môn học. Ví dụ: 'Toán học', 'Ngữ văn', 'Âm nhạc', 'Mỹ thuật'."
+    )
 
 
 async def data_service_agent_node(state: MultiAgentState) -> dict:
@@ -61,14 +69,11 @@ async def data_service_agent_node(state: MultiAgentState) -> dict:
         if school_ctx.get("user_id"):
             current_user_id.set(school_ctx.get("user_id"))
 
-    messages = state.get("messages", [])
     query = state.get("query", "")
-    if not query and messages:
-        query = messages[-1].content
-
-    # Lấy thông tin instruction hoặc câu thoại gần nhất từ Supervisor
-    last_text = " ".join([m.content for m in messages[-2:] if hasattr(m, "content") and m.content])
-    combined_context = f"{query} {last_text}"
+    # CONTEXT ISOLATION: Dùng standalone_query từ Supervisor (đã được LLM Contextualizer reformulate)
+    # thay vì dùng messages[-1] để tránh context leak từ lịch sử hội thoại.
+    standalone_query = state.get("standalone_query", query)
+    context_for_agent = standalone_query or query
 
     # 2. TẦNG 1: LLM Fast Router Decision (~0.2s với Tool Binding siêu nhẹ)
     template_result = None
@@ -81,9 +86,11 @@ async def data_service_agent_node(state: MultiAgentState) -> dict:
                 "QUY TẮC BẮT BUỘC:\n"
                 "- Nếu câu hỏi tra cứu điểm/hồ sơ cá nhân 1 học sinh -> chọn 'get_student_grades' hoặc 'get_student_info'.\n"
                 "- Nếu câu hỏi tra cứu danh sách sổ điểm thi của 1 lớp -> chọn 'get_class_grades'.\n"
-                "- CHÚ Ý CỰC KỲ QUAN TRỌNG: Nếu câu hỏi về SĨ SỐ HỌC SINH (ví dụ: 'Lớp 7A1 có bao nhiêu học sinh?'), SO SÁNH NĂM HỌC/LỚP HỌC, THỐNG KÊ RỦI RO -> BẮT BUỘC CHỌN 'NONE'."
+                "- CHÚ Ý CỰC KỲ QUAN TRỌNG: Nếu câu hỏi về SĨ SỐ HỌC SINH (ví dụ: 'Lớp 7A1 có bao nhiêu học sinh?'), SO SÁNH NĂM HỌC/LỚP HỌC, THỐNG KÊ RỦI RO -> BẮT BUỘC CHỌN 'NONE'.\n"
+                "- Nếu câu hỏi đề cập rõ HỌC KỲ (ví dụ: 'học kỳ 1', 'học kỳ 2', 'HK1', 'HK2') -> điền vào field 'semester'.\n"
+                "- Nếu câu hỏi đề cập rõ MÔN HỌC (ví dụ: 'Toán', 'Ngữ văn', 'Âm nhạc') -> điền vào field 'subject'."
             )),
-            HumanMessage(content=combined_context)
+            HumanMessage(content=context_for_agent)
         ])
 
         decision = None
@@ -103,20 +110,32 @@ async def data_service_agent_node(state: MultiAgentState) -> dict:
                     data = json.loads(j_match.group(0))
                     decision = FastTemplateDecision(
                         selected_tool=data.get("selected_tool", "NONE"),
-                        extracted_param=data.get("extracted_param")
+                        extracted_param=data.get("extracted_param"),
+                        semester=data.get("semester"),
+                        subject=data.get("subject"),
                     )
                 except Exception:
                     pass
 
         if decision:
-            logger.info(f"[data_service_agent] Tầng 1 Fast Router Decision: tool={decision.selected_tool}, param={decision.extracted_param}")
+            logger.info(f"[data_service_agent] Tầng 1 Fast Router Decision: tool={decision.selected_tool}, param={decision.extracted_param}, semester={decision.semester}, subject={decision.subject}")
 
             if decision.selected_tool == "get_class_grades" and decision.extracted_param:
-                logger.info(f"[data_service_agent] Tầng 1: Chạy get_class_grades cho lớp {decision.extracted_param}")
-                template_result = get_class_grades.invoke({"class_name": decision.extracted_param.strip()})
+                kwargs = {"class_name": decision.extracted_param.strip()}
+                if decision.semester:
+                    kwargs["semester"] = decision.semester
+                if decision.subject:
+                    kwargs["subject"] = decision.subject
+                logger.info(f"[data_service_agent] Tầng 1: Chạy get_class_grades cho lớp {decision.extracted_param} semester={decision.semester} subject={decision.subject}")
+                template_result = get_class_grades.invoke(kwargs)
             elif decision.selected_tool == "get_student_grades" and decision.extracted_param:
-                logger.info(f"[data_service_agent] Tầng 1: Chạy get_student_grades cho HS {decision.extracted_param}")
-                template_result = get_student_grades.invoke({"student_id": decision.extracted_param.strip()})
+                kwargs = {"student_id": decision.extracted_param.strip()}
+                if decision.semester:
+                    kwargs["semester"] = decision.semester
+                if decision.subject:
+                    kwargs["subject"] = decision.subject
+                logger.info(f"[data_service_agent] Tầng 1: Chạy get_student_grades cho HS {decision.extracted_param} semester={decision.semester} subject={decision.subject}")
+                template_result = get_student_grades.invoke(kwargs)
             elif decision.selected_tool == "get_student_info" and decision.extracted_param:
                 logger.info(f"[data_service_agent] Tầng 1: Chạy get_student_info cho HS {decision.extracted_param}")
                 template_result = get_student_info.invoke({"student_id": decision.extracted_param.strip()})
@@ -142,19 +161,26 @@ async def data_service_agent_node(state: MultiAgentState) -> dict:
         except Exception:
             pass
 
-    entity_ctx = resolve_entities(combined_context, so_school_id)
-    exec_messages = list(messages)
-    if exec_messages and entity_ctx.formatted_prompt_context:
-        last_msg = exec_messages[-1]
-        raw_text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
-        new_content = f"{entity_ctx.formatted_prompt_context}\n\n[YÊU CẦU NGƯỜI DÙNG & HƯỚNG DẪN]: {raw_text}"
-        exec_messages[-1] = HumanMessage(content=new_content)
+    # CONTEXT ISOLATION: Entity linking only on standalone_query (không dùng full history)
+    entity_ctx = resolve_entities(context_for_agent, so_school_id)
+
+    # CONTEXT ISOLATION: Thay vì truyền toàn bộ messages[] lịch sử,
+    # chỉ tạo 1 HumanMessage sạch với standalone_query + entity context.
+    # Điều này ngăn hoàn toàn context leak từ các turn trước.
+    combined_context = f"[YÊU CẦU ĐỘC LẬP]: {standalone_query}"
+    if query and query != standalone_query:
+        combined_context += f"\n[YÊU CẦU GỐC]: {query}"
+
+    if entity_ctx.formatted_prompt_context:
+        exec_messages = [HumanMessage(content=f"{entity_ctx.formatted_prompt_context}\n\n{combined_context}")]
+    else:
+        exec_messages = [HumanMessage(content=combined_context)]
 
     logger.info("[data_service_agent] Thực thi Tầng 2 (Dynamic SQL Generator)...")
     agent_instance = get_sql_generator_agent()
     result = await agent_instance.ainvoke({"messages": exec_messages})
 
-    input_len = len(messages)
+    input_len = 0  # Vì exec_messages là list mới (không phải messages gốc)
     new_messages = result["messages"][input_len:]
 
     # Đảm bảo new_messages luôn kết thúc bằng một AIMessage chứa văn bản để Supervisor dễ dàng nhận biết

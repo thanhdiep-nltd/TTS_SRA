@@ -12,16 +12,15 @@ Khi người dùng hỏi một câu hỏi **độc lập mới** (không liên q
 
 ## Fix Strategy: 3 Design Patterns
 
-### Mẫu 1: LLM Query Contextualizer (Standalone Query Reformulation)
-
-**Thay thế hoàn toàn Change 2 + Change 3 (XML Demarcation + Regex Scope Detection) cũ.**
+### Mẫu 1: LLM Query Contextualizer (Standalone Query Reformulation - Hướng 1 Enterprise Standard)
 
 Dùng một LLM call siêu nhẹ (< 0.15s với `deepseek-v4-flash` / `gpt-4o-mini`) để **tự động quy đổi** `User Query mới` + `Chat History` thành một **câu hỏi độc lập tự thân (Standalone Query)**.
 
 Cơ chế hoạt động:
-- **Không Regex** — zero false positives
-- **Không Scope State** — không cần `active_scope`, `active_student_ids` trong state
-- **Xử lý tự nhiên mọi edge case**: follow-up, cross-scope, chuyển chủ đề, informal speech
+- **Turn 1 Early Exit**: Nếu chưa có history (Turn 1), return thẳng `current_query` (tiết kiệm 100% latency).
+- **Turn 2+ Always Contextualize**: Từ Turn 2 trở đi, luôn quy đổi query qua LLM Contextualizer để đảm bảo 100% không bị bỏ sót các nuance follow-up tiếng Việt.
+- **Không Regex** — loại bỏ rủi ro false positive / false negative.
+- **Không Scope State** — không cần `active_scope`, `active_student_ids` thủ công trong state.
 
 Ví dụ:
 | History | User Query | Standalone Query |

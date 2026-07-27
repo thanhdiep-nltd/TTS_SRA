@@ -22,6 +22,7 @@ class MultiAgentState(TypedDict, total=False):
     messages: Annotated[list[BaseMessage], add_messages]
     next_agent: str
     school_context: dict
+    standalone_query: str  # Query đã được LLM Contextualizer reformulate, độc lập tự thân
 
 
 # Alias phục vụ khả năng tương thích ngược

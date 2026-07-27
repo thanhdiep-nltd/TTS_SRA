@@ -1,6 +1,6 @@
 import re
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from src.agents.context import current_user_id, current_user_role, current_user_school_id
@@ -73,7 +73,124 @@ QUY TẮC ĐỊNH DẠNG BẮT BUỘC:
 - Ví dụ sai (CẤM): {"report_type": "academic_conduct", "grade_level": "6"}
 - Ví dụ đúng: {"next_agent": "report_agent", "instruction": "Lập báo cáo học kỳ 1 năm học 2025-2026 cho khối 6 dạng docx bằng cách gọi công cụ get_report_data_summary", "response": ""}
 Tuyệt đối KHÔNG trả lời bằng lời thoại trò chuyện thông thường ở lượt điều phối đầu tiên.
+
+🔴 QUY TẮC PHÂN BIỆT CHỦ ĐỀ (TOPIC BOUNDARY RULE):
+1. BẮT BUỘC ưu tiên xử lý thông tin nằm trong thẻ <current_user_query>.
+2. Thẻ <conversation_history_FOR_REFERENCE_ONLY> CHỈ ĐƯỢC SỬ DỤNG KHI câu hỏi hiện tại thiếu thành phần câu (ví dụ thiếu Chủ ngữ/Đại từ chỉ định: "bạn ấy", "em đó", "còn môn Toán thì sao?").
+3. Nếu <current_user_query> đã là một câu hỏi hoàn chỉnh về một đối tượng/lớp/khối hoàn toàn mới (ví dụ: yêu cầu danh sách toàn bộ một lớp học), bạn BẮT BUỘC PHẢI BỎ QUA TOÀN BỘ các tên học sinh/mã học sinh cá nhân có trong <conversation_history_FOR_REFERENCE_ONLY>. Tuyệt đối không tự ý gán học sinh của câu hỏi cũ vào lớp học mới.
 """
+
+# ── LLM Query Contextualizer: Helper functions ──────────────────────────────
+
+def _build_recent_context(messages_list: list, max_turns: int = 2) -> str:
+    """Build text context từ 2-3 turn gần nhất để làm đầu vào cho Contextualizer."""
+    human_indices = []
+    for idx, msg in enumerate(messages_list):
+        if getattr(msg, "type", None) == "human" or msg.__class__.__name__ in ("HumanMessage", "HumanMessageChunk"):
+            human_indices.append(idx)
+
+    if len(human_indices) > max_turns:
+        start_idx = human_indices[-max_turns]
+    else:
+        start_idx = 0
+
+    recent_msgs = messages_list[start_idx:]
+
+    lines = []
+    for msg in recent_msgs:
+        msg_type = getattr(msg, "type", "unknown")
+        content = str(getattr(msg, "content", "") or "")
+        if content.strip():
+            role_label = "Người dùng" if msg_type == "human" else "AI"
+            lines.append(f"{role_label}: {content[:500]}")
+
+    return "\n".join(lines)
+
+
+async def _reformulate_standalone_query(
+    messages_list: list,
+    current_query: str,
+) -> str:
+    """
+    LLM Query Contextualizer: Quy đổi User Query + Chat History thành 
+    Standalone Query độc lập tự thân (Hướng 1: Enterprise Safety Standard).
+
+    - Turn 1 (rỗng hoặc <= 1 msg): Return current_query ngay lập tức (tiết kiệm 100% latency)
+    - Turn 2+ (có history): Luôn gọi LLM Contextualizer để đảm bảo 100% không bị sót nuance follow-up
+    """
+    # Turn 1: chưa có history -> 100% là standalone query, return luôn!
+    if not messages_list or len(messages_list) <= 1:
+        return current_query
+
+    # Build context từ 2 turn gần nhất
+    recent_history = _build_recent_context(messages_list, max_turns=2)
+    if not recent_history.strip():
+        return current_query
+
+    # Build context từ 2 turn gần nhất
+    recent_history = _build_recent_context(messages_list, max_turns=2)
+    if not recent_history.strip():
+        return current_query
+
+    llm = get_llm()
+    prompt = (
+        "Bạn là Query Contextualizer. Nhiệm vụ: dựa vào Lịch sử Chat và Câu hỏi Hiện tại, "
+        "hãy viết lại câu hỏi hiện tại thành một câu hỏi độc lập tự thân (Standalone Query) "
+        "có thể đứng một mình mà không cần lịch sử.\n\n"
+        "NGUYÊN TẮC:\n"
+        "1. Nếu câu hỏi hiện tại ĐÃ hoàn chỉnh (có đầy đủ chủ ngữ, đối tượng, ngữ cảnh) -> "
+        "GIỮ NGUYÊN, không thay đổi.\n"
+        "2. Nếu câu hỏi hiện tại DỰA VÀO lịch sử (dùng đại từ 'bạn ấy', 'em đó', 'còn...thì sao', "
+        "'thế còn', 'như trên') -> tích hợp thông tin từ lịch sử để tạo câu hỏi hoàn chỉnh.\n"
+        "3. Nếu câu hỏi hiện tại là CHỦ ĐỀ MỚI hoàn toàn -> KHÔNG đưa thông tin từ lịch sử vào.\n"
+        "4. Giữ nguyên năm học, học kỳ, lớp học nếu được nhắc đến.\n"
+        "5. Trả về CHỈ câu hỏi đã reformulate, không giải thích gì thêm."
+    )
+
+    try:
+        result = await llm.ainvoke([
+            SystemMessage(content=prompt),
+            HumanMessage(content=(
+                f"[LỊCH SỬ CHAT (2 TURN GẦN NHẤT)]:\n{recent_history}\n\n"
+                f"[CÂU HỎI HIỆN TẠI]: {current_query}\n\n"
+                f"Hãy viết lại [CÂU HỎI HIỆN TẠI] thành Standalone Query:"
+            ))
+        ])
+        standalone = (result.content or "").strip()
+        return standalone if standalone else current_query
+    except Exception as e:
+        logger.warning(f"Contextualizer failed, using original query: {e}")
+        return current_query
+
+
+def _get_sliding_window(messages_list: list, max_turns: int = 3) -> list:
+    """Lấy max_turns turn gần nhất, bảo toàn Message Object structure."""
+    human_indices = []
+    for idx, msg in enumerate(messages_list):
+        if getattr(msg, "type", None) == "human" or msg.__class__.__name__ in ("HumanMessage", "HumanMessageChunk"):
+            human_indices.append(idx)
+
+    if len(human_indices) > max_turns:
+        start_idx = human_indices[-max_turns]
+    else:
+        start_idx = 0
+
+    return messages_list[start_idx:]
+
+
+def _messages_to_text(messages: list) -> str:
+    """Chuyển messages thành text an toàn (giữ được content, skip tool call chi tiết)."""
+    lines = []
+    for msg in messages:
+        msg_type = getattr(msg, "type", "unknown")
+        content = str(getattr(msg, "content", "") or "")
+        if content.strip():
+            role_label = {"human": "Người dùng", "ai": "AI", "tool": "Công cụ"}.get(msg_type, msg_type)
+            lines.append(f"{role_label}: {content}")
+    return "\n".join(lines)
+
+
+# ── Supervisor Node ─────────────────────────────────────────────────────────
 
 
 async def supervisor_node(state: MultiAgentState) -> dict:
@@ -95,9 +212,11 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     # Khởi tạo tin nhắn HumanMessage đầu tiên nếu lịch sử rỗng
     has_initial_message = len(messages_list) > 0
     if not has_initial_message and query:
-        from langchain_core.messages import HumanMessage
-
         messages_list = [HumanMessage(content=query)]
+
+    # ── LLM Query Contextualizer: Reformulate thành Standalone Query ──
+    standalone_query = await _reformulate_standalone_query(messages_list, query)
+    logger.info("supervisor_standalone_query", original=query, standalone=standalone_query)
 
     # Lấy thông tin học kỳ hiện tại từ DB để bổ sung ngữ cảnh năm học/học kỳ
     current_year_str = "2025-2026"
@@ -114,25 +233,41 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     except Exception as e:
         logger.warning(f"Note: using default academic year context ({current_year_str}): {e}")
 
+    # ── Build SystemMessage với Sliding Window (3 turns gần nhất) ──
+    recent_messages = _get_sliding_window(messages_list, max_turns=3)
+
     system_prompt = SUPERVISOR_PROMPT + (
         f"\n\nTHÔNG TIN NGỮ CẢNH HỆ THỐNG HIỆN TẠI:\n"
         f"- Niên khóa hiện tại: {current_year_str}\n"
         f"- Học kỳ hiện tại: {current_semester_str}\n"
+        f"- Câu hỏi hiện tại (sau reformulate): {standalone_query}\n"
         f"Nếu người dùng hỏi về điểm số, báo cáo, hay đề thi của học kỳ hiện tại hoặc không chỉ định rõ niên khóa/năm học, "
         f"hãy tự động sử dụng thông tin niên khóa và học kỳ hiện tại này làm mặc định để phân tích/lập báo cáo."
     )
 
-    llm = get_llm()
-    # Chuẩn bị tin nhắn gửi cho supervisor
-    messages = [SystemMessage(content=system_prompt)] + messages_list
+    # Nếu có history, đóng gói XML tags trong SystemMessage (giữ nguyên cấu trúc Message Object)
+    if recent_messages:
+        history_text = _messages_to_text(recent_messages)
+        system_prompt += (
+            f"\n\n<conversation_history_FOR_REFERENCE_ONLY>\n"
+            f"{history_text}\n"
+            f"</conversation_history_FOR_REFERENCE_ONLY>"
+        )
 
+    # Tách user query (đã reformulate) sang HumanMessage riêng
+    user_message = HumanMessage(
+        content=f"<current_user_query>\n{standalone_query}\n</current_user_query>"
+    )
+
+    messages = [SystemMessage(content=system_prompt), user_message]
+
+    llm = get_llm()
     from src.config import get_settings
 
     settings = get_settings()
 
     if settings.llm_provider == "deepseek":
         # DeepSeek không hỗ trợ response_format loại json_schema/function_calling của with_structured_output.
-        # Chúng ta dùng bind_tools và gọi model trực tiếp, ép gọi RouterDecision bằng tool_choice, sau đó trích xuất kết quả thủ công.
         llm_with_tools = llm.bind_tools([RouterDecision], tool_choice="RouterDecision")
         res = await llm_with_tools.ainvoke(messages)
 
@@ -146,18 +281,16 @@ async def supervisor_node(state: MultiAgentState) -> dict:
             decision = None
 
         if decision is None:
-            # Fallback nếu model không trả về tool_call (trả về văn bản thường hoặc thiếu trường)
+            # Fallback nếu model không trả về tool_call
             import json
 
             text_content = res.content or ""
             decision = None
 
-            # Thử tìm và phân tích cú pháp JSON trong text_content
             json_match = re.search(r"\{.*\}", text_content, re.DOTALL)
             if json_match:
                 try:
                     data = json.loads(json_match.group(0))
-                    # Chuẩn hóa keys phòng trường hợp model tự đặt tên khác hoặc trả về phẳng
                     normalized_data = {}
                     for k, v in data.items():
                         if k.lower() == "next_agent" or "agent" in k.lower():
@@ -170,7 +303,6 @@ async def supervisor_node(state: MultiAgentState) -> dict:
                     next_agent = normalized_data.get("next_agent")
                     instruction = normalized_data.get("instruction")
 
-                    # Nếu trả về flat object không có key next_agent/instruction nhưng có các trường báo cáo
                     if not next_agent and ("report_type" in data or "grade_level" in data):
                         next_agent = "report_agent"
                         instruction = f"Lập báo cáo {data.get('report_type', 'academic_conduct')} cho khối {data.get('grade_level', 'all')}"
@@ -219,13 +351,13 @@ async def supervisor_node(state: MultiAgentState) -> dict:
                     instruction="Tiến hành xử lý yêu cầu." if next_agent != "FINISH" else "Tổng hợp câu trả lời.",
                 )
     else:
-        # Đối với OpenAI/ChatGPT, sử dụng cơ chế structured output gốc tin cậy tuyệt đối
+        # Đối với OpenAI/ChatGPT, sử dụng cơ chế structured output gốc
         structured_llm = llm.with_structured_output(RouterDecision)
         decision = await structured_llm.ainvoke(messages)
 
     logger.info("supervisor_routing", next_agent=decision.next_agent, instruction=decision.instruction)
 
-    # Dynamic Anti-Loop Guardrail: Cho phép truy vấn đa bước (multi-step) linh hoạt, chỉ chặn khi lặp lại Y HỆT instruction cũ
+    # Dynamic Anti-Loop Guardrail
     last_human_idx = -1
     for idx, msg in enumerate(messages_list):
         is_h = False
@@ -236,18 +368,16 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         if is_h:
             last_human_idx = idx
 
-    current_turn_msgs = messages_list[last_human_idx + 1 :] if last_human_idx != -1 else messages_list
+    current_turn_msgs = messages_list[last_human_idx + 1:] if last_human_idx != -1 else messages_list
     previous_instructions = set()
     for msg in current_turn_msgs:
         content_str = str(getattr(msg, "content", "") or "")
         if "Chuyển yêu cầu sang" in content_str or "Instruction:" in content_str:
-            # Trích xuất instruction đã đưa ra trong lượt này
             norm_c = re.sub(r"\s+", " ", content_str.lower().strip())
             previous_instructions.add(norm_c)
 
     curr_inst_norm = re.sub(r"\s+", " ", (decision.instruction or "").lower().strip())
 
-    # Kiểm tra xem instruction mới có trùng lặp hoàn toàn với instruction vừa chạy trước đó không
     is_duplicate_instruction = False
     for prev_inst in previous_instructions:
         if curr_inst_norm in prev_inst or prev_inst in curr_inst_norm:
@@ -258,7 +388,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         logger.info("supervisor_anti_loop", msg=f"Detected duplicate instruction loop for '{decision.next_agent}'. Dynamically switching to FINISH.")
         decision.next_agent = "FINISH"
 
-    updates = {"next_agent": decision.next_agent}
+    updates = {"next_agent": decision.next_agent, "standalone_query": standalone_query}
 
     if decision.next_agent == "CLARIFICATION":
         response_content = (decision.response or "").strip()
@@ -267,10 +397,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
 
         updates["response"] = response_content
 
-        from langchain_core.messages import AIMessage as LangChainAIMessage
-        from langchain_core.messages import HumanMessage
-
-        ai_msg = LangChainAIMessage(content=response_content)
+        ai_msg = AIMessage(content=response_content)
         if not has_initial_message and query:
             updates["messages"] = [HumanMessage(content=query), ai_msg]
         else:
@@ -295,7 +422,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
             if is_human:
                 last_human_index = idx
 
-        current_turn_messages = messages_list[last_human_index + 1 :] if last_human_index != -1 else messages_list
+        current_turn_messages = messages_list[last_human_index + 1:] if last_human_index != -1 else messages_list
 
         # Check if a report file was generated in the current turn
         has_file = False
@@ -338,17 +465,13 @@ async def supervisor_node(state: MultiAgentState) -> dict:
             response_content = (
                 "Tôi đã khởi tạo thành công báo cáo theo yêu cầu của bạn. Dưới đây là tệp báo cáo chi tiết:"
             )
-        # Sử dụng câu trả lời trực tiếp từ Supervisor nếu có (chỉ cho câu hỏi thường, chào hỏi - không gọi sub-agent nào)
         elif not sub_agent_responses and getattr(decision, "response", None) and decision.response.strip():
             response_content = decision.response.strip()
         else:
-            # Check if we should use the single sub-agent response directly
             use_direct = False
             if len(sub_agent_responses) == 1:
                 first_resp = sub_agent_responses[0]
-                # If it already contains a markdown table or a download link, use it directly to avoid lazy synthesis
                 if "|" in first_resp or "/download/" in first_resp or "/reports/download/" in first_resp:
-                    # Also make sure it is not just raw JSON
                     is_raw_json = (first_resp.strip().startswith("[") and first_resp.strip().endswith("]")) or (
                         first_resp.strip().startswith("{") and first_resp.strip().endswith("}")
                     )
@@ -358,7 +481,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
             if use_direct:
                 response_content = sub_agent_responses[0]
             else:
-                # Khi hoàn thành, gọi LLM một lần nữa để tổng hợp câu trả lời hoàn chỉnh
+                # Synthesis: chỉ dùng current_turn_messages, KHÔNG dùng toàn bộ messages_list
                 synthesis_prompt = """Bạn là trợ lý AI chuyên nghiệp phân tích học vụ cho Ban Giám Hiệu.
 Nhiệm vụ của bạn là tổng hợp toàn bộ dữ liệu, kết quả tính toán, bảng biểu và phân tích thu được từ các Sub-Agent trong lịch sử hội thoại để trả lời người dùng.
 
@@ -379,10 +502,9 @@ LƯU Ý QUAN TRỌNG:
      - |D| < 0.25: Kết quả điểm số phản ánh chính xác độ khó thiết kế của đề thi -> Hợp lệ (VALID).
 9. LỌC CỘT ĐIỂM: Nếu người dùng hỏi một kỳ thi/cột điểm cụ thể (như: "giữa kỳ 2", "giữa kỳ 1", "GK2", "GK1"), hãy đảm bảo chỉ tổng hợp thông tin, bảng biểu và phân tích của đúng cột điểm đó (ví dụ giữa kỳ 2 -> column_index = 2). Không hiển thị cột điểm khác của kỳ thi khác để tránh gây loãng thông tin. Phải phân biệt rõ "Học kỳ 2" (kỳ học) và "Giữa kỳ 2" (cột điểm column_index=2 của kỳ học đó). Khi hỏi "giữa kỳ 2 năm 2025-2026", tức là cột điểm Giữa kỳ 2 (column_index=2) của Học kỳ 2 (semester=2).
 """
-                # Format conversation history as a clean context transcript to prevent leakage/repetition
+                # Format conversation history — CHỈ dùng current_turn_messages (tránh context leak)
                 transcript_parts = []
-                for msg in messages_list:
-                    # Determine message role
+                for msg in current_turn_messages:
                     msg_type = getattr(msg, "type", "")
                     role_name = "Người dùng" if msg_type == "human" else "Hệ thống"
 
@@ -392,9 +514,7 @@ LƯU Ý QUAN TRỌNG:
                     content_str = str(content_val).strip()
 
                     if msg_type == "ai":
-                        # Skip supervisor routing instructions (identified by name or prefix)
                         msg_name = getattr(msg, "name", None)
-                        # Phòng trường hợp name bị đẩy vào additional_kwargs khi serialize/deserialize
                         if not msg_name and hasattr(msg, "additional_kwargs"):
                             msg_name = msg.additional_kwargs.get("name")
 
@@ -402,10 +522,8 @@ LƯU Ý QUAN TRỌNG:
                             continue
                         role_name = "Trợ lý Phân tích"
                     elif msg_type == "tool":
-                        # Skip raw tool outputs to keep context clean and avoid XML/JSON clutter
                         continue
 
-                    # Remove XML tags (like <||DSML||...>) from the content to avoid leaking reasoning tags
                     content_str = re.sub(r"<\|\|DSML\|\|[^>]*>", "", content_str)
                     content_str = content_str.strip()
                     if content_str:
@@ -418,19 +536,16 @@ LƯU Ý QUAN TRỌNG:
 {transcript_text}
 
 Hãy tổng hợp toàn bộ thông tin trên để trả lời câu hỏi gốc của người dùng:
-"{query}"
+"{standalone_query}"
 """
-                from langchain_core.messages import HumanMessage
 
                 synthesis_messages = [SystemMessage(content=synthesis_prompt), HumanMessage(content=synthesis_input)]
 
-                # Gắn tag final_synthesis để hỗ trợ lọc khi stream token
                 final_response = await llm.ainvoke(synthesis_messages, config={"tags": ["final_synthesis"]})
 
                 response_content = final_response.content or ""
                 is_repetition = "[Supervisor]:" in response_content or "Chuyển yêu cầu sang" in response_content
 
-                # If the synthesized response is too short/lazy, or if it doesn't contain a table when one of the sub-agent responses does
                 has_table_in_sub = any("|" in r for r in sub_agent_responses)
                 has_table_in_syn = "|" in response_content
 
@@ -451,12 +566,10 @@ Hãy tổng hợp toàn bộ thông tin trên để trả lời câu hỏi gốc
             elif hasattr(msg, "content"):
                 content_str = str(msg.content)
             if content_str:
-                # Find all markdown links with download urls
                 links_found = re.findall(r"(\[([^\]]+)\]\((https?://[^\s)]+/download/[^\s)]+)\))", content_str)
                 for full_link, link_text, url in links_found:
                     if url not in response_content:
                         download_links.append((full_link, url))
-                # Also find raw download URLs just in case
                 urls_found = re.findall(r"(https?://[^\s)]+/download/[a-zA-Z0-9_\-\.]+)", content_str)
                 for url in urls_found:
                     if url not in response_content:
@@ -464,24 +577,18 @@ Hãy tổng hợp toàn bộ thông tin trên để trả lời câu hỏi gốc
                             download_links.append((f"[Tải Báo Cáo Tại Đây]({url})", url))
 
         if download_links:
-            append_text = "\n\n### 📥 Đường liên kết tải báo cáo:\n"
+            append_text = "\n\n### Đường liên kết tải báo cáo:\n"
             for full_link, url in download_links:
                 if full_link not in append_text:
-                    append_text += f"- 👉 {full_link}\n"
+                    append_text += f"- {full_link}\n"
             response_content = response_content.strip() + append_text
 
         updates["response"] = response_content
         if not has_initial_message and query:
-            # Tạo tin nhắn AI tương ứng để lưu vào history
-            from langchain_core.messages import AIMessage as LangChainAIMessage
-            from langchain_core.messages import HumanMessage
-
-            ai_msg = LangChainAIMessage(content=response_content)
+            ai_msg = AIMessage(content=response_content)
             updates["messages"] = [HumanMessage(content=query), ai_msg]
         else:
-            from langchain_core.messages import AIMessage as LangChainAIMessage
-
-            ai_msg = LangChainAIMessage(content=response_content)
+            ai_msg = AIMessage(content=response_content)
             updates["messages"] = [ai_msg]
     else:
         # Nếu chưa hoàn thành, thêm tin nhắn định hướng từ Supervisor vào luồng để Sub-Agent đọc
@@ -490,8 +597,6 @@ Hãy tổng hợp toàn bộ thông tin trên để trả lời câu hỏi gốc
             name="supervisor",
         )
         if not has_initial_message and query:
-            from langchain_core.messages import HumanMessage
-
             updates["messages"] = [HumanMessage(content=query), instruction_msg]
         else:
             updates["messages"] = [instruction_msg]
