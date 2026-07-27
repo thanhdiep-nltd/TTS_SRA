@@ -156,4 +156,24 @@ async def data_service_agent_node(state: MultiAgentState) -> dict:
 
     input_len = len(messages)
     new_messages = result["messages"][input_len:]
+
+    # Đảm bảo new_messages luôn kết thúc bằng một AIMessage chứa văn bản để Supervisor dễ dàng nhận biết
+    has_final_ai = False
+    if new_messages:
+        last_m = new_messages[-1]
+        if isinstance(last_m, AIMessage) and last_m.content and not getattr(last_m, "tool_calls", None):
+            has_final_ai = True
+
+    if not has_final_ai and new_messages:
+        tool_res_str = ""
+        for m in reversed(new_messages):
+            content_val = getattr(m, "content", "")
+            if content_val and (getattr(m, "type", None) == "tool" or m.__class__.__name__ in ("ToolMessage", "ToolMessageChunk")):
+                tool_res_str = str(content_val)
+                break
+
+        if tool_res_str:
+            summary_msg = AIMessage(content=f"Đã hoàn thành truy vấn CSDL. Kết quả dữ liệu nhận được:\n\n```json\n{tool_res_str}\n```")
+            new_messages.append(summary_msg)
+
     return {"messages": new_messages}

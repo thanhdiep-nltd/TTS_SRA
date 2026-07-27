@@ -53,7 +53,11 @@ Quy trình & Quy tắc tối ưu hóa phản hồi:
   4. Nếu các thông tin làm rõ đã được người dùng cung cấp trong lịch sử chat kế tiếp, hãy tổng hợp lại và tiến hành định tuyến sang sub-agent tương ứng bình thường.
 - Nếu câu hỏi của người dùng là câu hỏi chào hỏi, xã giao, giới thiệu thông thường (ví dụ: "chào bạn", "hãy giới thiệu về bạn", "bạn làm được gì") mà không cần gọi sub-agent để phân tích số liệu: Hãy chọn `next_agent` là 'CLARIFICATION' và viết trực tiếp câu trả lời đầy đủ, thân thiện vào trường `response` của `RouterDecision`.
 - Quyết định Sub-Agent tiếp theo cần chạy và đưa ra hướng dẫn cụ thể cho Agent đó nếu là câu hỏi cần phân tích dữ liệu.
-- Nếu các thông tin thu thập được đã đủ, hãy chọn `FINISH` để kết thúc đồ thị.
+- QUY TẮC ĐÁNH GIÁ ĐỦ DỮ LIỆU & TRUY VẤN ĐA BƯỚC (DYNAMIC MULTI-STEP SUFFICIENCY):
+  1. Hãy đọc kỹ câu hỏi gốc của người dùng và TOÀN BỘ dữ liệu đã thu thập được từ các Sub-Agent trong lượt hiện tại.
+  2. Nếu dữ liệu đã thu thập ĐỦ để trả lời trọn vẹn tất cả các ý trong câu hỏi -> Bạn BẮT BUỘC chọn `FINISH` và tổng hợp câu trả lời đầy đủ.
+  3. Nếu câu hỏi phức tạp cần THU THẬP THÊM DỮ LIỆU BỔ SUNG (ví dụ: mới lấy được lớp 7A1, cần lấy thêm lớp 7A2 để so sánh) -> Bạn ĐƯỢC PHÉP tiếp tục gọi Sub-Agent với `instruction` MỚI nêu rõ phần dữ liệu cụ thể còn thiếu cần lấy thêm.
+  4. TUYỆT ĐỐI KHÔNG lặp lại cùng một instruction hoặc yêu cầu cùng một câu truy vấn đã có kết quả trong lịch sử lượt chat hiện tại.
 
 QUY TẮC ĐỊNH DẠNG BẮT BUỘC:
 - Bạn phải LUÔN LUÔN đưa ra quyết định bằng cách gọi công cụ `RouterDecision`.
@@ -220,6 +224,39 @@ async def supervisor_node(state: MultiAgentState) -> dict:
 
     logger.info("supervisor_routing", next_agent=decision.next_agent, instruction=decision.instruction)
 
+    # Dynamic Anti-Loop Guardrail: Cho phép truy vấn đa bước (multi-step) linh hoạt, chỉ chặn khi lặp lại Y HỆT instruction cũ
+    last_human_idx = -1
+    for idx, msg in enumerate(messages_list):
+        is_h = False
+        if getattr(msg, "type", None) == "human" or msg.__class__.__name__ in ("HumanMessage", "HumanMessageChunk"):
+            is_h = True
+        elif isinstance(msg, dict) and (msg.get("type") == "human" or msg.get("role") in ("user", "human")):
+            is_h = True
+        if is_h:
+            last_human_idx = idx
+
+    current_turn_msgs = messages_list[last_human_idx + 1 :] if last_human_idx != -1 else messages_list
+    previous_instructions = set()
+    for msg in current_turn_msgs:
+        content_str = str(getattr(msg, "content", "") or "")
+        if "Chuyển yêu cầu sang" in content_str or "Instruction:" in content_str:
+            # Trích xuất instruction đã đưa ra trong lượt này
+            norm_c = re.sub(r"\s+", " ", content_str.lower().strip())
+            previous_instructions.add(norm_c)
+
+    curr_inst_norm = re.sub(r"\s+", " ", (decision.instruction or "").lower().strip())
+
+    # Kiểm tra xem instruction mới có trùng lặp hoàn toàn với instruction vừa chạy trước đó không
+    is_duplicate_instruction = False
+    for prev_inst in previous_instructions:
+        if curr_inst_norm in prev_inst or prev_inst in curr_inst_norm:
+            is_duplicate_instruction = True
+            break
+
+    if is_duplicate_instruction and decision.next_agent != "FINISH":
+        logger.info("supervisor_anti_loop", msg=f"Detected duplicate instruction loop for '{decision.next_agent}'. Dynamically switching to FINISH.")
+        decision.next_agent = "FINISH"
+
     updates = {"next_agent": decision.next_agent}
 
     if decision.next_agent == "CLARIFICATION":
@@ -266,7 +303,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
             if isinstance(msg, dict):
                 content_str = str(msg.get("content", ""))
             else:
-                content_str = str(getattr(msg, "content", ""))
+                content_str = str(getattr(msg, "content", "") or "")
             if "/reports/download/" in content_str:
                 has_file = True
                 break
