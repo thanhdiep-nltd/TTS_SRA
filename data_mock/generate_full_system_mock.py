@@ -185,6 +185,8 @@ def generate_full_system_mock_data():
         exams = [
             (1, 2025, 5, 7, "EXAM_MID_S1", "Kiểm tra Giữa Học kỳ 1", 1.0, 1),
             (2, 2025, 5, 7, "EXAM_FINAL_S1", "Kiểm tra Cuối Học kỳ 1", 2.0, 1),
+            (3, 2025, 5, 7, "EXAM_MID_S2", "Kiểm tra Giữa Học kỳ 2", 1.0, 2),
+            (4, 2025, 5, 7, "EXAM_FINAL_S2", "Kiểm tra Cuối Học kỳ 2", 2.0, 2),
         ]
         for ex in exams:
             session.execute(text("""
@@ -469,15 +471,16 @@ def generate_full_system_mock_data():
             # REMARK Subjects (100% take Physical Education 16, Fine Arts 17, Music 18)
             student_remark_subjects = [16, 17, 18]
 
-            # 3. Seed Fact Gradebooks (SCORED Subjects)
+            # 3. Seed Fact Gradebooks (HK1 & HK2 SCORED Subjects)
             for sub_id, score_val in student_scored_subjects:
-                pf_status = 'DAT' if score_val >= 5.0 else 'CHUA_DAT'
+                # HK1
+                pf_status_s1 = 'DAT' if score_val >= 5.0 else 'CHUA_DAT'
                 session.execute(text("""
                     INSERT INTO s360.fact_gradebooks
                     (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status)
                     VALUES (:id, :sid, :syid, 1, :scode, :cid, :subid, 1, :score, CAST(:pf AS public.pass_fail_enum))
                     ON CONFLICT (id) DO NOTHING;
-                """), {"id": gradebook_id, "sid": sid, "syid": syid, "scode": scode, "cid": cid, "subid": sub_id, "score": score_val, "pf": pf_status})
+                """), {"id": gradebook_id, "sid": sid, "syid": syid, "scode": scode, "cid": cid, "subid": sub_id, "score": score_val, "pf": pf_status_s1})
 
                 session.execute(text("""
                     INSERT INTO s360.fact_gradebooks_moet
@@ -497,7 +500,26 @@ def generate_full_system_mock_data():
 
                 gradebook_id += 1
 
-            # 4. Seed Fact Gradebooks (REMARK Subjects - Pass/Fail)
+                # HK2 (score with slight fluctuation)
+                hk2_score = round(float(np.clip(score_val + random.uniform(-0.8, 0.8), 0.0, 10.0)), 1)
+                pf_status_s2 = 'DAT' if hk2_score >= 5.0 else 'CHUA_DAT'
+                session.execute(text("""
+                    INSERT INTO s360.fact_gradebooks
+                    (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status)
+                    VALUES (:id, :sid, :syid, 2, :scode, :cid, :subid, 3, :score, CAST(:pf AS public.pass_fail_enum))
+                    ON CONFLICT (id) DO NOTHING;
+                """), {"id": gradebook_id, "sid": sid, "syid": syid, "scode": scode, "cid": cid, "subid": sub_id, "score": hk2_score, "pf": pf_status_s2})
+
+                session.execute(text("""
+                    INSERT INTO s360.fact_gradebooks_moet
+                    (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade)
+                    VALUES (:id, :sid, :syid, 2, :gid, :cid, :scode, :subid, 3, :score)
+                    ON CONFLICT (id) DO NOTHING;
+                """), {"id": gradebook_id, "sid": sid, "syid": syid, "gid": gid, "cid": cid, "scode": scode, "subid": sub_id, "score": hk2_score})
+
+                gradebook_id += 1
+
+            # 4. Seed Fact Gradebooks (HK1 & HK2 REMARK Subjects - Pass/Fail)
             remark_comments = {
                 16: ("Hoàn thành xuất sắc các chỉ số rèn luyện thể lực và tinh thần đồng đội.", "Cần tăng cường rèn luyện sức bền."),
                 17: ("Sáng tạo tốt, có năng khiếu mỹ thuật và cảm thụ màu sắc hài hòa.", "Cần chú ý hoàn thành đúng hạn các bài vẽ."),
@@ -506,6 +528,7 @@ def generate_full_system_mock_data():
 
             for sub_id in student_remark_subjects:
                 pf_status = 'DAT' if (eff > -1.0 or prof != "Academic_At_Risk") else 'CHUA_DAT'
+                # HK1
                 session.execute(text("""
                     INSERT INTO s360.fact_gradebooks
                     (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status)
@@ -513,12 +536,32 @@ def generate_full_system_mock_data():
                     ON CONFLICT (id) DO NOTHING;
                 """), {"id": gradebook_id, "sid": sid, "syid": syid, "scode": scode, "cid": cid, "subid": sub_id, "pf": pf_status})
 
-                # Seed evaluate process comments for REMARK subjects
                 cmt_text = remark_comments[sub_id][0] if pf_status == 'DAT' else remark_comments[sub_id][1]
                 session.execute(text("""
                     INSERT INTO s360.fact_so_evaluate_process_subjects
                     (id, evaluate_progress_id, subject_id, student_code, school_year_id, semester_index, final_grade_level, student_level, comment, teacher_fullname)
                     VALUES (:id, :eid, :subid, :scode, :syid, 1, :fgl, :slevel, :comment, :tname)
+                    ON CONFLICT (id) DO NOTHING;
+                """), {
+                    "id": gradebook_id, "eid": gradebook_id, "subid": sub_id, "scode": scode, "syid": syid,
+                    "fgl": pf_status, "slevel": "ĐẠT" if pf_status == 'DAT' else "CHƯA ĐẠT",
+                    "comment": cmt_text, "tname": "Giáo viên Bộ Môn"
+                })
+
+                gradebook_id += 1
+
+                # HK2
+                session.execute(text("""
+                    INSERT INTO s360.fact_gradebooks
+                    (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status)
+                    VALUES (:id, :sid, :syid, 2, :scode, :cid, :subid, 3, NULL, CAST(:pf AS public.pass_fail_enum))
+                    ON CONFLICT (id) DO NOTHING;
+                """), {"id": gradebook_id, "sid": sid, "syid": syid, "scode": scode, "cid": cid, "subid": sub_id, "pf": pf_status})
+
+                session.execute(text("""
+                    INSERT INTO s360.fact_so_evaluate_process_subjects
+                    (id, evaluate_progress_id, subject_id, student_code, school_year_id, semester_index, final_grade_level, student_level, comment, teacher_fullname)
+                    VALUES (:id, :eid, :subid, :scode, :syid, 2, :fgl, :slevel, :comment, :tname)
                     ON CONFLICT (id) DO NOTHING;
                 """), {
                     "id": gradebook_id, "eid": gradebook_id, "subid": sub_id, "scode": scode, "syid": syid,
