@@ -47,16 +47,16 @@ def get_student_info(name_or_id: str) -> str:
 
 @tool
 def get_student_grades(student_id: str, year: int | None = None, semester: int | None = None, subject: str | None = None) -> str:
-    """Tra cứu điểm số chi tiết của một học sinh theo Mã học sinh hoặc Tên học sinh và các bộ lọc tùy chọn.
+    """Tra cứu điểm số và kết quả đánh giá (Đạt/Chưa đạt hoặc Điểm số) của một học sinh theo Mã học sinh hoặc Tên học sinh và các bộ lọc tùy chọn.
 
     Args:
         student_id: Mã học sinh (ví dụ: 'HS25071001') hoặc Họ tên học sinh.
         year: ID năm học (ví dụ: 2025).
         semester: Học kỳ (tùy chọn: 1 hoặc 2).
-        subject: Tên môn học (tùy chọn: 'Toán học', 'Ngữ văn', 'STEM & Robotics').
+        subject: Tên môn học (tùy chọn: 'Toán học', 'Ngữ văn', 'Âm nhạc', 'Mỹ thuật').
 
     Returns:
-        Chuỗi JSON chứa danh sách điểm số chi tiết của học sinh.
+        Chuỗi JSON chứa danh sách điểm số và kết quả đánh giá chi tiết của học sinh.
     """
     school_id = current_user_school_id.get() or 1
     student_id = student_id.strip()
@@ -64,7 +64,8 @@ def get_student_grades(student_id: str, year: int | None = None, semester: int |
     with SessionLocal() as session:
         query_str = """
             SELECT g.student_code, st.student_name, s.name as subject_name, c.fullname as class_name,
-                   y.fullname as year_name, g.semester_index, COALESCE(e.exam_name, 'Đánh giá định kỳ') as exam_name, g.final_grade
+                   y.fullname as year_name, g.semester_index, COALESCE(e.exam_name, 'Đánh giá định kỳ') as exam_name,
+                   g.final_grade, g.final_grade_letter, g.pass_fail_status, s.assessment_type
             FROM s360.fact_gradebooks g
             JOIN s360.dim_subject s ON g.subject_id = s.id
             JOIN s360.dim_homeroom_class c ON g.homeroom_class_id = c.id
@@ -91,8 +92,13 @@ def get_student_grades(student_id: str, year: int | None = None, semester: int |
         if not rows:
             return f"Không tìm thấy dữ liệu điểm cho Mã/Tên học sinh '{student_id}' với bộ lọc đã cho."
 
-        results = [
-            {
+        results = []
+        for r in rows:
+            pf_val = str(r[9]).upper() if r[9] else None
+            pf_str = "ĐẠT" if pf_val == "DAT" else ("CHƯA ĐẠT" if pf_val == "CHUA_DAT" else "N/A")
+            is_remark = (r[10] == "REMARK")
+
+            item = {
                 "Mã học sinh": r[0],
                 "Họ và Tên": r[1] or "",
                 "Môn học": r[2],
@@ -100,25 +106,29 @@ def get_student_grades(student_id: str, year: int | None = None, semester: int |
                 "Năm học": r[4],
                 "Học kỳ": r[5],
                 "Bài kiểm tra": r[6],
-                "Điểm số": float(r[7]) if r[7] is not None else "N/A",
+                "Hình thức đánh giá": "Đánh giá bằng nhận xét (REMARK)" if is_remark else "Chấm điểm số (SCORED)",
+                "Điểm số": float(r[7]) if r[7] is not None else ("N/A (Đánh giá nhận xét)" if is_remark else "N/A"),
+                "Kết quả (Đạt/Chưa đạt)": pf_str,
             }
-            for r in rows
-        ]
+            if r[8]:
+                item["Điểm chữ"] = r[8]
+            results.append(item)
+
         return json.dumps(results, ensure_ascii=False, indent=2)
 
 
 @tool
 def get_class_grades(class_name: str, year: int | None = None, semester: int | None = None, subject: str | None = None) -> str:
-    """Tra cứu danh sách điểm trung bình/điểm thi của tất cả học sinh trong một lớp học cụ thể (ví dụ: '7A1', '10A1').
+    """Tra cứu danh sách điểm trung bình/điểm thi/kết quả đánh giá của tất cả học sinh trong một lớp học cụ thể (ví dụ: '7A1', '10A1').
 
     Args:
         class_name: Tên lớp học cụ thể (ví dụ: '7A1', '10A1'). Không nhập tên Khối (như 'Khối 10').
         year: ID năm học (ví dụ: 2025).
         semester: Học kỳ (1 hoặc 2).
-        subject: Tên môn học (tùy chọn: 'Toán học', 'STEM & Robotics').
+        subject: Tên môn học (tùy chọn: 'Toán học', 'Âm nhạc', 'Mỹ thuật').
 
     Returns:
-        Chuỗi JSON chứa danh sách điểm số của lớp học.
+        Chuỗi JSON chứa danh sách điểm số và kết quả đánh giá của lớp học.
     """
     school_id = current_user_school_id.get() or 1
     c_name = class_name.strip()
@@ -127,7 +137,8 @@ def get_class_grades(class_name: str, year: int | None = None, semester: int | N
         query_str = """
             SELECT g.student_code, COALESCE(st.student_name, 'Học sinh') as student_name,
                    s.name as subject_name, c.fullname as class_name, g.semester_index,
-                   COALESCE(e.exam_name, 'Đánh giá định kỳ') as exam_name, g.final_grade
+                   COALESCE(e.exam_name, 'Đánh giá định kỳ') as exam_name, g.final_grade,
+                   g.final_grade_letter, g.pass_fail_status, s.assessment_type
             FROM s360.fact_gradebooks g
             JOIN s360.dim_homeroom_class c ON g.homeroom_class_id = c.id
             JOIN s360.dim_subject s ON g.subject_id = s.id
@@ -153,18 +164,27 @@ def get_class_grades(class_name: str, year: int | None = None, semester: int | N
         if not rows:
             return f"Không tìm thấy dữ liệu điểm cho lớp '{class_name}' môn '{subject}' trong học kỳ {semester}."
 
-        results = [
-            {
+        results = []
+        for r in rows:
+            pf_val = str(r[8]).upper() if r[8] else None
+            pf_str = "ĐẠT" if pf_val == "DAT" else ("CHƯA ĐẠT" if pf_val == "CHUA_DAT" else "N/A")
+            is_remark = (r[9] == "REMARK")
+
+            item = {
                 "Mã học sinh": r[0],
                 "Họ và Tên": r[1],
                 "Môn học": r[2],
                 "Lớp": r[3],
                 "Học kỳ": r[4],
                 "Bài kiểm tra": r[5],
-                "Điểm số": float(r[6]) if r[6] is not None else "N/A",
+                "Hình thức đánh giá": "Đánh giá bằng nhận xét (REMARK)" if is_remark else "Chấm điểm số (SCORED)",
+                "Điểm số": float(r[6]) if r[6] is not None else ("N/A (Đánh giá nhận xét)" if is_remark else "N/A"),
+                "Kết quả (Đạt/Chưa đạt)": pf_str,
             }
-            for r in rows
-        ]
+            if r[7]:
+                item["Điểm chữ"] = r[7]
+            results.append(item)
+
         return json.dumps(results, ensure_ascii=False, indent=2)
 
 

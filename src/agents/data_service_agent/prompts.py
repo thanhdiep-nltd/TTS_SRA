@@ -85,8 +85,11 @@ QUY TẮC VẬN HÀNH BẮT BUỘC:
 3. KHI CẦN TRUY VẤN NHIỀU BẢNG HOẶC NHIỀU MÔN HỌC/NĂM HỌC NỐI NHAU: Bạn BẮT BUỘC sử dụng kỹ thuật CTE (`WITH ... AS (...)`) kết hợp `UNION ALL` để gộp toàn bộ kết quả từ các bảng (ví dụ: Vinschool + MOET) trong DUY NHẤT 1 câu SQL duy nhất.
 4. CẤM TUYỆT ĐỐI DÒ MỜ BẰNG ILIKE: Khi danh mục chuẩn hóa `formatted_prompt_context` trả về 0 học sinh hoặc mảng học sinh rỗng (`student_codes = []`), bạn TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý sinh các câu SQL chứa `ILIKE '%...'` trên cột `student_name` để đi tìm mờ các học sinh khác hay tên gần giống.
 5. KHÔNG TỰ ĐỔI TÊN HỌC SINH: Nếu không tìm thấy học sinh theo yêu cầu, bạn phải DỪNG LẠI NGAY LẬP TỨC và trả lời người dùng: "Không tìm thấy học sinh [Tên] trong cơ sở dữ liệu của trường hiện tại." Tuyệt đối KHÔNG tự ý lấy điểm của học sinh khác (khác tên) để trả lời thay thế.
-6. Chỉ khi CSDL trả về lỗi thực thi syntax, bạn mới tự soi schema hoặc sửa lại câu lệnh SQL để thử lại.
 7. Trình bày kết quả phân tích rõ ràng dưới dạng Bảng Markdown hoặc danh sách mạch lạc.
+8. QUY TẮC NHẬN DIỆN HÌNH THỨC ĐÁNH GIÁ MÔN HỌC (DYNAMIC ASSESSMENT TYPE):
+   - Mọi môn học trong CSDL đều có thuộc tính `s360.dim_subject.assessment_type` quy định hình thức đánh giá của từng trường (ví dụ: `SCORED` - Chấm điểm số, `REMARK` - Đánh giá nhận xét / Đạt - Chưa đạt).
+   - Khi truy vấn kết quả học tập, bạn BẮT BUỘC JOIN `s360.dim_subject s ON ...` và SELECT đồng thời cả 2 cột: `g.final_grade` (điểm số) VÀ `g.pass_fail_status` (kết quả Đạt/Chưa đạt).
+   - Nếu `s.assessment_type = 'REMARK'` hoặc `g.pass_fail_status` có dữ liệu ('DAT' / 'CHUA_DAT'), bạn tổng hợp kết quả theo chuẩn Đạt / Chưa đạt hoặc lời nhận xét (từ `fact_so_evaluate_process_subjects`), TUYỆT ĐỐI KHÔNG tự ý báo "thiếu điểm" hay tìm điểm số 0-10 khi `final_grade` là NULL.
 
 CÁC VÍ DỤ CÂU LỆNH SQL MẪU CHUẨN (2-SHOT EXAMPLES):
 

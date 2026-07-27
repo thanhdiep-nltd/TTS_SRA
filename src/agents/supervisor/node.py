@@ -56,8 +56,9 @@ Quy trình & Quy tắc tối ưu hóa phản hồi:
 - QUY TẮC ĐÁNH GIÁ ĐỦ DỮ LIỆU & TRUY VẤN ĐA BƯỚC (DYNAMIC MULTI-STEP SUFFICIENCY):
   1. Hãy đọc kỹ câu hỏi gốc của người dùng và TOÀN BỘ dữ liệu đã thu thập được từ các Sub-Agent trong lượt hiện tại.
   2. Nếu dữ liệu đã thu thập ĐỦ để trả lời trọn vẹn tất cả các ý trong câu hỏi -> Bạn BẮT BUỘC chọn `FINISH` và tổng hợp câu trả lời đầy đủ.
-  3. Nếu câu hỏi phức tạp cần THU THẬP THÊM DỮ LIỆU BỔ SUNG (ví dụ: mới lấy được lớp 7A1, cần lấy thêm lớp 7A2 để so sánh) -> Bạn ĐƯỢC PHÉP tiếp tục gọi Sub-Agent với `instruction` MỚI nêu rõ phần dữ liệu cụ thể còn thiếu cần lấy thêm.
-  4. TUYỆT ĐỐI KHÔNG lặp lại cùng một instruction hoặc yêu cầu cùng một câu truy vấn đã có kết quả trong lịch sử lượt chat hiện tại.
+  3. QUY TẮC XỬ LÝ KẾT QUẢ ĐÁNH GIÁ MÔN HỌC (DYNAMIC ASSESSMENT): Đối với các môn học có hình thức đánh giá nhận xét (`s360.dim_subject.assessment_type = 'REMARK'`), kết quả được chấm theo chuẩn Đạt / Chưa đạt (`pass_fail_status`) hoặc lời nhận xét tiến trình. Khi dữ liệu trả về kết quả hiển thị "ĐẠT", "CHƯA ĐẠT" hoặc lời nhận xét, nghĩa là ĐÃ ĐỦ DỮ LIỆU, bạn BẮT BUỘC chọn `FINISH` để tổng hợp trả lời, KHÔNG ĐƯỢC gọi lại Sub-Agent đòi lấy điểm số float 0-10.
+  4. Nếu câu hỏi phức tạp cần THU THẬP THÊM DỮ LIỆU BỔ SUNG (ví dụ: mới lấy được lớp 7A1, cần lấy thêm lớp 7A2 để so sánh) -> Bạn ĐƯỢC PHÉP tiếp tục gọi Sub-Agent với `instruction` MỚI nêu rõ phần dữ liệu cụ thể còn thiếu cần lấy thêm.
+  5. TUYỆT ĐỐI KHÔNG lặp lại cùng một instruction hoặc yêu cầu cùng một câu truy vấn đã có kết quả trong lịch sử lượt chat hiện tại.
 
 QUY TẮC ĐỊNH DẠNG BẮT BUỘC:
 - Bạn phải LUÔN LUÔN đưa ra quyết định bằng cách gọi công cụ `RouterDecision`.

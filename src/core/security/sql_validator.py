@@ -71,17 +71,17 @@ SO_SCHOOL_ID_TABLES = {
     "users",
     "classroom_recordings",
     "dim_homeroom_class",
+    "dim_homeroom_class_student",
     "dim_so_assignment",
     "dim_grade_scale_detail",
-    "dim_behavior",
     "dim_course",
     "fact_gradebooks",
     "fact_gradebooks_moet",
     "fact_so_assignment_grade",
     "fact_overall_academic_records",
     "fact_course_enrolls",
-    "fact_so_evaluate_process_subjects",
     "fact_behavior_logs",
+    "fact_so_homeroom_class_attendances",
     "fact_so_homeroom_class_late_attendances",
     "fact_absent_logs",
     "fact_so_class_attendance_statistics",
@@ -206,6 +206,8 @@ def validate_and_secure_sql(query: str, current_school_id: str) -> str:
                 constraints.append(f"{alias}.id IN (SELECT so_exam_id FROM s360.fact_gradebooks)")
             elif t_name == "fact_subject_academic_records":
                 constraints.append(f"{alias}.overall_record_id IN (SELECT id FROM s360.fact_overall_academic_records)")
+            elif t_name == "fact_so_evaluate_process_subjects":
+                constraints.append(f"{alias}.student_code IN (SELECT student_code FROM s360.dim_homeroom_class_student)")
             elif t_name == "dim_homeroom_class_student":
                 constraints.append(f"{alias}.homeroom_class_id IN (SELECT id FROM s360.dim_homeroom_class)")
             elif t_name in DIRECT_SCHOOL_ID_TABLES:
