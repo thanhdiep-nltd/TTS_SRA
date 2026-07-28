@@ -75,9 +75,14 @@ QUY TẮC ĐỊNH DẠNG BẮT BUỘC:
 Tuyệt đối KHÔNG trả lời bằng lời thoại trò chuyện thông thường ở lượt điều phối đầu tiên.
 
 🔴 QUY TẮC PHÂN BIỆT CHỦ ĐỀ (TOPIC BOUNDARY RULE):
-1. BẮT BUỘC ưu tiên xử lý thông tin nằm trong thẻ <current_user_query>.
-2. Thẻ <conversation_history_FOR_REFERENCE_ONLY> CHỈ ĐƯỢC SỬ DỤNG KHI câu hỏi hiện tại thiếu thành phần câu (ví dụ thiếu Chủ ngữ/Đại từ chỉ định: "bạn ấy", "em đó", "còn môn Toán thì sao?").
-3. Nếu <current_user_query> đã là một câu hỏi hoàn chỉnh về một đối tượng/lớp/khối hoàn toàn mới (ví dụ: yêu cầu danh sách toàn bộ một lớp học), bạn BẮT BUỘC PHẢI BỎ QUA TOÀN BỘ các tên học sinh/mã học sinh cá nhân có trong <conversation_history_FOR_REFERENCE_ONLY>. Tuyệt đối không tự ý gán học sinh của câu hỏi cũ vào lớp học mới.
+1. <current_user_query>: Chứa câu hỏi HIỆN TẠI của người dùng (đã reformulate thành standalone). Đây là ưu tiên cao nhất để quyết định routing.
+2. <conversation_history_FOR_REFERENCE_ONLY>: Chứa lịch sử các lượt hội thoại TRƯỚC đây (các câu hỏi - câu trả lời cũ).
+   - Chỉ dùng thẻ này khi câu hỏi hiện tại thiếu thành phần (ẩn chủ ngữ, đại từ chỉ định: "bạn ấy", "em đó").
+   - Nếu câu hỏi hiện tại là một câu hỏi hoàn chỉnh về đối tượng/lớp/khối hoàn toàn mới → BỎ QUA thẻ này, không tự ý gán học sinh/question cũ vào câu hỏi mới.
+3. <current_turn_collected_data>: Chứa dữ liệu các Sub-Agent vừa thu thập được trong lượt xử lý HIỆN TẠI.
+   - Đây là thẻ QUAN TRỌNG NHẤT để quyết định FINISH hay route tiếp.
+   - Nếu trong thẻ này đã có kết quả dữ liệu từ Sub-Agent (số liệu, bảng, câu trả lời cụ thể) → BẮT BUỘC chọn FINISH để tổng hợp.
+   - Nếu thẻ này CHỈ chứa instruction của Supervisor (chưa có kết quả thực tế) → route tiếp Sub-Agent phù hợp.
 """
 
 # ── LLM Query Contextualizer: Helper functions ──────────────────────────────
@@ -108,22 +113,25 @@ def _build_recent_context(messages_list: list, max_turns: int = 2) -> str:
 
 
 async def _reformulate_standalone_query(
-    messages_list: list,
+    past_messages: list,
     current_query: str,
 ) -> str:
     """
-    LLM Query Contextualizer: Quy đổi User Query + Chat History thành 
+    LLM Query Contextualizer: Quy đổi User Query + Chat History thành
     Standalone Query độc lập tự thân (Hướng 1: Enterprise Safety Standard).
 
-    - Turn 1 (rỗng hoặc <= 1 msg): Return current_query ngay lập tức (tiết kiệm 100% latency)
-    - Turn 2+ (có history): Luôn gọi LLM Contextualizer để đảm bảo 100% không bị sót nuance follow-up
+    CHỈ nhận past_messages (các lượt hội thoại TRƯỚC câu hỏi hiện tại).
+    KHÔNG nhận current_turn_messages để tránh nhiễu từ dữ liệu sub-agent vừa cào về.
+
+    - Turn 1 (past_messages rỗng): Return current_query ngay (tiết kiệm 100% latency)
+    - Turn 2+ (có history): Gọi LLM Contextualizer nếu cần
     """
-    # Turn 1: chưa có history -> 100% là standalone query, return luôn!
-    if not messages_list or len(messages_list) <= 1:
+    # Turn 1: không có past messages -> return ngay
+    if not past_messages:
         return current_query
 
-    # Build context từ 2 turn gần nhất
-    recent_history = _build_recent_context(messages_list, max_turns=2)
+    # Build context từ 2 turn gần nhất trong past_messages
+    recent_history = _build_recent_context(past_messages, max_turns=2)
     if not recent_history.strip():
         return current_query
 
@@ -191,6 +199,48 @@ def _messages_to_text(messages: list) -> str:
     return "\n".join(lines)
 
 
+# ── Helper Functions for Boundary Separation ────────────────────────────────
+
+
+def _find_last_human_idx(messages_list: list) -> int:
+    """Tìm index của HumanMessage cuối cùng trong messages_list."""
+    for idx in range(len(messages_list) - 1, -1, -1):
+        msg = messages_list[idx]
+        if getattr(msg, "type", None) == "human" or msg.__class__.__name__ in ("HumanMessage", "HumanMessageChunk"):
+            return idx
+        if isinstance(msg, dict) and (msg.get("type") == "human" or msg.get("role") in ("user", "human")):
+            return idx
+        if getattr(msg, "role", None) in ("user", "human"):
+            return idx
+    return -1
+
+
+def _is_non_supervisor_ai_message(msg) -> bool:
+    """Check if message is from a sub-agent (not supervisor instruction)."""
+    is_ai = (
+        getattr(msg, "type", None) == "ai"
+        or msg.__class__.__name__ in ("AIMessage", "AIMessageChunk")
+        or (isinstance(msg, dict) and (msg.get("type") == "ai" or msg.get("role") in ("assistant", "ai")))
+    )
+    if not is_ai:
+        return False
+    content = str(getattr(msg, "content", "") or "")
+    if "Chuyển yêu cầu sang" in content or "[Supervisor]:" in content:
+        return False
+    return True
+
+
+def _collect_current_turn_answers(current_turn_messages: list) -> list[str]:
+    """Lấy tất cả sub-agent responses từ current_turn_messages."""
+    answers = []
+    for msg in current_turn_messages:
+        if _is_non_supervisor_ai_message(msg):
+            content = str(getattr(msg, "content", "") or "").strip()
+            if content:
+                answers.append(content)
+    return answers
+
+
 # ── Supervisor Node ─────────────────────────────────────────────────────────
 
 
@@ -206,7 +256,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         if school_ctx.get("user_id"):
             current_user_id.set(school_ctx.get("user_id"))
 
-    # Lấy danh sách tin nhắn hiện tại và query
+    # ── Bước 1: Lấy messages và query ──
     messages_list = state.get("messages", [])
     query = state.get("query", "")
 
@@ -215,11 +265,29 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     if not has_initial_message and query:
         messages_list = [HumanMessage(content=query)]
 
-    # ── LLM Query Contextualizer: Reformulate thành Standalone Query ──
-    standalone_query = await _reformulate_standalone_query(messages_list, query)
-    logger.info("supervisor_standalone_query", original=query, standalone=standalone_query)
+    # ── Bước 2: Boundary Separation ──
+    last_human_idx = _find_last_human_idx(messages_list)
+    if last_human_idx > 0:
+        past_messages = messages_list[:last_human_idx]
+    else:
+        past_messages = []
+    if last_human_idx != -1:
+        current_turn_messages = messages_list[last_human_idx + 1:]
+    else:
+        current_turn_messages = []
 
-    # Lấy thông tin học kỳ hiện tại từ DB để bổ sung ngữ cảnh năm học/học kỳ
+    # ── Bước 3: Standalone Query với Caching ──
+    standalone_query = state.get("standalone_query")
+    if not standalone_query:
+        standalone_query = await _reformulate_standalone_query(past_messages, query)
+    logger.info(
+        "supervisor_standalone_query",
+        original=query,
+        standalone=standalone_query,
+        cached=state.get("standalone_query") is not None,
+    )
+
+    # ── Lấy thông tin học kỳ hiện tại từ DB để bổ sung ngữ cảnh năm học/học kỳ ──
     current_year_str = "2025-2026"
     current_semester_str = "HK2"
     try:
@@ -234,9 +302,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     except Exception as e:
         logger.warning(f"Note: using default academic year context ({current_year_str}): {e}")
 
-    # ── Build SystemMessage với Sliding Window (3 turns gần nhất) ──
-    recent_messages = _get_sliding_window(messages_list, max_turns=3)
-
+    # ── Bước 4: Build SystemPrompt với 2 XML tags riêng biệt ──
     system_prompt = SUPERVISOR_PROMPT + (
         f"\n\nTHÔNG TIN NGỮ CẢNH HỆ THỐNG HIỆN TẠI:\n"
         f"- Niên khóa hiện tại: {current_year_str}\n"
@@ -246,13 +312,41 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         f"hãy tự động sử dụng thông tin niên khóa và học kỳ hiện tại này làm mặc định để phân tích/lập báo cáo."
     )
 
-    # Nếu có history, đóng gói XML tags trong SystemMessage (giữ nguyên cấu trúc Message Object)
-    if recent_messages:
-        history_text = _messages_to_text(recent_messages)
+    # 4a: <conversation_history_FOR_REFERENCE_ONLY> — CHỈ past_messages (các lượt TRƯỚC)
+    if past_messages:
+        past_text = _messages_to_text(past_messages)
         system_prompt += (
             f"\n\n<conversation_history_FOR_REFERENCE_ONLY>\n"
-            f"{history_text}\n"
+            f"{past_text}\n"
             f"</conversation_history_FOR_REFERENCE_ONLY>"
+        )
+
+    # 4b: <current_turn_collected_data> — dữ liệu sub-agent trong lượt HIỆN TẠI
+    if current_turn_messages:
+        current_turn_text = _messages_to_text(current_turn_messages)
+        system_prompt += (
+            f"\n\n<current_turn_collected_data>\n"
+            f"{current_turn_text}\n"
+            f"</current_turn_collected_data>\n\n"
+            f"HƯỚNG DẪN ĐÁNH GIÁ <current_turn_collected_data>:\n"
+            f"- Đây là dữ liệu MỚI NHẤT mà các Sub-Agent vừa thu thập được trong lượt xử lý HIỆN TẠI.\n"
+            f"\n"
+            f"- ĐÁNH GIÁ SỰ ĐẦY ĐỦ (SUFFICIENCY ASSESSMENT):\n"
+            f"  * Dữ liệu đã ĐỦ để trả lời câu hỏi gốc (có số liệu, bảng kết quả, câu trả lời cụ thể) "
+            f"-> BẮT BUỘC chọn FINISH để tổng hợp.\n"
+            f"  * Dữ liệu MỚI CHỈ ĐỦ 1 PHẦN -> Tiếp tục gọi Sub-Agent với instruction MỚI CHỈ RÕ phần dữ liệu còn thiếu. "
+            f"Tuyệt đối KHÔNG yêu cầu lấy lại phần dữ liệu đã thu thập.\n"
+            f"\n"
+            f"- ĐÁNH GIÁ KHI KHÔNG CÓ DỮ LIỆU (NO DATA HANDLING):\n"
+            f"  * Nếu Sub-Agent phản hồi 'Không tìm thấy...', 'Dữ liệu trống', 'Không có học sinh/lớp học này' "
+            f"-> BẮT BUỘC chọn FINISH để phản hồi lịch sự cho người dùng.\n"
+            f"  * TUYỆT ĐỐI KHÔNG thử lại hoặc sinh instruction truy vấn thông tin này nữa.\n"
+            f"\n"
+            f"- NGUYÊN TẮC CHỐNG LẶP (NO DUPLICATE INSTRUCTION):\n"
+            f"  * Đọc lại toàn bộ các [Supervisor] instruction đã phát ra trong lượt hiện tại "
+            f"(các dòng có chứa 'Chuyển yêu cầu sang').\n"
+            f"  * TUYỆT ĐỐI KHÔNG tạo ra một instruction có nội dung hoặc mục tiêu trùng lặp "
+            f"với bất kỳ lệnh nào đã phát ra trước đó."
         )
 
     # Tách user query (đã reformulate) sang HumanMessage riêng
@@ -364,35 +458,22 @@ async def supervisor_node(state: MultiAgentState) -> dict:
 
     logger.info("supervisor_routing", next_agent=decision.next_agent, instruction=decision.instruction)
 
-    # Dynamic Anti-Loop Guardrail
-    last_human_idx = -1
-    for idx, msg in enumerate(messages_list):
-        is_h = False
-        if getattr(msg, "type", None) == "human" or msg.__class__.__name__ in ("HumanMessage", "HumanMessageChunk"):
-            is_h = True
-        elif isinstance(msg, dict) and (msg.get("type") == "human" or msg.get("role") in ("user", "human")):
-            is_h = True
-        if is_h:
-            last_human_idx = idx
+    # ── Anti-Loop Guardrail: Circuit Breaker Only ──
+    # LLM (Prompt Instruction) đảm nhiệm đánh giá đủ/thiếu/không có dữ liệu
+    # Code chỉ đếm số lượt route để ngắt mạch nếu Supervisor kẹt loop
+    MAX_SUB_AGENT_TURNS = 4
+    current_turn_sub_calls = sum(
+        1 for msg in current_turn_messages
+        if "Chuyển yêu cầu sang" in str(getattr(msg, "content", "") or "")
+    )
 
-    current_turn_msgs = messages_list[last_human_idx + 1:] if last_human_idx != -1 else messages_list
-    previous_instructions = set()
-    for msg in current_turn_msgs:
-        content_str = str(getattr(msg, "content", "") or "")
-        if "Chuyển yêu cầu sang" in content_str or "Instruction:" in content_str:
-            norm_c = re.sub(r"\s+", " ", content_str.lower().strip())
-            previous_instructions.add(norm_c)
-
-    curr_inst_norm = re.sub(r"\s+", " ", (decision.instruction or "").lower().strip())
-
-    is_duplicate_instruction = False
-    for prev_inst in previous_instructions:
-        if curr_inst_norm in prev_inst or prev_inst in curr_inst_norm:
-            is_duplicate_instruction = True
-            break
-
-    if is_duplicate_instruction and decision.next_agent != "FINISH":
-        logger.info("supervisor_anti_loop", msg=f"Detected duplicate instruction loop for '{decision.next_agent}'. Dynamically switching to FINISH.")
+    if decision.next_agent != "FINISH" and current_turn_sub_calls >= MAX_SUB_AGENT_TURNS:
+        logger.warning(
+            "supervisor_anti_loop",
+            msg=f"Reached MAX_SUB_AGENT_TURNS ({MAX_SUB_AGENT_TURNS}). "
+                f"Forcing FINISH as safety circuit breaker. "
+                f"next_agent was '{decision.next_agent}', instruction='{decision.instruction}'",
+        )
         decision.next_agent = "FINISH"
 
     updates = {"next_agent": decision.next_agent, "standalone_query": standalone_query}
@@ -413,25 +494,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         return updates
 
     if decision.next_agent == "FINISH":
-        # Tìm tin nhắn HumanMessage cuối cùng để xác định điểm bắt đầu của lượt hiện tại
-        last_human_index = -1
-        for idx, msg in enumerate(messages_list):
-            is_human = False
-            if getattr(msg, "type", None) == "human":
-                is_human = True
-            elif msg.__class__.__name__ in ("HumanMessage", "HumanMessageChunk"):
-                is_human = True
-            elif isinstance(msg, dict) and (msg.get("type") == "human" or msg.get("role") in ("user", "human")):
-                is_human = True
-            elif getattr(msg, "role", None) in ("user", "human"):
-                is_human = True
-
-            if is_human:
-                last_human_index = idx
-
-        current_turn_messages = messages_list[last_human_index + 1:] if last_human_index != -1 else messages_list
-
-        # Check if a report file was generated in the current turn
+        # Sử dụng pre-computed current_turn_messages từ Boundary Separation ở trên
         has_file = False
         for msg in current_turn_messages:
             content_str = ""
@@ -443,30 +506,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
                 has_file = True
                 break
 
-        # Only find responses from sub-agents appearing AFTER the current turn's Human message
-        sub_agent_responses = []
-        for msg in current_turn_messages:
-            is_ai = False
-            if getattr(msg, "type", None) == "ai":
-                is_ai = True
-            elif msg.__class__.__name__ in ("AIMessage", "AIMessageChunk"):
-                is_ai = True
-            elif isinstance(msg, dict) and (msg.get("type") == "ai" or msg.get("role") in ("assistant", "ai")):
-                is_ai = True
-            elif getattr(msg, "role", None) in ("assistant", "ai"):
-                is_ai = True
-
-            content_val = None
-            if is_ai:
-                if isinstance(msg, dict):
-                    content_val = msg.get("content")
-                else:
-                    content_val = getattr(msg, "content", None)
-
-            if is_ai and content_val:
-                content_str = str(content_val)
-                if "[Supervisor]:" not in content_str and "Chuyển yêu cầu sang" not in content_str:
-                    sub_agent_responses.append(content_str)
+        sub_agent_responses = _collect_current_turn_answers(current_turn_messages)
 
         if has_file:
             response_content = (

@@ -1,4 +1,5 @@
 import json
+import re
 from langchain_core.tools import tool
 from sqlalchemy import text
 
@@ -46,11 +47,13 @@ def get_student_info(name_or_id: str) -> str:
 
 
 @tool
-def get_student_grades(student_id: str, year: int | None = None, semester: int | None = None, subject: str | None = None) -> str:
-    """Tra cứu điểm số và kết quả đánh giá (Đạt/Chưa đạt hoặc Điểm số) của một học sinh theo Mã học sinh hoặc Tên học sinh và các bộ lọc tùy chọn.
+def get_student_grades(student_code: str, year: int | None = None, semester: int | None = None, subject: str | None = None) -> str:
+    """Tra cứu điểm số và kết quả đánh giá của một học sinh theo Mã học sinh.
 
     Args:
-        student_id: Mã học sinh (ví dụ: 'HS25071001') hoặc Họ tên học sinh.
+        student_code: Mã học sinh duy nhất (bắt buộc). Ví dụ: 'HS125071002'.
+                      CHỈ nhập Mã học sinh. TUYỆT ĐỐI KHÔNG nhập tên học sinh.
+                      Nếu chỉ có tên mà không có mã, hãy chọn 'NONE'.
         year: ID năm học (ví dụ: 2025).
         semester: Học kỳ (tùy chọn: 1 hoặc 2).
         subject: Tên môn học (tùy chọn: 'Toán học', 'Ngữ văn', 'Âm nhạc', 'Mỹ thuật').
@@ -59,7 +62,7 @@ def get_student_grades(student_id: str, year: int | None = None, semester: int |
         Chuỗi JSON chứa danh sách điểm số và kết quả đánh giá chi tiết của học sinh.
     """
     school_id = current_user_school_id.get() or 1
-    student_id = student_id.strip()
+    student_code = student_code.strip()
 
     with SessionLocal() as session:
         query_str = """
@@ -72,9 +75,9 @@ def get_student_grades(student_id: str, year: int | None = None, semester: int |
             JOIN s360.dim_school_year y ON g.school_year_id = y.id
             LEFT JOIN s360.dim_homeroom_class_student st ON g.student_code = st.student_code AND g.homeroom_class_id = st.homeroom_class_id
             LEFT JOIN s360.dim_exam e ON g.so_exam_id = e.id
-            WHERE g.so_school_id = :sid AND (g.student_code = :scode OR st.student_name ILIKE :scode_like)
+            WHERE g.so_school_id = :sid AND g.student_code = :scode
         """
-        params = {"sid": school_id, "scode": student_id, "scode_like": f"%{student_id}%"}
+        params = {"sid": school_id, "scode": student_code}
 
         if year:
             query_str += " AND g.school_year_id = :year"
@@ -90,7 +93,7 @@ def get_student_grades(student_id: str, year: int | None = None, semester: int |
 
         rows = session.execute(text(query_str), params).fetchall()
         if not rows:
-            return f"Không tìm thấy dữ liệu điểm cho Mã/Tên học sinh '{student_id}' với bộ lọc đã cho."
+            return f"Không tìm thấy dữ liệu điểm cho Mã học sinh '{student_code}' với bộ lọc đã cho."
 
         results = []
         for r in rows:
@@ -197,6 +200,16 @@ def execute_read_only_query(sql_query: str) -> str:
     """
     school_id = current_user_school_id.get() or 1
     user_role = current_user_role.get()
+
+    # Pre-check: Phát hiện multi-statement SQL (semicolon split)
+    cleaned = re.sub(r"--.*$", "", sql_query, flags=re.MULTILINE)       # Xoá line comment -- ...
+    cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)        # Xoá block comment /* ... */
+    cleaned = re.sub(r"'(?:[^'\\]|\\.)*'", "", cleaned)                  # Xoá string literals
+    cleaned = cleaned.rstrip(";")                                        # Strip trailing ; (hợp lệ)
+    if ";" in cleaned:
+        return "LỖI: Phát hiện nhiều câu lệnh SQL trong 1 lượt gọi. " \
+               "Mỗi lượt gọi chỉ được gửi DUY NHẤT 1 câu lệnh SELECT. " \
+               "Vui lòng chia thành các câu lệnh đơn riêng biệt."
 
     try:
         # 1. Bảo mật và lọc theo school_id sử dụng SQLGlot
