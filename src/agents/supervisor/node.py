@@ -127,24 +127,25 @@ async def _reformulate_standalone_query(
     if not recent_history.strip():
         return current_query
 
-    # Build context từ 2 turn gần nhất
-    recent_history = _build_recent_context(messages_list, max_turns=2)
-    if not recent_history.strip():
-        return current_query
-
     llm = get_llm()
     prompt = (
-        "Bạn là Query Contextualizer. Nhiệm vụ: dựa vào Lịch sử Chat và Câu hỏi Hiện tại, "
-        "hãy viết lại câu hỏi hiện tại thành một câu hỏi độc lập tự thân (Standalone Query) "
-        "có thể đứng một mình mà không cần lịch sử.\n\n"
-        "NGUYÊN TẮC:\n"
-        "1. Nếu câu hỏi hiện tại ĐÃ hoàn chỉnh (có đầy đủ chủ ngữ, đối tượng, ngữ cảnh) -> "
-        "GIỮ NGUYÊN, không thay đổi.\n"
-        "2. Nếu câu hỏi hiện tại DỰA VÀO lịch sử (dùng đại từ 'bạn ấy', 'em đó', 'còn...thì sao', "
-        "'thế còn', 'như trên') -> tích hợp thông tin từ lịch sử để tạo câu hỏi hoàn chỉnh.\n"
-        "3. Nếu câu hỏi hiện tại là CHỦ ĐỀ MỚI hoàn toàn -> KHÔNG đưa thông tin từ lịch sử vào.\n"
-        "4. Giữ nguyên năm học, học kỳ, lớp học nếu được nhắc đến.\n"
-        "5. Trả về CHỈ câu hỏi đã reformulate, không giải thích gì thêm."
+        "Bạn là Chuyên gia Tinh chỉnh Cấu trúc Câu hỏi (Standalone Query Reformulator).\n\n"
+        "Nhiệm vụ: Dựa vào [Lịch sử hội thoại] và [Câu hỏi hiện tại], hãy chuyển đổi câu hỏi hiện tại "
+        "thành một CÂU HỎI ĐỘC LẬP TỰ THÂN (Standalone Query) có thể đứng một mình mà người đọc "
+        "vẫn hiểu đầy đủ ý định mà KHÔNG cần xem lại lịch sử.\n\n"
+        "NGUYÊN TẮC NỀN TẢNG (CORE PRINCIPLES):\n\n"
+        "1. KHÔI PHÚC THÀNH PHẦN ẨN & THỪA KẾ NGỮ CẢNH (Anaphora & Ellipsis Resolution):\n"
+        "   - Nếu câu hỏi hiện tại bị khuyết thành phần (ẩn chủ ngữ, ẩn đối tượng, thiếu phạm vi) "
+        "hoặc sử dụng các từ chỉ định/nối tiếp: Hãy trích xuất đúng các thực thể (Entities), mốc thời gian "
+        "và điều kiện ràng buộc tương ứng từ [Lịch sử hội thoại] để điền đầy đủ vào câu hỏi mới.\n\n"
+        "2. PHÁT HIỆN CHUYỂN ĐỔI CHỦ ĐỀ & XÓA BỎ DỮ LIỆU CŨ (Topic Shift Handling):\n"
+        "   - Nếu câu hỏi hiện tại chủ động đưa ra một Thực thể/Đối tượng trọng tâm MỚI thay thế cho đối tượng cũ: "
+        "Hãy tập trung hoàn toàn vào thực thể mới đó và KHÔNG đưa các thực thể cũ từ lịch sử vào câu hỏi mới.\n"
+        "   - Nếu câu hỏi hiện tại đã tự thân đầy đủ ngữ cảnh và không phụ thuộc lịch sử: GIỮ NGUYÊN câu hỏi gốc.\n\n"
+        "3. BẢO TOÀN Ý ĐỊNH & KHÔNG TỰ BỊA (Intent Preservation):\n"
+        "   - Giữ nguyên mục đích truy vấn gốc của người dùng (hỏi điểm số, hỏi danh sách, hỏi nhận xét, so sánh...).\n"
+        "   - Tuyệt đối KHÔNG tự thêm bớt các yêu cầu mới hoặc tự đoán các thông tin không có trong lịch sử hay câu hỏi gốc.\n\n"
+        "ĐẦU RA: Trả về DUY NHẤT một câu hỏi đã tinh chỉnh. Không kèm lời giải thích hay định dạng thừa."
     )
 
     try:
@@ -270,6 +271,12 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         # DeepSeek không hỗ trợ response_format loại json_schema/function_calling của with_structured_output.
         llm_with_tools = llm.bind_tools([RouterDecision], tool_choice="RouterDecision")
         res = await llm_with_tools.ainvoke(messages)
+
+        # Log raw reasoning content của supervisor LLM trước khi extract decision
+        if res.content:
+            logger.info("supervisor_reasoning", provider="deepseek", reasoning=res.content[:2000] if len(str(res.content)) > 2000 else res.content)
+        if res.tool_calls:
+            logger.info("supervisor_tool_calls", tool_calls=res.tool_calls)
 
         if res.tool_calls:
             try:
@@ -493,14 +500,7 @@ LƯU Ý QUAN TRỌNG:
 5. Tuyệt đối KHÔNG sao chép tin nhắn chuyển giao nhiệm vụ của Supervisor (ví dụ: '[Supervisor]: Chuyển yêu cầu sang...'). Bạn phải tự sinh văn bản trả lời tổng hợp và trình bày các dữ liệu thực tế thu được từ các Sub-Agent dưới dạng bảng và phân tích của riêng bạn.
 6. Nếu dữ liệu thu được bị trống hoặc không tìm thấy, hãy thông báo lịch sự cho Ban Giám Hiệu rằng không tìm thấy dữ liệu phù hợp trong hệ thống cho yêu cầu này, tuyệt đối không lặp lại tin nhắn chuyển tiếp của Supervisor.
 7. Tuyệt đối KHÔNG sử dụng bất kỳ biểu tượng cảm xúc (emoji/icon) nào như 📊, 🎯, 📌, ⚠️, 🔴, 🟢, 🏆, 📈, 📉, 🥇... trong toàn bộ văn bản phản hồi. Hãy trình bày văn bản trang trọng, học thuật thuần túy chỉ dùng các yếu tố markdown chuẩn (in đậm, danh sách, bảng) thay thế cho emoji.
-8. ĐỊNH NGHĨA CHỈ SỐ ĐỘ KHÓ (CHỐNG ẢO GIÁC):
-   * EDI (Độ khó thực nghiệm): Phản ánh điểm số làm bài thực tế của học sinh (thang đo 0..1). EDI = 1 - (Điểm trung bình / 10). EDI thấp (gần 0) -> đề thi thực tế Dễ (học sinh đạt điểm trung bình cao); EDI cao (gần 1) -> đề thi thực tế Khó (học sinh đạt điểm trung bình thấp).
-   * CDI (Độ khó nội dung): Phản ánh độ phức tạp kiến thức/mức độ Bloom theo thiết kế đề thi (thang đo 0..1). CDI thấp (gần 0) -> đề thi thiết kế Dễ (Bloom thấp); CDI cao (gần 1, ví dụ 0.75) -> đề thi thiết kế Khó/Rất khó (Bloom cao). TUYỆT ĐỐI KHÔNG giải thích nhầm lẫn "CDI = 0.75 nghĩa là 75% học sinh đạt". CDI = 0.75 đại diện cho độ khó Bloom trung bình là 4.5/6 (rất phức tạp và rất khó theo thiết kế).
-   * Chỉ số phân kỳ D (Divergence): D = EDI - CDI.
-     - D <= -0.25: Đề thiết kế khó nhưng học sinh đạt điểm rất cao (EDI thấp) -> Gắn cờ cảnh báo lạm phát điểm / lộ đề (INFLATION_OR_LEAK).
-     - D >= 0.25: Đề thiết kế dễ nhưng học sinh đạt điểm rất kém (EDI cao) -> Gắn cờ cảnh báo lỗ hổng học tập (LEARNING_GAP).
-     - |D| < 0.25: Kết quả điểm số phản ánh chính xác độ khó thiết kế của đề thi -> Hợp lệ (VALID).
-9. LỌC CỘT ĐIỂM: Nếu người dùng hỏi một kỳ thi/cột điểm cụ thể (như: "giữa kỳ 2", "giữa kỳ 1", "GK2", "GK1"), hãy đảm bảo chỉ tổng hợp thông tin, bảng biểu và phân tích của đúng cột điểm đó (ví dụ giữa kỳ 2 -> column_index = 2). Không hiển thị cột điểm khác của kỳ thi khác để tránh gây loãng thông tin. Phải phân biệt rõ "Học kỳ 2" (kỳ học) và "Giữa kỳ 2" (cột điểm column_index=2 của kỳ học đó). Khi hỏi "giữa kỳ 2 năm 2025-2026", tức là cột điểm Giữa kỳ 2 (column_index=2) của Học kỳ 2 (semester=2).
+8. LỌC CỘT ĐIỂM: Nếu người dùng hỏi một kỳ thi/cột điểm cụ thể (như: "giữa kỳ 2", "giữa kỳ 1", "GK2", "GK1"), hãy đảm bảo chỉ tổng hợp thông tin, bảng biểu và phân tích của đúng cột điểm đó (ví dụ giữa kỳ 2 -> column_index = 2). Không hiển thị cột điểm khác của kỳ thi khác để tránh gây loãng thông tin. Phải phân biệt rõ "Học kỳ 2" (kỳ học) và "Giữa kỳ 2" (cột điểm column_index=2 của kỳ học đó). Khi hỏi "giữa kỳ 2 năm 2025-2026", tức là cột điểm Giữa kỳ 2 (column_index=2) của Học kỳ 2 (semester=2).
 """
                 # Format conversation history — CHỈ dùng current_turn_messages (tránh context leak)
                 transcript_parts = []
@@ -538,6 +538,9 @@ LƯU Ý QUAN TRỌNG:
 Hãy tổng hợp toàn bộ thông tin trên để trả lời câu hỏi gốc của người dùng:
 "{standalone_query}"
 """
+
+                logger.info("supervisor_synthesis_debug", sub_agent_responses_count=len(sub_agent_responses), transcript_text=transcript_text, synthesis_input=synthesis_input)
+                print(f"\n================ [SUPERVISOR SYNTHESIS DEBUG] ================\n[sub_agent_responses_count]: {len(sub_agent_responses)}\n[synthesis_input]:\n{synthesis_input}\n==============================================================\n")
 
                 synthesis_messages = [SystemMessage(content=synthesis_prompt), HumanMessage(content=synthesis_input)]
 

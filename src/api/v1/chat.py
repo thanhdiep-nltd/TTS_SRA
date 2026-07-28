@@ -377,6 +377,10 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     name = event.get("name")
                     if name in agent_node_names:
                         agent_step_start_times[event["run_id"]] = time.time()
+                        node_log = f"🔀 [Điều Phối Node]: Kích hoạt Node Agent '{name}'"
+                        thought_logs.append({"type": "thought", "content": node_log, "timestamp": time.time()})
+                        yield f"data: {json.dumps({'type': 'thought', 'content': node_log}, ensure_ascii=False)}\n\n"
+
                     status_msg = None
                     if name == "supervisor":
                         supervisor_step_count += 1
@@ -439,6 +443,15 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                                 )
                                 thought_logs.append({"type": "thought", "content": guardrail_msg, "timestamp": time.time()})
                                 yield f"data: {json.dumps({'type': 'thought', 'content': guardrail_msg}, ensure_ascii=False)}\n\n"
+                    else:
+                        tags = event.get("tags", [])
+                        if "final_synthesis" not in tags:
+                            raw_content = getattr(msg, "content", "") or ""
+                            if raw_content.strip():
+                                preview = raw_content[:600] + "\n   ..." if len(raw_content) > 600 else raw_content
+                                thought = f"🧠 [AI Agent - Phản Hồi Nội Bộ / Suy Luận] (Model: {model_name}):\n   {preview}"
+                                thought_logs.append({"type": "thought", "content": thought, "timestamp": time.time()})
+                                yield f"data: {json.dumps({'type': 'thought', 'content': thought}, ensure_ascii=False)}\n\n"
                     # Accumulate input and output tokens from all LLMs in the graph run
                     if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                         total_input_tokens += msg.usage_metadata.get("input_tokens", 0)
@@ -489,7 +502,16 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
                     # Đếm số lần Supervisor định tuyến sang mỗi sub-agent (bỏ qua FINISH)
                     if name == "supervisor" and isinstance(output, dict):
-                        next_agent = output.get("next_agent")
+                        next_agent = output.get("next_agent", "FINISH")
+                        instruction = output.get("instruction", "")
+                        route_msg = (
+                            f"🎯 [Supervisor Quyết Định Điều Hướng]:\n"
+                            f"   - Next Agent: `{next_agent}`\n"
+                            f"   - Chỉ Đạo (Instruction): \"{instruction}\""
+                        )
+                        thought_logs.append({"type": "thought", "content": route_msg, "timestamp": time.time()})
+                        yield f"data: {json.dumps({'type': 'thought', 'content': route_msg}, ensure_ascii=False)}\n\n"
+
                         if next_agent and next_agent != "FINISH":
                             agent_routes_total.labels(target_agent=next_agent).inc()
 

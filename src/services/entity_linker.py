@@ -216,10 +216,12 @@ def query_slot_entity(db, so_school_id: int, entity_type: str, slot_keyword: str
     return None
 
 
-def query_student_direct(db, so_school_id: int, student_keyword: str) -> dict | None:
-    """Option 3: Query khớp chính xác (Case-Insensitive Exact Match) học sinh theo mã hoặc họ tên trong phạm vi trường học (0đ API Cost, Realtime 100%, ~2ms)."""
+def query_student_direct(db, so_school_id: int, student_keyword: str) -> list[dict]:
+    """Option 3: Query khớp chính xác (Case-Insensitive Exact Match) học sinh theo mã hoặc họ tên trong phạm vi trường học (0đ API Cost, Realtime 100%, ~2ms).
+    Trả về danh sách tất cả các học sinh khớp (hỗ trợ nhiều học sinh trùng tên).
+    """
     if not student_keyword or not student_keyword.strip():
-        return None
+        return []
 
     k_str = student_keyword.strip()
 
@@ -234,36 +236,35 @@ def query_student_direct(db, so_school_id: int, student_keyword: str) -> dict | 
         """)
         row = db.execute(sql, {"sid": so_school_id, "kcode": k_str}).fetchone()
         if row:
-            return {
+            return [{
                 "id": int(row[4]) if row[4] else 0,
                 "code": str(row[0]),
                 "name": str(row[1]),
                 "score": 1.0,
                 "metadata": {"class_id": int(row[2]), "grade_id": int(row[3])},
-            }
+            }]
 
     # 2. Khớp chính xác 100% Họ tên không phân biệt hoa thường (Case-Insensitive Exact Match)
+    # Lấy toàn bộ danh sách học sinh trùng tên trong trường (bỏ LIMIT 1)
     sql = text("""
         SELECT st.student_code, st.student_name, st.homeroom_class_id, st.grade_id, st.so_student_id
         FROM s360.dim_homeroom_class_student st
         JOIN s360.dim_homeroom_class hc ON st.homeroom_class_id = hc.id
         WHERE hc.so_school_id = :sid 
           AND UPPER(TRIM(st.student_name)) = UPPER(TRIM(:kname)) 
-          AND st.is_active = 1
-        LIMIT 1;
+          AND st.is_active = 1;
     """)
-    row = db.execute(sql, {"sid": so_school_id, "kname": k_str}).fetchone()
-    if row:
-        return {
+    rows = db.execute(sql, {"sid": so_school_id, "kname": k_str}).fetchall()
+    results = []
+    for row in rows:
+        results.append({
             "id": int(row[4]) if row[4] else 0,
             "code": str(row[0]),
             "name": str(row[1]),
             "score": 1.0,
             "metadata": {"class_id": int(row[2]), "grade_id": int(row[3])},
-        }
-
-    # Không khớp chính xác tên ở trường hiện tại ➔ Trả về None (0 suy luận mờ lung tung sang HS khác)
-    return None
+        })
+    return results
 
 
 def resolve_entities(user_query: str, so_school_id: int) -> DynamicEntityContext:
@@ -279,10 +280,11 @@ def resolve_entities(user_query: str, so_school_id: int) -> DynamicEntityContext
         # Step 1: Match danh sách Học sinh (Option 3 Direct pg_trgm query)
         seen_student_codes = set()
         for st_kw in slots.student_keywords:
-            res_student = query_student_direct(db, so_school_id, st_kw)
-            if res_student and res_student["code"] not in seen_student_codes:
-                ctx.students.append(res_student)
-                seen_student_codes.add(res_student["code"])
+            res_students = query_student_direct(db, so_school_id, st_kw)
+            for res_student in res_students:
+                if res_student and res_student["code"] not in seen_student_codes:
+                    ctx.students.append(res_student)
+                    seen_student_codes.add(res_student["code"])
 
         # Step 2: Match danh sách Lớp học
         seen_class_ids = set()
