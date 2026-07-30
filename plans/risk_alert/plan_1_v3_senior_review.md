@@ -552,7 +552,7 @@ CREATE TABLE s360.fact_student_subject_risk_predictions (
     repeat_offense_count        INTEGER DEFAULT 0,         -- Số lần vi phạm lặp đi lặp lại (tái phạm)
     severe_sanction_count       INTEGER DEFAULT 0,         -- Số lần có hình thức xử lý kỷ luật chính thức
 
-    -- === KẾT QUẢ ===
+    -- === KẾT QUẢ DỰ BÁO RUNTIME ===
     risk_level              VARCHAR(10) NOT NULL,
     risk_probability        DECIMAL(5,4),
     created_at              TIMESTAMPTZ DEFAULT NOW()
@@ -563,6 +563,59 @@ CREATE INDEX idx_fssrp_v3_student_subject
 
 CREATE INDEX idx_fssrp_v3_risk
     ON s360.fact_student_subject_risk_predictions(risk_level);
-```
 
-> **Note:** Dùng schema name `s360` là schema đã có sẵn trong DB. Tên bảng `fact_student_subject_risk_predictions` được giữ nguyên như plan_1_v2.md để không phá vỡ compatibility.
+
+-- 8.2 BẢNG DỮ LIỆU TRAIN MÔ HÌNH (Training Dataset Store & Mock Data Ground Truth)
+CREATE TABLE s360.train_student_subject_risk_dataset (
+    id                      BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    student_code            VARCHAR(50) NOT NULL,
+    subject_id              INTEGER NOT NULL REFERENCES s360.dim_subject(id),
+    school_year_id          INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    semester_index          INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
+    evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần cắt dữ liệu (Feature Cutoff)
+
+    -- === 1. TEMPORAL SCORES (8 Features) ===
+    weighted_early_avg      DECIMAL(10,2),
+    weighted_late_avg       DECIMAL(10,2),
+    score_slope             DECIMAL(10,4),
+    score_volatility        DECIMAL(10,4),
+    max_drop                DECIMAL(10,2),
+    last_score              DECIMAL(10,2),
+    has_midterm_exam        INTEGER DEFAULT 0,
+    has_final_exam          INTEGER DEFAULT 0,
+
+    -- === 2. LMS (5 Features) ===
+    lms_avg_score           DECIMAL(10,2),
+    lms_recent_drop         DECIMAL(10,2),
+    lms_submission_rate     DECIMAL(5,4),
+    lms_recent_submission_rate DECIMAL(5,4),
+    lms_gradebook_gap       DECIMAL(10,2),
+
+    -- === 3. ATTENDANCE (4 Features) ===
+    daily_absence_rate          DECIMAL(5,4),
+    unexcused_absent_rate       DECIMAL(5,4),
+    excused_absent_days         INTEGER DEFAULT 0,
+    total_late_count            INTEGER DEFAULT 0,
+
+    -- === 4. BEHAVIOR (3 Features) ===
+    total_demerit_points        DECIMAL(10,2) DEFAULT 0.0,
+    repeat_offense_count        INTEGER DEFAULT 0,            -- 🌟 Tái phạm vi phạm
+    severe_sanction_count       INTEGER DEFAULT 0,
+
+    -- === GROUND TRUTH LABELS (y) — DÙNG ĐỂ TRAIN MÔ HÌNH ===
+    actual_final_grade      DECIMAL(10,2),              -- Điểm tổng kết thực tế cuối kỳ (nếu có)
+    actual_risk_level       VARCHAR(10) NOT NULL,       -- NHÃN THẬT: 'LOW', 'MEDIUM', 'HIGH'
+    is_at_risk              INTEGER NOT NULL DEFAULT 0,  -- NHÃN BINARY: 1 (Rủi ro trượt), 0 (An toàn)
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_tssrd_student_subject
+    ON s360.train_student_subject_risk_dataset(student_code, subject_id);
+
+CREATE INDEX idx_tssrd_risk_label
+    ON s360.train_student_subject_risk_dataset(actual_risk_level);
+
+
+> **Note:** Dùng schema name `s360` là schema đã có sẵn trong DB. Bảng `train_student_subject_risk_dataset` tách biệt hoàn toàn với bảng `fact_student_subject_risk_predictions` để đảm bảo chuẩn MLOps: không lẫn lộn giữa Dữ liệu Train và Kết quả Dự báo Runtime.
+
