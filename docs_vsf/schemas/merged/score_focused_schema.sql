@@ -465,6 +465,7 @@ CREATE TABLE s360.dim_so_assignment (
     max_grade           DECIMAL(10,1) DEFAULT 10.0,
     due_date            DATE,
     date_assigned       DATE,
+    gradebook_type_item_id BIGINT REFERENCES s360.dim_exam_moet(gradebook_type_item_id),
     created_at          TIMESTAMPTZ DEFAULT NOW(),
     updated_at          TIMESTAMPTZ DEFAULT NOW(),
     source_system       VARCHAR(50) DEFAULT 'LMS'
@@ -957,5 +958,28 @@ CREATE TABLE IF NOT EXISTS s360.metadata_index (
 
 CREATE INDEX IF NOT EXISTS idx_meta_trgm ON s360.metadata_index USING gin (entity_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_meta_school ON s360.metadata_index(so_school_id, entity_type);
+
+-- ============================================================
+-- EWS OUTPUT: Bảng chứa kết quả dự báo rủi ro của học sinh do model .pkl xuất ra
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS s360.fact_student_risk_predictions (
+    id                  BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    student_code        VARCHAR(50) NOT NULL,
+    school_year_id      INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    semester_index      INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
+    evaluated_at_week   INTEGER NOT NULL,           -- Tuần đánh giá (5, 6, 8...)
+    risk_level          VARCHAR(10) NOT NULL,        -- HIGH, MEDIUM, LOW
+    gpa                 DECIMAL(10,1),               -- Điểm TB tại thời điểm quét
+    grade_slope         DECIMAL(10,4),               -- Độ dốc điểm số
+    war_rate            DECIMAL(10,2),               -- Tỷ lệ vắng có trọng số
+    demerits_count      INTEGER,                     -- Số lần bị trừ điểm rèn luyện
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fsrp_student ON s360.fact_student_risk_predictions(student_code);
+CREATE INDEX IF NOT EXISTS idx_fsrp_week ON s360.fact_student_risk_predictions(evaluated_at_week);
+CREATE INDEX IF NOT EXISTS idx_fsrp_risk ON s360.fact_student_risk_predictions(risk_level);
+COMMENT ON TABLE s360.fact_student_risk_predictions IS 'Kết quả dự báo rủi ro học tập do model EWS xuất ra';
 
 -- End of score_focused_schema.sql DDL

@@ -203,17 +203,17 @@ def generate_full_system_mock_data():
 
         # 3.6 LMS Assignment Catalog (dim_so_assignment)
         lms_assignments = [
-            (1, 1, 7, 5, "ASS_TOAN7_W1", "Bài tập Tuần 1: Đại số Khối 7"),
-            (2, 1, 7, 5, "ASS_TOAN7_W2", "Bài tập Tuần 2: Hình học Khối 7"),
-            (3, 1, 7, 7, "ASS_ANH7_W1", "Vocabulary & Grammar Unit 1"),
-            (4, 1, 7, 8, "ASS_TOAN_ENG7_W1", "English Math Problem Set 1"),
+            (1, 1, 7, 5, "ASS_TOAN7_W1", "Bài tập Tuần 1: Đại số Khối 7", 1),  # Map vào Midterm S1
+            (2, 1, 7, 5, "ASS_TOAN7_W2", "Bài tập Tuần 2: Hình học Khối 7", 1),  # Map vào Midterm S1
+            (3, 1, 7, 7, "ASS_ANH7_W1", "Vocabulary & Grammar Unit 1", 1),       # Map vào Midterm S1
+            (4, 1, 7, 8, "ASS_TOAN_ENG7_W1", "English Math Problem Set 1", 1),   # Map vào Midterm S1
         ]
         for la in lms_assignments:
             session.execute(text("""
-                INSERT INTO s360.dim_so_assignment (assignment_id, so_school_id, grade_id, subject_id, code, fullname)
-                VALUES (:aid, :sid, :gid, :subid, :code, :fname)
+                INSERT INTO s360.dim_so_assignment (assignment_id, so_school_id, grade_id, subject_id, code, fullname, gradebook_type_item_id)
+                VALUES (:aid, :sid, :gid, :subid, :code, :fname, :gtii)
                 ON CONFLICT (assignment_id) DO NOTHING;
-            """), {"aid": la[0], "sid": la[1], "gid": la[2], "subid": la[3], "code": la[4], "fname": la[5]})
+            """), {"aid": la[0], "sid": la[1], "gid": la[2], "subid": la[3], "code": la[4], "fname": la[5], "gtii": la[6]})
 
         # 3.7 Behavior Catalog (22 Criteria in dim_behavior)
         behaviors_data = [

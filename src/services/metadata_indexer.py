@@ -40,7 +40,7 @@ def get_embedding(text_input: str) -> list[float] | None:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
-            with httpx.Client(timeout=15.0) as client:
+            with httpx.Client(timeout=60.0) as client:
                 res = client.post(url, json=payload, headers=headers)
                 if res.status_code == 200:
                     data = res.json()
