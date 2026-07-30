@@ -244,17 +244,17 @@ temporal_features AS (
         -- === RAW VOLATILITY (KHÔNG dùng coefficient) ===
         STDDEV_POP(ss.final_grade) AS score_volatility,
 
-        -- === POINTER FEATURES ===
+        -- === POINTER & COEFFICIENT FEATURES (Tối ưu theo Hệ số) ===
         MAX(ss.final_grade) KEEP (DENSE_RANK LAST ORDER BY ss.created_at)
             AS last_score,
 
-        MAX(CASE WHEN ss.coefficient >= 2.0 THEN 1 ELSE 0 END)
-            AS has_midterm_or_final,
-        MAX(CASE WHEN ss.coefficient >= 3.0 THEN 1 ELSE 0 END)
-            AS has_final_exam,
+        MAX(ss.coefficient) AS max_coefficient_so_far,
 
-        COUNT(*) AS total_scores,
-        MAX(ss.coefficient) AS max_coefficient_so_far
+        COUNT(CASE WHEN ss.coefficient >= 2.0 THEN 1 END)
+            AS high_weight_score_count,
+
+        MAX(ss.final_grade) KEEP (DENSE_RANK LAST ORDER BY CASE WHEN ss.coefficient >= 2.0 THEN ss.created_at END)
+            AS last_high_weight_score
 
     FROM score_series ss
     JOIN medians m
@@ -393,15 +393,16 @@ features = [
     # === 0. TIẾN TRÌNH THỜI GIAN (Time Anchor) — 1 Feature ===
     evaluated_at_week,            # int: tuần dự báo (5, 8, 11, 14, 16...) cho GBDT biết mốc kỳ thi
 
-    # === 1. TEMPORAL SCORES (UNION fact_gradebooks + fact_gradebooks_moet) — 8 Features ===
+    # === 1. TEMPORAL SCORES (UNION fact_gradebooks + fact_gradebooks_moet) — 9 Features ===
     weighted_early_avg,           # float: Σ(score×coeff)/Σ(coeff) nửa đầu ✅
     weighted_late_avg,            # float: Σ(score×coeff)/Σ(coeff) nửa sau ✅
     score_slope,                  # float: OLS slope xu hướng điểm (KHÔNG weight)
     score_volatility,             # float: raw std dev biến động điểm (KHÔNG weight)
     max_drop,                     # float: raw max(LAG - score) sụt giảm lớn nhất
     last_score,                   # float: điểm bài kiểm tra mới nhất
-    has_midterm_exam,             # 0/1: đã có điểm Giữa kỳ (hệ số 2) chưa?
-    has_final_exam,               # 0/1: đã có điểm Cuối kỳ (hệ số 3) chưa?
+    max_coefficient_so_far,       # float: 🌟 hệ số lớn nhất đã ghi nhận đến mốc dự báo (1.0, 2.0...)
+    high_weight_score_count,      # int: 🌟 số lượng bài kiểm tra trọng số cao (hệ số >= 2.0) đã làm
+    last_high_weight_score,       # float: 🌟 điểm số của bài thi hệ số cao gần nhất
 
     # === 2. CỤM TIẾN TRÌNH TỰ HỌC LMS (from fact_so_assignment_grade) — 5 Features ===
     lms_avg_score,                # float: điểm TB bài tập LMS toàn kỳ
@@ -524,15 +525,16 @@ CREATE TABLE s360.fact_student_subject_risk_predictions (
     evaluated_at_date       DATE NOT NULL DEFAULT CURRENT_DATE,   -- Ngày chạy dự báo thực tế (Audit Trail)
     target_scope            VARCHAR(20) DEFAULT 'SEMESTER',       -- 'SEMESTER' (Học kỳ) hoặc 'FULL_YEAR' (Cả năm)
 
-    -- === TEMPORAL SCORES (coefficient-weighted avg + OLS slope) — 8 Features ===
+    -- === TEMPORAL SCORES (coefficient-weighted avg + OLS slope) — 9 Features ===
     weighted_early_avg      DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa đầu ✅
     weighted_late_avg       DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa sau ✅
     score_slope             DECIMAL(10,4),  -- OLS slope (KHÔNG weight)
     score_volatility        DECIMAL(10,4),  -- raw std dev (KHÔNG weight)
     max_drop                DECIMAL(10,2),  -- raw max(LAG-score) (KHÔNG weight)
     last_score              DECIMAL(10,2),  -- điểm kiểm tra mới nhất
-    has_midterm_exam        INTEGER DEFAULT 0,  -- đã có điểm Giữa kỳ (HS2) chưa (0/1)
-    has_final_exam          INTEGER DEFAULT 0,  -- đã có điểm Cuối kỳ (HS3) chưa (0/1)
+    max_coefficient_so_far  DECIMAL(5,2),   -- 🌟 hệ số lớn nhất đã có (1.0, 2.0...)
+    high_weight_score_count INTEGER DEFAULT 0, -- 🌟 số lượng bài kiểm tra hệ số >= 2.0
+    last_high_weight_score  DECIMAL(10,2),  -- 🌟 điểm bài thi hệ số cao gần nhất
 
     -- === LMS CỤM TIẾN TRÌNH TỰ HỌC (từ fact_so_assignment_grade) — 5 Features ===
     lms_avg_score           DECIMAL(10,2),  -- Điểm TB LMS toàn kỳ
@@ -552,9 +554,10 @@ CREATE TABLE s360.fact_student_subject_risk_predictions (
     repeat_offense_count        INTEGER DEFAULT 0,         -- Số lần vi phạm lặp đi lặp lại (tái phạm)
     severe_sanction_count       INTEGER DEFAULT 0,         -- Số lần có hình thức xử lý kỷ luật chính thức
 
-    -- === KẾT QUẢ DỰ BÁO RUNTIME ===
-    risk_level              VARCHAR(10) NOT NULL,
-    risk_probability        DECIMAL(5,4),
+    -- === KẾT QUẢ DỰ BÁO EWS RUNTIME (Thang 0-100 & 4 Mức Rủi Ro) ===
+    risk_score              DECIMAL(5,2),         -- Thang điểm rủi ro 0.00 -> 100.00
+    risk_level              VARCHAR(15) NOT NULL, -- 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
+    risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
     created_at              TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -574,15 +577,16 @@ CREATE TABLE s360.train_student_subject_risk_dataset (
     semester_index          INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
     evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần cắt dữ liệu (Feature Cutoff)
 
-    -- === 1. TEMPORAL SCORES (8 Features) ===
+    -- === 1. TEMPORAL SCORES (9 Features) ===
     weighted_early_avg      DECIMAL(10,2),
     weighted_late_avg       DECIMAL(10,2),
     score_slope             DECIMAL(10,4),
     score_volatility        DECIMAL(10,4),
     max_drop                DECIMAL(10,2),
     last_score              DECIMAL(10,2),
-    has_midterm_exam        INTEGER DEFAULT 0,
-    has_final_exam          INTEGER DEFAULT 0,
+    max_coefficient_so_far  DECIMAL(5,2),
+    high_weight_score_count INTEGER DEFAULT 0,
+    last_high_weight_score  DECIMAL(10,2),
 
     -- === 2. LMS (5 Features) ===
     lms_avg_score           DECIMAL(10,2),
@@ -604,8 +608,8 @@ CREATE TABLE s360.train_student_subject_risk_dataset (
 
     -- === GROUND TRUTH LABELS (y) — DÙNG ĐỂ TRAIN MÔ HÌNH ===
     actual_final_grade      DECIMAL(10,2),              -- Điểm tổng kết thực tế cuối kỳ (nếu có)
-    actual_risk_level       VARCHAR(10) NOT NULL,       -- NHÃN THẬT: 'LOW', 'MEDIUM', 'HIGH'
-    is_at_risk              INTEGER NOT NULL DEFAULT 0,  -- NHÃN BINARY: 1 (Rủi ro trượt), 0 (An toàn)
+    actual_risk_level       VARCHAR(15) NOT NULL,       -- NHÃN THẬT: 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
+    is_at_risk              INTEGER NOT NULL DEFAULT 0,  -- NHÃN BINARY: 1 (Rủi ro trượt/sụt giảm), 0 (An toàn)
     
     created_at              TIMESTAMPTZ DEFAULT NOW()
 );

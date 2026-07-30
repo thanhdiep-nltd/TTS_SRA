@@ -20,6 +20,9 @@ CREATE SCHEMA IF NOT EXISTS s360;
 
 -- Drop Old Tables (if exists)
 DROP TABLE IF EXISTS alembic_version CASCADE;
+DROP TABLE IF EXISTS s360.train_student_subject_risk_dataset CASCADE;
+DROP TABLE IF EXISTS s360.fact_student_subject_risk_predictions CASCADE;
+DROP TABLE IF EXISTS s360.fact_student_risk_predictions CASCADE;
 DROP TABLE IF EXISTS public.ai_observability_snapshots CASCADE;
 DROP TABLE IF EXISTS public.ai_session_attachments CASCADE;
 DROP TABLE IF EXISTS public.ai_messages CASCADE;
@@ -960,26 +963,119 @@ CREATE INDEX IF NOT EXISTS idx_meta_trgm ON s360.metadata_index USING gin (entit
 CREATE INDEX IF NOT EXISTS idx_meta_school ON s360.metadata_index(so_school_id, entity_type);
 
 -- ============================================================
--- EWS OUTPUT: Bảng chứa kết quả dự báo rủi ro của học sinh do model .pkl xuất ra
+-- EWS OUTPUT & TRAINING STORE: Bảng Dự báo Runtime & Dataset Huấn luyện MLOps
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS s360.fact_student_risk_predictions (
-    id                  BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    student_code        VARCHAR(50) NOT NULL,
-    school_year_id      INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
-    semester_index      INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
-    evaluated_at_week   INTEGER NOT NULL,           -- Tuần đánh giá (5, 6, 8...)
-    risk_level          VARCHAR(10) NOT NULL,        -- HIGH, MEDIUM, LOW
-    gpa                 DECIMAL(10,1),               -- Điểm TB tại thời điểm quét
-    grade_slope         DECIMAL(10,4),               -- Độ dốc điểm số
-    war_rate            DECIMAL(10,2),               -- Tỷ lệ vắng có trọng số
-    demerits_count      INTEGER,                     -- Số lần bị trừ điểm rèn luyện
-    created_at          TIMESTAMPTZ DEFAULT NOW()
+-- 1. Bảng lưu Kết quả Dự Báo Rủi Ro Runtime (Dùng cho Text-to-SQL Agent)
+CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
+    id                      BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    student_code            VARCHAR(50) NOT NULL,
+    subject_id              INTEGER NOT NULL REFERENCES s360.dim_subject(id),
+    school_year_id          INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    semester_index          INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
+    
+    -- === KHÓA ĐỊNH VỊ THỜI GIAN DỰ BÁO ===
+    evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần học (5, 8, 11, 14, 16)
+    evaluated_at_date       DATE NOT NULL DEFAULT CURRENT_DATE,   -- Ngày chạy dự báo thực tế (Audit Trail)
+    target_scope            VARCHAR(20) DEFAULT 'SEMESTER',       -- 'SEMESTER' (Học kỳ) hoặc 'FULL_YEAR' (Cả năm)
+
+    -- === TEMPORAL SCORES (coefficient-weighted avg + OLS slope) — 9 Features ===
+    weighted_early_avg      DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa đầu
+    weighted_late_avg       DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa sau
+    score_slope             DECIMAL(10,4),  -- OLS slope (KHÔNG weight)
+    score_volatility        DECIMAL(10,4),  -- raw std dev (KHÔNG weight)
+    max_drop                DECIMAL(10,2),  -- raw max(LAG-score) (KHÔNG weight)
+    last_score              DECIMAL(10,2),  -- điểm kiểm tra mới nhất
+    max_coefficient_so_far  DECIMAL(5,2),   -- hệ số lớn nhất đã ghi nhận đến mốc dự báo
+    high_weight_score_count INTEGER DEFAULT 0, -- số lượng bài kiểm tra trọng số cao (hệ số >= 2.0)
+    last_high_weight_score  DECIMAL(10,2),  -- điểm số của bài thi hệ số cao gần nhất
+
+    -- === LMS CỤM TIẾN TRÌNH TỰ HỌC (từ fact_so_assignment_grade) — 5 Features ===
+    lms_avg_score           DECIMAL(10,2),  -- Điểm TB LMS toàn kỳ
+    lms_recent_drop         DECIMAL(10,2),  -- Mức rớt điểm LMS 4 tuần gần nhất (lms_avg_score - lms_recent_avg)
+    lms_submission_rate     DECIMAL(5,4),   -- Tỷ lệ nộp bài LMS toàn kỳ
+    lms_recent_submission_rate DECIMAL(5,4),-- Tỷ lệ nộp bài LMS 4 tuần gần nhất
+    lms_gradebook_gap       DECIMAL(10,2),  -- Độ lệch năng lực vs thái độ (lms_avg_score - last_score)
+
+    -- === ATTENDANCE (4 features — 0 multicollinearity) ===
+    daily_absence_rate          DECIMAL(5,4),  -- % tổng tiết vắng (fact_so_daily_attendance)
+    unexcused_absent_rate       DECIMAL(5,4),  -- % vắng không phép (fact_so_daily_attendance)
+    excused_absent_days         INTEGER DEFAULT 0,  -- Tổng ngày nghỉ có phép (fact_absent_logs)
+    total_late_count            INTEGER DEFAULT 0,  -- Tổng số lần đi muộn (fact_so_homeroom_class_late_attendances)
+
+    -- === BEHAVIOR (3 features — focus rủi ro kỷ luật & tái phạm) ===
+    total_demerit_points        DECIMAL(10,2) DEFAULT 0.0, -- Tổng điểm rèn luyện bị trừ (đã gồm phạt tái diễn)
+    repeat_offense_count        INTEGER DEFAULT 0,         -- Số lần vi phạm lặp đi lặp lại (tái phạm)
+    severe_sanction_count       INTEGER DEFAULT 0,         -- Số lần có hình thức xử lý kỷ luật chính thức
+
+    -- === KẾT QUẢ DỰ BÁO EWS RUNTIME (Thang 0-100 & 4 Mức Rủi Ro) ===
+    risk_score              DECIMAL(5,2),         -- Thang điểm rủi ro 0.00 -> 100.00 (0: Safe, 100: Critical)
+    risk_level              VARCHAR(15) NOT NULL, -- 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
+    risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
+    created_at              TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_fsrp_student ON s360.fact_student_risk_predictions(student_code);
-CREATE INDEX IF NOT EXISTS idx_fsrp_week ON s360.fact_student_risk_predictions(evaluated_at_week);
-CREATE INDEX IF NOT EXISTS idx_fsrp_risk ON s360.fact_student_risk_predictions(risk_level);
-COMMENT ON TABLE s360.fact_student_risk_predictions IS 'Kết quả dự báo rủi ro học tập do model EWS xuất ra';
+CREATE INDEX IF NOT EXISTS idx_fssrp_v3_student_subject
+    ON s360.fact_student_subject_risk_predictions(student_code, subject_id);
+
+CREATE INDEX IF NOT EXISTS idx_fssrp_v3_risk
+    ON s360.fact_student_subject_risk_predictions(risk_level);
+
+COMMENT ON TABLE s360.fact_student_subject_risk_predictions IS 'Bảng lưu kết quả dự báo rủi ro học tập chi tiết theo môn học do EWS Model xuất ra';
+
+
+-- 2. Bảng lưu Dữ liệu Train Mô hình (Training Dataset Store & Mock Data Ground Truth)
+CREATE TABLE IF NOT EXISTS s360.train_student_subject_risk_dataset (
+    id                      BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    student_code            VARCHAR(50) NOT NULL,
+    subject_id              INTEGER NOT NULL REFERENCES s360.dim_subject(id),
+    school_year_id          INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
+    semester_index          INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
+    evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần cắt dữ liệu (Feature Cutoff)
+
+    -- === 1. TEMPORAL SCORES (9 Features) ===
+    weighted_early_avg      DECIMAL(10,2),
+    weighted_late_avg       DECIMAL(10,2),
+    score_slope             DECIMAL(10,4),
+    score_volatility        DECIMAL(10,4),
+    max_drop                DECIMAL(10,2),
+    last_score              DECIMAL(10,2),
+    max_coefficient_so_far  DECIMAL(5,2),
+    high_weight_score_count INTEGER DEFAULT 0,
+    last_high_weight_score  DECIMAL(10,2),
+
+    -- === 2. LMS (5 Features) ===
+    lms_avg_score           DECIMAL(10,2),
+    lms_recent_drop         DECIMAL(10,2),
+    lms_submission_rate     DECIMAL(5,4),
+    lms_recent_submission_rate DECIMAL(5,4),
+    lms_gradebook_gap       DECIMAL(10,2),
+
+    -- === 3. ATTENDANCE (4 Features) ===
+    daily_absence_rate          DECIMAL(5,4),
+    unexcused_absent_rate       DECIMAL(5,4),
+    excused_absent_days         INTEGER DEFAULT 0,
+    total_late_count            INTEGER DEFAULT 0,
+
+    -- === 4. BEHAVIOR (3 Features) ===
+    total_demerit_points        DECIMAL(10,2) DEFAULT 0.0,
+    repeat_offense_count        INTEGER DEFAULT 0,            -- Tái phạm vi phạm
+    severe_sanction_count       INTEGER DEFAULT 0,
+
+    -- === GROUND TRUTH LABELS (y) — DÙNG ĐỂ TRAIN MÔ HÌNH ===
+    actual_final_grade      DECIMAL(10,2),              -- Điểm tổng kết thực tế cuối kỳ (nếu có)
+    actual_risk_level       VARCHAR(15) NOT NULL,       -- NHÃN THẬT: 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
+    is_at_risk              INTEGER NOT NULL DEFAULT 0,  -- NHÃN BINARY: 1 (Rủi ro trượt/sụt giảm), 0 (An toàn)
+    
+    created_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tssrd_student_subject
+    ON s360.train_student_subject_risk_dataset(student_code, subject_id);
+
+CREATE INDEX IF NOT EXISTS idx_tssrd_risk_label
+    ON s360.train_student_subject_risk_dataset(actual_risk_level);
+
+COMMENT ON TABLE s360.train_student_subject_risk_dataset IS 'Bảng chứa Dữ liệu Mock / Lịch sử có Nhãn (Ground Truth Labels) phục vụ Huấn luyện Mô hình EWS';
 
 -- End of score_focused_schema.sql DDL
