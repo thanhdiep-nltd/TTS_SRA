@@ -1,0 +1,174 @@
+{
+  "method": "shap.TreeExplainer",
+  "n_samples_used": 500,
+  "top3_overall": [
+    {
+      "feature": "weighted_late_avg",
+      "mean_abs_shap": 0.7264884969909211
+    },
+    {
+      "feature": "weighted_early_avg",
+      "mean_abs_shap": 0.5192975741213615
+    },
+    {
+      "feature": "last_score",
+      "mean_abs_shap": 0.4496495071252306
+    }
+  ],
+  "top3_per_class": {
+    "LOW": [
+      {
+        "feature": "weighted_late_avg",
+        "mean_abs_shap": 1.142994979442239
+      },
+      {
+        "feature": "weighted_early_avg",
+        "mean_abs_shap": 0.790694835271112
+      },
+      {
+        "feature": "last_score",
+        "mean_abs_shap": 0.7149701896206481
+      }
+    ],
+    "MODERATE": [
+      {
+        "feature": "weighted_late_avg",
+        "mean_abs_shap": 0.4831117531835787
+      },
+      {
+        "feature": "last_score",
+        "mean_abs_shap": 0.3665148969560513
+      },
+      {
+        "feature": "weighted_early_avg",
+        "mean_abs_shap": 0.29415777788865693
+      }
+    ],
+    "HIGH": [
+      {
+        "feature": "weighted_late_avg",
+        "mean_abs_shap": 0.6639209853656007
+      },
+      {
+        "feature": "weighted_early_avg",
+        "mean_abs_shap": 0.43632761061667064
+      },
+      {
+        "feature": "last_score",
+        "mean_abs_shap": 0.3360076191645104
+      }
+    ],
+    "CRITICAL": [
+      {
+        "feature": "weighted_late_avg",
+        "mean_abs_shap": 0.6159262699722681
+      },
+      {
+        "feature": "weighted_early_avg",
+        "mean_abs_shap": 0.5560100727090089
+      },
+      {
+        "feature": "last_score",
+        "mean_abs_shap": 0.381105322759714
+      }
+    ]
+  },
+  "feature_importance": [
+    {
+      "feature": "weighted_late_avg",
+      "mean_abs_shap": 0.7264884969909211
+    },
+    {
+      "feature": "weighted_early_avg",
+      "mean_abs_shap": 0.5192975741213615
+    },
+    {
+      "feature": "last_score",
+      "mean_abs_shap": 0.4496495071252306
+    },
+    {
+      "feature": "last_high_weight_score",
+      "mean_abs_shap": 0.31560004146235066
+    },
+    {
+      "feature": "lms_avg_score",
+      "mean_abs_shap": 0.25995953737112165
+    },
+    {
+      "feature": "total_demerit_points",
+      "mean_abs_shap": 0.1563348532146289
+    },
+    {
+      "feature": "daily_absence_rate",
+      "mean_abs_shap": 0.09287291567540269
+    },
+    {
+      "feature": "unexcused_absent_rate",
+      "mean_abs_shap": 0.07242873929749878
+    },
+    {
+      "feature": "score_volatility",
+      "mean_abs_shap": 0.05501057168060128
+    },
+    {
+      "feature": "excused_absent_days",
+      "mean_abs_shap": 0.054714387815115256
+    },
+    {
+      "feature": "total_late_count",
+      "mean_abs_shap": 0.05034097073432448
+    },
+    {
+      "feature": "high_weight_score_count",
+      "mean_abs_shap": 0.04588790120439516
+    },
+    {
+      "feature": "repeat_offense_count",
+      "mean_abs_shap": 0.043868651552063764
+    },
+    {
+      "feature": "lms_submission_rate",
+      "mean_abs_shap": 0.042542101218051985
+    },
+    {
+      "feature": "lms_gradebook_gap",
+      "mean_abs_shap": 0.03974683962292609
+    },
+    {
+      "feature": "score_slope",
+      "mean_abs_shap": 0.027440706323472723
+    },
+    {
+      "feature": "max_coefficient_so_far",
+      "mean_abs_shap": 0.02698571391369638
+    },
+    {
+      "feature": "severe_sanction_count",
+      "mean_abs_shap": 0.024792767817186902
+    },
+    {
+      "feature": "max_drop",
+      "mean_abs_shap": 0.02100485396363051
+    },
+    {
+      "feature": "lms_recent_submission_rate",
+      "mean_abs_shap": 0.01411418595184357
+    },
+    {
+      "feature": "lms_recent_drop",
+      "mean_abs_shap": 0.005813846673444126
+    },
+    {
+      "feature": "subject_id",
+      "mean_abs_shap": 0.0009124626875597093
+    },
+    {
+      "feature": "evaluated_at_week",
+      "mean_abs_shap": 0.0001584736874959428
+    },
+    {
+      "feature": "semester_index",
+      "mean_abs_shap": 0.0
+    }
+  ]
+}

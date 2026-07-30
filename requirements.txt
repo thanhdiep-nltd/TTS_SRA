@@ -52,3 +52,9 @@ replicate>=1.0.0
 supabase>=1.0.3
 # Eval-as-a-Metric: KHÔNG dùng ragas (kéo theo langchain-community xung đột với
 # langchain 1.x đang dùng) — Judge tự viết bằng get_llm() + structured output, xem src/services/eval.py
+
+# GBDT / CatBoost EWS Training
+scikit-learn>=1.9.0
+catboost>=1.2.10
+optuna>=4.9.0
+shap>=0.52.0
