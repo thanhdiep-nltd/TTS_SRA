@@ -410,6 +410,7 @@ CREATE TABLE s360.dim_subject (
     name                VARCHAR(255) NOT NULL,
     name_en             VARCHAR(255),
     subject_type        VARCHAR(50) DEFAULT 'CORE',
+    subject_category    VARCHAR(50) DEFAULT 'MATH_SCIENCE', -- MATH_SCIENCE | HUMANITIES | TECHNOLOGY | ARTS_PE
     assessment_type     public.assessment_type_enum NOT NULL DEFAULT 'SCORED', -- SCORED (cho điểm) | REMARK (Đạt/Chưa đạt)
     default_scale_name  VARCHAR(50) NOT NULL DEFAULT 'SCALE_10', -- Cấu hình thang điểm mặc định cho môn
     is_active           INTEGER DEFAULT 1,
@@ -955,7 +956,7 @@ CREATE TABLE IF NOT EXISTS s360.metadata_index (
     exact_code      VARCHAR(100),          -- '2025_2026', 'TOAN_7', 'GK1_TOAN_7', '7A1'
     exact_id        BIGINT NOT NULL,       -- 2025, 1, 16, 29
     extra_metadata  JSONB,                 -- {"grade_number": 7, "semester_index": 1}
-    embedding       vector(3072),          -- Vector Gemini Embedding (gemini-embedding-2)
+    embedding       vector(1536),          -- Vector Embedding (OpenAI text-embedding-3-large 1536 dim / Gemini 1536 dim)
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -1012,7 +1013,9 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     risk_score              DECIMAL(5,2),         -- Thang điểm rủi ro 0.00 -> 100.00 (0: Safe, 100: Critical)
     risk_level              VARCHAR(15) NOT NULL, -- 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
     risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
-    created_at              TIMESTAMPTZ DEFAULT NOW()
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT uq_fssrp_checkpoint UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fssrp_v3_student_subject

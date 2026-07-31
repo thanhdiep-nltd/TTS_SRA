@@ -51,23 +51,24 @@ PROFILE_WEIGHTS = np.array([10, 20, 12, 15, 8, 10, 12, 8, 5], dtype=np.float64)
 PROFILE_PROB = PROFILE_WEIGHTS / PROFILE_WEIGHTS.sum()
 
 # --- Danh sách môn học ---
-# (subject_id, name, is_math_science)
+# (subject_id, name, is_math_science, subject_category)
 SUBJECTS = [
-    (106, "Toán", True),
-    (2, "Ngữ văn", False),
-    (3, "Tiếng Anh", False),
-    (7, "KHTN", True),
-    (8, "Lịch sử & Địa lý", False),
-    (4, "Vật lý", True),
-    (5, "Hóa học", True),
-    (6, "Sinh học", True),
-    (13, "Tin học", True),
-    (14, "STEM", True),
-    (9, "Cambridge English", False),
+    (106, "Toán", True, "MATH_SCIENCE"),
+    (2, "Ngữ văn", False, "HUMANITIES"),
+    (3, "Tiếng Anh", False, "HUMANITIES"),
+    (7, "KHTN", True, "MATH_SCIENCE"),
+    (8, "Lịch sử & Địa lý", False, "HUMANITIES"),
+    (4, "Vật lý", True, "MATH_SCIENCE"),
+    (5, "Hóa học", True, "MATH_SCIENCE"),
+    (6, "Sinh học", True, "MATH_SCIENCE"),
+    (13, "Tin học", True, "TECHNOLOGY"),
+    (14, "STEM", True, "TECHNOLOGY"),
+    (9, "Cambridge English", False, "HUMANITIES"),
 ]
 N_SUBJECTS = len(SUBJECTS)
 SUBJECT_IDS = np.array([s[0] for s in SUBJECTS])
 IS_MATH_SCIENCE = np.array([s[2] for s in SUBJECTS], dtype=bool)
+SUBJECT_CATEGORIES = np.array([s[3] for s in SUBJECTS])
 
 # --- Cấu hình bài kiểm tra theo MoET ---
 # Mỗi học kỳ có 4 cột điểm với hệ số khác nhau
@@ -166,10 +167,11 @@ def generate_students(
             attend[mask] = np.clip(RNG.normal(-0.5, 0.6, size=n_mask), -2.0, 2.0)
 
     # Sinh student codes
-    codes = _generate_student_codes(n_students)
+    codes, grades = _generate_student_codes(n_students)
 
     return {
         "codes": codes,
+        "grades": grades,
         "persona_idx": persona_idx,
         "profile_idx": profile_idx,
         "c_math": c_math,
@@ -191,10 +193,9 @@ def _generate_student_codes(n_students: int) -> NDArray[np.str_]:
     indices = np.arange(1, n_students + 1)
 
     codes = np.array([
-        f"HS{s}{g}{i:04d}"
-        for s, g, i in zip(schools, grades, indices)
+        f"HS{s}{g}{i:04d}" for s, g, i in zip(schools, grades, indices)
     ], dtype=str)
-    return codes
+    return codes, grades
 
 
 # ============================================================================
@@ -733,6 +734,8 @@ def compute_features_at_checkpoint(
                 "school_year_id": 2025,
                 "semester_index": semester_idx,
                 "evaluated_at_week": checkpoint_week,
+                "subject_category": SUBJECT_CATEGORIES[s_idx],
+                "grade_level": int(students["grades"][i]),
                 # Temporal (9)
                 "weighted_early_avg": round(float(weighted_early[i, s_idx]), 2),
                 "weighted_late_avg": round(float(weighted_late[i, s_idx]), 2),
@@ -910,6 +913,7 @@ def generate_training_dataset(n_students: int = 1028) -> pd.DataFrame:
     # Sắp xếp cột theo schema
     column_order = [
         "student_code", "subject_id", "school_year_id", "semester_index", "evaluated_at_week",
+        "subject_category", "grade_level",
         "weighted_early_avg", "weighted_late_avg", "score_slope", "score_volatility", "max_drop",
         "last_score", "max_coefficient_so_far", "high_weight_score_count", "last_high_weight_score",
         "lms_avg_score", "lms_recent_drop", "lms_submission_rate", "lms_recent_submission_rate", "lms_gradebook_gap",

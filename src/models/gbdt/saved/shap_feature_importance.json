@@ -4,170 +4,170 @@
   "top3_overall": [
     {
       "feature": "weighted_late_avg",
-      "mean_abs_shap": 0.7264884969909211
+      "mean_abs_shap": 0.7374770575321103
     },
     {
       "feature": "weighted_early_avg",
-      "mean_abs_shap": 0.5192975741213615
+      "mean_abs_shap": 0.47156719660493623
     },
     {
       "feature": "last_score",
-      "mean_abs_shap": 0.4496495071252306
+      "mean_abs_shap": 0.37588475656693127
     }
   ],
   "top3_per_class": {
     "LOW": [
       {
         "feature": "weighted_late_avg",
-        "mean_abs_shap": 1.142994979442239
+        "mean_abs_shap": 1.1847884043652108
       },
       {
         "feature": "weighted_early_avg",
-        "mean_abs_shap": 0.790694835271112
+        "mean_abs_shap": 0.7275039622848921
       },
       {
         "feature": "last_score",
-        "mean_abs_shap": 0.7149701896206481
+        "mean_abs_shap": 0.6032753701324213
       }
     ],
     "MODERATE": [
       {
         "feature": "weighted_late_avg",
-        "mean_abs_shap": 0.4831117531835787
+        "mean_abs_shap": 0.48898495556145505
       },
       {
         "feature": "last_score",
-        "mean_abs_shap": 0.3665148969560513
+        "mean_abs_shap": 0.30470277017996306
       },
       {
         "feature": "weighted_early_avg",
-        "mean_abs_shap": 0.29415777788865693
+        "mean_abs_shap": 0.3005202689587421
       }
     ],
     "HIGH": [
       {
         "feature": "weighted_late_avg",
-        "mean_abs_shap": 0.6639209853656007
+        "mean_abs_shap": 0.655203934486079
       },
       {
         "feature": "weighted_early_avg",
-        "mean_abs_shap": 0.43632761061667064
+        "mean_abs_shap": 0.43217566451708406
       },
       {
         "feature": "last_score",
-        "mean_abs_shap": 0.3360076191645104
+        "mean_abs_shap": 0.3130222064362598
       }
     ],
     "CRITICAL": [
       {
         "feature": "weighted_late_avg",
-        "mean_abs_shap": 0.6159262699722681
+        "mean_abs_shap": 0.6209309357156985
       },
       {
         "feature": "weighted_early_avg",
-        "mean_abs_shap": 0.5560100727090089
+        "mean_abs_shap": 0.42606889065902537
       },
       {
-        "feature": "last_score",
-        "mean_abs_shap": 0.381105322759714
+        "feature": "last_high_weight_score",
+        "mean_abs_shap": 0.3479005386931096
       }
     ]
   },
   "feature_importance": [
     {
       "feature": "weighted_late_avg",
-      "mean_abs_shap": 0.7264884969909211
+      "mean_abs_shap": 0.7374770575321103
     },
     {
       "feature": "weighted_early_avg",
-      "mean_abs_shap": 0.5192975741213615
+      "mean_abs_shap": 0.47156719660493623
     },
     {
       "feature": "last_score",
-      "mean_abs_shap": 0.4496495071252306
+      "mean_abs_shap": 0.37588475656693127
     },
     {
       "feature": "last_high_weight_score",
-      "mean_abs_shap": 0.31560004146235066
+      "mean_abs_shap": 0.34304204474410616
     },
     {
       "feature": "lms_avg_score",
-      "mean_abs_shap": 0.25995953737112165
+      "mean_abs_shap": 0.22834688640051412
     },
     {
       "feature": "total_demerit_points",
-      "mean_abs_shap": 0.1563348532146289
-    },
-    {
-      "feature": "daily_absence_rate",
-      "mean_abs_shap": 0.09287291567540269
+      "mean_abs_shap": 0.13913583086492787
     },
     {
       "feature": "unexcused_absent_rate",
-      "mean_abs_shap": 0.07242873929749878
+      "mean_abs_shap": 0.07867880922045428
+    },
+    {
+      "feature": "grade_level",
+      "mean_abs_shap": 0.07642128884389617
+    },
+    {
+      "feature": "daily_absence_rate",
+      "mean_abs_shap": 0.07222480758645039
     },
     {
       "feature": "score_volatility",
-      "mean_abs_shap": 0.05501057168060128
-    },
-    {
-      "feature": "excused_absent_days",
-      "mean_abs_shap": 0.054714387815115256
-    },
-    {
-      "feature": "total_late_count",
-      "mean_abs_shap": 0.05034097073432448
-    },
-    {
-      "feature": "high_weight_score_count",
-      "mean_abs_shap": 0.04588790120439516
-    },
-    {
-      "feature": "repeat_offense_count",
-      "mean_abs_shap": 0.043868651552063764
+      "mean_abs_shap": 0.06326624979772635
     },
     {
       "feature": "lms_submission_rate",
-      "mean_abs_shap": 0.042542101218051985
+      "mean_abs_shap": 0.04183900807154516
     },
     {
       "feature": "lms_gradebook_gap",
-      "mean_abs_shap": 0.03974683962292609
+      "mean_abs_shap": 0.03095755232346046
     },
     {
-      "feature": "score_slope",
-      "mean_abs_shap": 0.027440706323472723
+      "feature": "total_late_count",
+      "mean_abs_shap": 0.030043128071705887
+    },
+    {
+      "feature": "excused_absent_days",
+      "mean_abs_shap": 0.028544208641838802
+    },
+    {
+      "feature": "high_weight_score_count",
+      "mean_abs_shap": 0.027464062294298243
+    },
+    {
+      "feature": "repeat_offense_count",
+      "mean_abs_shap": 0.026200953795049317
     },
     {
       "feature": "max_coefficient_so_far",
-      "mean_abs_shap": 0.02698571391369638
+      "mean_abs_shap": 0.02575752734499695
+    },
+    {
+      "feature": "subject_category",
+      "mean_abs_shap": 0.024172172520071884
+    },
+    {
+      "feature": "score_slope",
+      "mean_abs_shap": 0.022216703512038766
     },
     {
       "feature": "severe_sanction_count",
-      "mean_abs_shap": 0.024792767817186902
+      "mean_abs_shap": 0.019798824537356756
     },
     {
       "feature": "max_drop",
-      "mean_abs_shap": 0.02100485396363051
+      "mean_abs_shap": 0.012103506681060949
     },
     {
       "feature": "lms_recent_submission_rate",
-      "mean_abs_shap": 0.01411418595184357
+      "mean_abs_shap": 0.007800231803511497
     },
     {
       "feature": "lms_recent_drop",
-      "mean_abs_shap": 0.005813846673444126
+      "mean_abs_shap": 0.003630906122251217
     },
     {
       "feature": "subject_id",
-      "mean_abs_shap": 0.0009124626875597093
-    },
-    {
-      "feature": "evaluated_at_week",
-      "mean_abs_shap": 0.0001584736874959428
-    },
-    {
-      "feature": "semester_index",
       "mean_abs_shap": 0.0
     }
   ]

@@ -52,16 +52,15 @@ METRICS_PATH = SAVED_DIR / "catboost_evaluation_report.json"
 SHAP_PATH = SAVED_DIR / "shap_feature_importance.json"
 
 RANDOM_SEED = 42
-N_TRIALS = 50
+N_TRIALS = 10
 EARLY_STOPPING_ROUNDS = 50
 
-# --- Danh sách 24 Feature Columns ---
+# --- Danh sách 22 Feature Columns ---
 FEATURE_COLS = [
-    # Time Anchor (1)
-    "evaluated_at_week",
-    # Categorical + Context (2)
+    # Categorical + Context (3)
     "subject_id",
-    "semester_index",
+    "subject_category",
+    "grade_level",
     # Temporal Scores (9)
     "weighted_early_avg",
     "weighted_late_avg",
@@ -89,7 +88,7 @@ FEATURE_COLS = [
     "severe_sanction_count",
 ]
 
-CAT_FEATURES = ["subject_id"]
+CAT_FEATURES = ["subject_id", "subject_category", "grade_level"]
 TARGET_COL = "actual_risk_level"
 GROUP_COL = "student_code"
 
@@ -147,8 +146,10 @@ def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Serie
         unknown = df.loc[y.isna(), TARGET_COL].unique()
         raise ValueError(f"Unknown risk levels in target: {unknown}")
 
-    # subject_id → string để CatBoost nhận diện categorical
-    X["subject_id"] = X["subject_id"].astype(str)
+    # Ép kiểu string cho categorical features
+    for col in CAT_FEATURES:
+        if col in X.columns:
+            X[col] = X[col].astype(str)
 
     logger.info(f"X shape: {X.shape}, y classes: {np.bincount(y)}")
     return X, y, groups

@@ -19,9 +19,8 @@ import sys
 import os
 
 # Ensure project root is on sys.path for direct script execution
-# (same pattern as data_mock/scripts/*.py)
 if __name__ == "__main__" and __package__ is None:
-    _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     if _root not in sys.path:
         sys.path.insert(0, _root)
 
@@ -48,6 +47,22 @@ DEFAULT_HASHED_PASSWORD = hash_password("password123")
 
 # Batch insert chunk size for performance
 BATCH_SIZE = 10000
+
+# Mốc thời gian thực tế của từng bài thi trong năm học 2025-2026.
+# Dùng cho created_at của fact_gradebooks / fact_gradebooks_moet để:
+#   - EWS temporal features (week_float = (created_at - start_date)/7) đúng ý nghĩa;
+#   - filter `created_at <= cutoff` + `is_locked = 1` hoạt động đúng nghiệp vụ
+#     (bài thi đã diễn ra và đã được giáo viên khóa trước thời điểm dự báo).
+#   exam 1 = Mid-term HK1 (2025-10-10 < cutoff week 8 HK1 = 2025-10-20)
+#   exam 2 = Final HK1    (2025-12-20)
+#   exam 3 = Mid-term HK2 (2026-03-10)
+#   exam 4 = Final HK2    (2026-05-20)
+EXAM_CREATED_AT = {
+    1: datetime(2025, 10, 10, 8, 0, 0),
+    2: datetime(2025, 12, 20, 8, 0, 0),
+    3: datetime(2026, 3, 10, 8, 0, 0),
+    4: datetime(2026, 5, 20, 8, 0, 0),
+}
 
 # --- PHÂN PHỐI HỌ VÀ TÊN VIỆT NAM (Thống kê dân cư thực tế) ---
 FAMILY_PROBABILITIES = {
@@ -133,6 +148,7 @@ def _batch_insert(session, sql, rows, batch_size=BATCH_SIZE):
     for i in range(0, len(rows), batch_size):
         chunk = rows[i:i + batch_size]
         session.execute(text(sql), chunk)
+    session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -227,42 +243,44 @@ def phase_dimensions(session):
         })
 
     # 3.3 Subjects (23 Canonical Standard Subjects)
+    # (id, code, name, name_en, subject_type, assessment_type, default_scale_name, coeff, category_flag, subject_category)
     subjects_info = [
-        (106, 'TOAN_6',   'Toán học Khối 6',            'Mathematics Grade 6',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (107, 'TOAN_7',   'Toán học Khối 7',            'Mathematics Grade 7',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (108, 'TOAN_8',   'Toán học Khối 8',            'Mathematics Grade 8',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (109, 'TOAN_9',   'Toán học Khối 9',            'Mathematics Grade 9',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (110, 'TOAN_10',  'Toán học Khối 10',           'Mathematics Grade 10', 'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (111, 'TOAN_11',  'Toán học Khối 11',           'Mathematics Grade 11', 'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (2,   'VAN',      'Ngữ văn',                    'Vietnamese Literature','CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (3,   'ANH',      'Tiếng Anh',                  'English MOET',         'CORE',      'SCORED', 'SCALE_10',  2, 'MOET'),
-        (4,   'LY',       'Vật lý',                     'Physics',              'CORE',      'SCORED', 'SCALE_10',  1, 'MOET'),
-        (5,   'HOA',      'Hóa học',                    'Chemistry',            'CORE',      'SCORED', 'SCALE_10',  1, 'MOET'),
-        (6,   'SINH',     'Sinh học',                   'Biology',              'CORE',      'SCORED', 'SCALE_10',  1, 'MOET'),
-        (7,   'KHTN',     'Khoa học tự nhiên',          'Natural Sciences',     'CORE',      'SCORED', 'SCALE_10',  1, 'MOET'),
-        (8,   'LS_DL',    'Lịch sử và Địa lý',          'History & Geography',  'CORE',      'SCORED', 'SCALE_10',  1, 'MOET'),
-        (9,   'CAM_ENG',  'Tiếng Anh Cambridge (ESL)',  'Cambridge ESL',        'CAMBRIDGE', 'SCORED', 'LETTER_AF', 2, 'NON_MOET'),
-        (10,  'CAM_MATH', 'Toán Tiếng Anh Cambridge',   'Cambridge Math',       'CAMBRIDGE', 'SCORED', 'LETTER_AF', 2, 'NON_MOET'),
-        (11,  'IB_MATH',  'Toán Quốc tế IB',            'IB Mathematics',       'IB',        'SCORED', 'SCALE_6',   2, 'NON_MOET'),
-        (12,  'IB_SCI',   'Khoa học Quốc tế IB',        'IB Science',           'IB',        'SCORED', 'SCALE_6',   1, 'NON_MOET'),
-        (13,  'TIN',      'Tin học & Lập trình',        'Computer Science',     'ELECTIVE',  'SCORED', 'SCALE_100', 0.5, 'NON_MOET'),
-        (14,  'ROBOTICS', 'STEM & Robotics',            'STEM Robotics',        'ELECTIVE',  'SCORED', 'SCALE_100', 0.5, 'NON_MOET'),
-        (15,  'GPA_HONOR','Môn Chuyên Honor Course',    'Honor Course',         'HONOR',     'SCORED', 'SCALE_4',   2, 'NON_MOET'),
-        (16,  'THE_DUC',  'Giáo dục thể chất',          'Physical Education',   'CORE',      'REMARK', 'PASS_FAIL', 0.5, 'REMARK'),
-        (17,  'MY_THUAT', 'Mỹ thuật',                   'Fine Arts',            'CORE',      'REMARK', 'PASS_FAIL', 0.5, 'REMARK'),
-        (18,  'AM_NHAC',  'Âm nhạc',                    'Music',                'CORE',      'REMARK', 'PASS_FAIL', 0.5, 'REMARK')
+        (106, 'TOAN_6',   'Toán học Khối 6',            'Mathematics Grade 6',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'MATH_SCIENCE'),
+        (107, 'TOAN_7',   'Toán học Khối 7',            'Mathematics Grade 7',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'MATH_SCIENCE'),
+        (108, 'TOAN_8',   'Toán học Khối 8',            'Mathematics Grade 8',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'MATH_SCIENCE'),
+        (109, 'TOAN_9',   'Toán học Khối 9',            'Mathematics Grade 9',  'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'MATH_SCIENCE'),
+        (110, 'TOAN_10',  'Toán học Khối 10',           'Mathematics Grade 10', 'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'MATH_SCIENCE'),
+        (111, 'TOAN_11',  'Toán học Khối 11',           'Mathematics Grade 11', 'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'MATH_SCIENCE'),
+        (2,   'VAN',      'Ngữ văn',                    'Vietnamese Literature','CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'HUMANITIES'),
+        (3,   'ANH',      'Tiếng Anh',                  'English MOET',         'CORE',      'SCORED', 'SCALE_10',  2, 'MOET',     'HUMANITIES'),
+        (4,   'LY',       'Vật lý',                     'Physics',              'CORE',      'SCORED', 'SCALE_10',  1, 'MOET',     'MATH_SCIENCE'),
+        (5,   'HOA',      'Hóa học',                    'Chemistry',            'CORE',      'SCORED', 'SCALE_10',  1, 'MOET',     'MATH_SCIENCE'),
+        (6,   'SINH',     'Sinh học',                   'Biology',              'CORE',      'SCORED', 'SCALE_10',  1, 'MOET',     'MATH_SCIENCE'),
+        (7,   'KHTN',     'Khoa học tự nhiên',          'Natural Sciences',     'CORE',      'SCORED', 'SCALE_10',  1, 'MOET',     'MATH_SCIENCE'),
+        (8,   'LS_DL',    'Lịch sử và Địa lý',          'History & Geography',  'CORE',      'SCORED', 'SCALE_10',  1, 'MOET',     'HUMANITIES'),
+        (9,   'CAM_ENG',  'Tiếng Anh Cambridge (ESL)',  'Cambridge ESL',        'CAMBRIDGE', 'SCORED', 'LETTER_AF', 2, 'NON_MOET', 'HUMANITIES'),
+        (10,  'CAM_MATH', 'Toán Tiếng Anh Cambridge',   'Cambridge Math',       'CAMBRIDGE', 'SCORED', 'LETTER_AF', 2, 'NON_MOET', 'MATH_SCIENCE'),
+        (11,  'IB_MATH',  'Toán Quốc tế IB',            'IB Mathematics',       'IB',        'SCORED', 'SCALE_6',   2, 'NON_MOET', 'MATH_SCIENCE'),
+        (12,  'IB_SCI',   'Khoa học Quốc tế IB',        'IB Science',           'IB',        'SCORED', 'SCALE_6',   1, 'NON_MOET', 'MATH_SCIENCE'),
+        (13,  'TIN',      'Tin học & Lập trình',        'Computer Science',     'ELECTIVE',  'SCORED', 'SCALE_100', 0.5, 'NON_MOET', 'TECHNOLOGY'),
+        (14,  'ROBOTICS', 'STEM & Robotics',            'STEM Robotics',        'ELECTIVE',  'SCORED', 'SCALE_100', 0.5, 'NON_MOET', 'TECHNOLOGY'),
+        (15,  'GPA_HONOR','Môn Chuyên Honor Course',    'Honor Course',         'HONOR',     'SCORED', 'SCALE_4',   2, 'NON_MOET', 'MATH_SCIENCE'),
+        (16,  'THE_DUC',  'Giáo dục thể chất',          'Physical Education',   'CORE',      'REMARK', 'PASS_FAIL', 0.5, 'REMARK',   'ARTS_PE'),
+        (17,  'MY_THUAT', 'Mỹ thuật',                   'Fine Arts',            'CORE',      'REMARK', 'PASS_FAIL', 0.5, 'REMARK',   'ARTS_PE'),
+        (18,  'AM_NHAC',  'Âm nhạc',                    'Music',                'CORE',      'REMARK', 'PASS_FAIL', 0.5, 'REMARK',   'ARTS_PE')
     ]
     for sub in subjects_info:
         session.execute(text("""
-            INSERT INTO s360.dim_subject (id, code, name, assessment_type, default_scale_name)
-            VALUES (:id, :code, :name, :atype, :scale)
+            INSERT INTO s360.dim_subject (id, code, name, subject_category, assessment_type, default_scale_name)
+            VALUES (:id, :code, :name, :cat, :atype, :scale)
             ON CONFLICT (id) DO UPDATE SET
                 code = EXCLUDED.code, name = EXCLUDED.name,
+                subject_category = EXCLUDED.subject_category,
                 assessment_type = EXCLUDED.assessment_type,
                 default_scale_name = EXCLUDED.default_scale_name;
         """), {
             "id": sub[0], "code": sub[1], "name": sub[2],
-            "atype": sub[5], "scale": sub[6]
+            "cat": sub[9], "atype": sub[5], "scale": sub[6]
         })
 
     # 3.4 Homeroom Classes (27 Classes across 2 Schools)
@@ -639,14 +657,16 @@ def phase_academic(session, student_meta_map, all_assignments):
                     "id": gradebook_id, "sid": sid, "syid": syid,
                     "sem": sem_idx, "scode": scode, "cid": cid,
                     "subid": sub_id, "eid": exam_id,
-                    "score": final_score, "pf": pf_status
+                    "score": final_score, "pf": pf_status,
+                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
                 })
 
                 gradebook_moet_batch.append({
                     "id": gradebook_id, "sid": sid, "syid": syid,
                     "sem": sem_idx, "gid": gid, "cid": cid, "scode": scode,
                     "subid": sub_id, "type_item_id": type_item_id,
-                    "score": final_score
+                    "score": final_score,
+                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
                 })
 
                 gradebook_id += 1
@@ -678,7 +698,8 @@ def phase_academic(session, student_meta_map, all_assignments):
                     "id": gradebook_id, "sid": sid, "syid": syid,
                     "sem": sem_idx, "scode": scode, "cid": cid,
                     "subid": sub_id, "eid": exam_id_rem,
-                    "score": None, "pf": pf_status
+                    "score": None, "pf": pf_status,
+                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id_rem]
                 })
 
                 cmt_text = remark_comments[sub_id][0] if pf_status == 'DAT' else remark_comments[sub_id][1]
@@ -749,16 +770,16 @@ def phase_academic(session, student_meta_map, all_assignments):
     print(f"   Batch inserting {len(gradebook_batch)} gradebook records...")
     _batch_insert(session, """
         INSERT INTO s360.fact_gradebooks
-        (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status)
-        VALUES (:id, :sid, :syid, :sem, :scode, :cid, :subid, :eid, :score, CAST(:pf AS public.pass_fail_enum))
+        (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status, is_locked, created_at)
+        VALUES (:id, :sid, :syid, :sem, :scode, :cid, :subid, :eid, :score, CAST(:pf AS public.pass_fail_enum), :is_locked, :created_at)
         ON CONFLICT (id) DO NOTHING;
     """, gradebook_batch)
 
     print(f"   Batch inserting {len(gradebook_moet_batch)} gradebook_moet records...")
     _batch_insert(session, """
         INSERT INTO s360.fact_gradebooks_moet
-        (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade)
-        VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score)
+        (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade, is_locked, created_at)
+        VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score, :is_locked, :created_at)
         ON CONFLICT (id) DO NOTHING;
     """, gradebook_moet_batch)
 
@@ -1304,13 +1325,15 @@ def phase_benchmark(session, all_assignments, all_school_dates):
                     "id": gid_counter, "sid": sid, "syid": syid,
                     "sem": sem_idx, "scode": scode, "cid": cid,
                     "subid": sub_id, "eid": exam_id,
-                    "score": score_val, "pf": pf_status
+                    "score": score_val, "pf": pf_status,
+                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
                 })
                 gradebook_moet_batch.append({
                     "id": gid_counter, "sid": sid, "syid": syid,
                     "sem": sem_idx, "gid": gid_v, "cid": cid, "scode": scode,
                     "subid": sub_id, "type_item_id": type_item_id,
-                    "score": score_val
+                    "score": score_val,
+                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
                 })
                 gid_counter += 1
 
@@ -1387,16 +1410,16 @@ def phase_benchmark(session, all_assignments, all_school_dates):
     if gradebook_batch:
         _batch_insert(session, """
             INSERT INTO s360.fact_gradebooks
-            (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status)
-            VALUES (:id, :sid, :syid, :sem, :scode, :cid, :subid, :eid, :score, CAST(:pf AS public.pass_fail_enum))
+            (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status, is_locked, created_at)
+            VALUES (:id, :sid, :syid, :sem, :scode, :cid, :subid, :eid, :score, CAST(:pf AS public.pass_fail_enum), :is_locked, :created_at)
             ON CONFLICT (id) DO NOTHING;
         """, gradebook_batch)
 
     if gradebook_moet_batch:
         _batch_insert(session, """
             INSERT INTO s360.fact_gradebooks_moet
-            (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade)
-            VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score)
+            (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade, is_locked, created_at)
+            VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score, :is_locked, :created_at)
             ON CONFLICT (id) DO NOTHING;
         """, gradebook_moet_batch)
 
@@ -1471,12 +1494,15 @@ def generate_full_system_mock_data(phase="all"):
     try:
         if phase in ("all", "truncate"):
             phase_truncate(session)
+            session.commit()
 
         if phase in ("all", "users"):
             phase_users(session)
+            session.commit()
 
         if phase in ("all", "dimensions"):
             classes_data, all_assignments = phase_dimensions(session)
+            session.commit()
 
         if phase in ("all", "students"):
             # classes_data cần từ dimensions phase
@@ -1485,6 +1511,7 @@ def generate_full_system_mock_data(phase="all"):
                     "SELECT id, so_school_id, school_year_id, grade_id, code, fullname FROM s360.dim_homeroom_class ORDER BY id"
                 )).fetchall()
             student_meta_map = phase_students(session, classes_data)
+            session.commit()
 
         if phase in ("all", "academic"):
             if "all_assignments" not in dir():
@@ -1502,16 +1529,19 @@ def generate_full_system_mock_data(phase="all"):
             if "student_meta_map" not in dir():
                 student_meta_map = _build_student_meta_from_db(session)
             phase_academic(session, student_meta_map, all_assignments)
+            session.commit()
 
         if phase in ("all", "attendance_behavior"):
             if "student_meta_map" not in dir():
                 student_meta_map = _build_student_meta_from_db(session)
             all_school_dates = phase_attendance_behavior(session, student_meta_map)
+            session.commit()
 
         if phase in ("all", "aggregated_attendance"):
             if "student_meta_map" not in dir():
                 student_meta_map = _build_student_meta_from_db(session)
             phase_aggregated_attendance(session, student_meta_map)
+            session.commit()
 
         if phase in ("all", "benchmark"):
             if "all_assignments" not in dir():
@@ -1529,6 +1559,7 @@ def generate_full_system_mock_data(phase="all"):
             if "all_school_dates" not in dir():
                 all_school_dates = _get_all_school_dates()
             phase_benchmark(session, all_assignments, all_school_dates)
+            session.commit()
 
         if phase in ("all", "metadata"):
             phase_metadata()
