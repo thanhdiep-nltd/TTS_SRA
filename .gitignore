@@ -42,6 +42,7 @@ data/
 *.sqlite3
 accounts_info.md
 temp/
+catboost_info/
 
 # Eval
 eval/eval_text_to_sql/results/
