@@ -11,7 +11,7 @@
 - Bảng: `s360.fact_student_subject_risk_predictions`
 - Khóa duy nhất: `(student_code, subject_id, school_year_id, semester_index, evaluated_at_week)`
 - Cột kết quả: `risk_score` [26.41, 99.80], `risk_level` (enum `LOW | MODERATE | HIGH | CRITICAL`), `risk_probability`, `evaluated_at_date`
-- Cột feature (24): `weighted_early_avg`, `weighted_late_avg`, `score_slope`, `score_volatility`, `max_drop`, `last_score`, `max_coefficient_so_far`, `high_weight_score_count`, `last_high_weight_score`, 5 LMS, 4 Attendance, 3 Behavior
+- Cột feature (24): 3 categorical/context (`subject_id`, `subject_category`, `grade_level`) + 21 numeric (9 Temporal: `weighted_early_avg`, `weighted_late_avg`, `score_slope`, `score_volatility`, `max_drop`, `last_score`, `max_coefficient_so_far`, `high_weight_score_count`, `last_high_weight_score`; 5 LMS; 4 Attendance; 3 Behavior).
 - **KHÔNG lưu** tên HS / lớp / môn → mọi truy vấn hiển thị phải JOIN các bảng dim bên dưới.
 - **KHÔNG lưu** `shap_drivers` (bị lọc khi UPSERT) → UI không hiển thị SHAP, chỉ dùng feature value.
 
@@ -25,7 +25,8 @@
 ### 1.3 Dữ liệu thực tế (đã verify trong DB)
 - Năm 2025, học kỳ 1: có dự báo ở **tuần 8** và **tuần 14** — mỗi tuần **7,216** dự báo (SCORED only).
 - Phân bố risk_level tuần 8: CRITICAL 148 / HIGH 3,007 / MODERATE 3,328 / LOW 733.
-- Cảnh báo mock-data: `weighted_late_avg` + `score_slope` NaN 100% (mock tạo mọi điểm cùng `created_at`) → UI phải xử lý null (hiện "—").
+- Sau khi fix mock (`created_at` theo mốc thi) + loại môn PASS_FAIL, `weighted_late_avg` + `score_slope` **đã có dữ liệu đầy đủ** (không còn 100% NaN). UI vẫn xử lý null → hiện "—" để an toàn.
+- **Lưu ý feature vector**: mã nguồn đang định nghĩa **24 features** (3 categorical + 9 temporal + 5 LMS + 4 attendance + 3 behavior). Số "22" trong comment cũ (`feature_extractor.py:25`, `train_catboost_ews.py:58`) và `plan_catboost_ews_model.md` §2 là **STALE** — mô hình `.cbm` đã retrain với 24 features, bảng persisted lưu đủ 24 cột feature. `evaluated_at_week`/`semester_index` là **khóa metadata**, KHÔNG nằm trong vector (đúng ý team), còn `subject_category`/`grade_level` ĐÃ nằm trong vector (3 categorical). Ý tưởng của team đúng nhưng con số chuẩn là **24**.
 
 ---
 
@@ -93,6 +94,7 @@ class EwsPredictionRow(BaseModel):
     risk_score: float
     risk_level: str
     risk_probability: float | None
+    risk_factors: list[str] = []  # badges: SLOPE_DOWN | LAST_SCORE_LOW | ABSENTEEISM
     last_score: float | None
     weighted_early_avg: float | None
     weighted_late_avg: float | None
@@ -134,7 +136,7 @@ class EwsPagedResult(BaseModel):
 ### 3.2 Router mới `src/api/v1/ews.py`
 - `router = APIRouter(prefix="/ews", tags=["Early Warning System"])`
 - Mọi endpoint dùng `CurrentUser` (xác thực), thao tác bằng `text()` SQL như `analytics_v2.py`.
-- **RBAC mặc định đề xuất**: tất cả role đã đăng nhập đều xem được (đồng nhất với tab Cảnh báo quy tắc hiện tại). Tùy chọn khóa ADMIN/PRINCIPAL cho chi tiết CRITICAL — chờ user quyết (mục 6).
+- **RBAC (đã chốt mục 6)**: tất cả role đã đăng nhập đều xem được toàn trường (đồng nhất với tab Cảnh báo quy tắc hiện tại). Không khóa chi tiết CRITICAL theo role.
 - **Không lọc theo `user.school_id`**: s360 hiện là single-school (mock 1 trường, `so_school_id` không map trực tiếp với `school_id` UUID của app). Ghi chú rõ trong code để mở rộng sau.
 
 #### Endpoint 1 — `GET /ews/meta`
@@ -178,15 +180,27 @@ ORDER BY avg_risk DESC LIMIT 10;
 #### Endpoint 3 — `GET /ews/predictions` (có phân trang + lọc)
 Tham số: `school_year_id`, `semester_index`, `evaluated_at_week` (bắt buộc); `risk_level` (tùy chọn), `subject_id` (tùy chọn), `grade_id` (tùy chọn), `class_name` (tùy chọn), `min_risk_score` (tùy chọn — mặc định FE dùng để lọc HIGH+CRITICAL), `limit` (mặc định 50), `offset` (mặc định 0).
 ```sql
+WITH hcs AS (
+    -- DISTINCT ON: mỗi học sinh chỉ lấy 1 lớp (tránh trùng khi HS chuyển lớp trong năm)
+    SELECT DISTINCT ON (student_code)
+        student_code, student_name, class_name, grade_id, grade_name
+    FROM s360.dim_homeroom_class_student
+    WHERE school_year_id = :school_year_id
+    ORDER BY student_code, is_active DESC, homeroom_class_id
+)
 SELECT rp.student_code, hcs.student_name, hcs.class_name, hcs.grade_name,
        rp.subject_id, sub.name AS subject_name, sub.code AS subject_code,
        sub.subject_category,
        rp.evaluated_at_week, rp.risk_score, rp.risk_level, rp.risk_probability,
        rp.last_score, rp.weighted_early_avg, rp.weighted_late_avg,
-       rp.score_slope, rp.score_volatility, rp.max_drop, rp.evaluated_at_date
+       rp.score_slope, rp.score_volatility, rp.max_drop, rp.evaluated_at_date,
+       ARRAY_REMOVE(ARRAY[
+           CASE WHEN rp.score_slope < -0.5 THEN 'SLOPE_DOWN' END,
+           CASE WHEN rp.last_score < 5.0 THEN 'LAST_SCORE_LOW' END,
+           CASE WHEN rp.daily_absence_rate > 0.1 THEN 'ABSENTEEISM' END
+       ], NULL) AS risk_factors
 FROM s360.fact_student_subject_risk_predictions rp
-LEFT JOIN s360.dim_homeroom_class_student hcs
-       ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+LEFT JOIN hcs ON rp.student_code = hcs.student_code
 LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
 WHERE rp.school_year_id = :school_year_id
   AND rp.semester_index = :semester_index
@@ -198,6 +212,8 @@ WHERE rp.school_year_id = :school_year_id
   AND (:min_risk_score IS NULL OR rp.risk_score >= :min_risk_score)
 ORDER BY rp.risk_score DESC
 LIMIT :limit OFFSET :offset;
+```
+> `total` dùng COUNT(*) với cùng CTE `hcs` + cùng WHERE (kèm điều kiện lọc) để khớp phân trang.
 ```
 Endpoint trả `{items, total, limit, offset}`; `total` tính bằng `COUNT(*)` với cùng WHERE.
 
@@ -248,7 +264,8 @@ export interface EwsPagedResult { items: EwsPredictionRow[]; total: number; limi
   - **Filter bar**: Năm học, Học kỳ (1/2), Tuần (dropdown từ meta), Mức rủi ro (ALL + 4 mức), Môn, Khối, Lớp.
   - **KPI cards**: Tổng dự báo, HS bị cảnh báo (HIGH+CRITICAL), Tỷ lệ CRITICAL, Điểm rủi ro TB.
   - **Chart phân bố rủi ro**: BarChart (recharts) theo 4 mức, màu từ `EWS_RISK_COLORS`.
-  - **Bảng top risk**: Mã HS, Họ tên, Lớp, Môn, Risk score, Risk level (badge màu), Xác suất, Điểm gần nhất (`last_score`), ĐTB sớm (`weighted_early_avg`), Độ dốc (`score_slope`) — null hiện "—".
+  - **Bảng top risk**: Mã HS, Họ tên, Lớp, Môn, Risk score, Risk level (badge màu), Xác suất, **Nguyên nhân rủi ro (badges)**, Điểm gần nhất (`last_score`), ĐTB sớm (`weighted_early_avg`), Độ dốc (`score_slope`) — null hiện "—".
+  - **Badge nguyên nhân** (từ `risk_factors`): 📉 `SLOPE_DOWN` → "Tụt dốc điểm" (score_slope < -0.5); ⚠️ `LAST_SCORE_LOW` → "Bài thi mới nhất rớt" (last_score < 5.0); 🚫 `ABSENTEEISM` → "Vắng học nhiều" (daily_absence_rate > 0.1). Hiển thị dạng chip màu ngay cạnh cột Môn.
   - **Phân trang** (Prev/Next + tổng) theo `total/limit/offset`.
 
 ### 4.3 Tích hợp vào `frontend/src/app/(app)/dashboard/page.tsx`
@@ -280,6 +297,9 @@ export interface EwsPagedResult { items: EwsPredictionRow[]; total: number; limi
    - Ghi chú tương lai: RBAC chi tiết theo phân công GV—lớp—môn (`teacher_assignments` + bridge app↔s360 qua `users.teacher_code`/`subject_id` + `dim_homeroom_class.teacher_code`) để giai đoạn sau; mock data hiện chưa có phân công nên chưa triển khai.
 3. **Nội dung bảng**: ✅ hiển thị cả feature value (`last_score`, `weighted_early_avg`, `score_slope`) — SHAP drivers không persist nên không hiển thị.
 4. **Mặc định tuần hiển thị**: ✅ tuần mới nhất có dữ liệu (hiện là tuần 14).
+5. **Hiển thị nguyên nhân rủi ro (badges)**: ✅ tính trực tiếp trong SQL từ feature đã persist (KHÔNG cần SHAP) — `SLOPE_DOWN`, `LAST_SCORE_LOW`, `ABSENTEEISM` theo ngưỡng team product. Thêm `risk_factors: list[str]` vào `EwsPredictionRow`.
+6. **JOIN lớp chống trùng**: ✅ dùng `DISTINCT ON (student_code)` cho `dim_homeroom_class_student` (HS chuyển lớp) — tái dùng pattern có sẵn trong `feature_extractor.py`.
+7. **Số lượng feature**: ✅ mã nguồn = **24** features (3 categorical + 21 numeric); "22" chỉ còn ở comment cũ → dọn comment lệch khi code. Không ảnh hưởng phần hiển thị.
 
 ---
 
