@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth";
 import { LoadingState } from "@/components/Loading";
 import SearchableSelect from "@/components/SearchableSelect";
 import ExamAnalysisDrawer from "@/components/dashboard/ExamAnalysisDrawer";
+import EwsWarningTab from "@/components/dashboard/EwsWarningTab";
 import { useTheme } from "@/lib/theme";
 import { CONDUCT_LABELS, SCORE_CATEGORY_LABELS } from "@/lib/types";
 import type {
@@ -25,13 +26,14 @@ import type {
   AcademicDivergenceRow, GradeInflationRow, LearningMomentumRow, StudentArchetypeRow,
 } from "@/lib/types";
 
-type TabKey = "overview" | "drilldown" | "trend" | "warning" | "validity" | "edm";
+type TabKey = "overview" | "drilldown" | "trend" | "warning" | "ews" | "validity" | "edm";
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "overview", label: "Tổng quan", icon: LayoutGrid },
   { key: "drilldown", label: "Phân tích chuyên môn", icon: BarChart3 },
   { key: "trend", label: "Xu hướng & Tiến bộ", icon: LineIcon },
   { key: "warning", label: "Cảnh báo sớm", icon: ShieldAlert },
+  { key: "ews", label: "Cảnh báo EWS", icon: ShieldAlert },
   { key: "validity", label: "Tin cậy điểm số", icon: ShieldCheck },
   { key: "edm", label: "Phân Tích Chuyên Sâu EDM", icon: Layers },
 ];
@@ -406,6 +408,9 @@ export default function DashboardV2Page() {
           <AlertTriangle className="w-5 h-5" />{error}
         </div>
       )}
+
+      {/* ===== TAB: EWS WARNING ===== */}
+      {tab === "ews" && <EwsWarningTab />}
 
       {/* ===== TAB 1: EXECUTIVE OVERVIEW ===== */}
       {tab === "overview" && kpi && (

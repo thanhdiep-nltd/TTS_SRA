@@ -55,7 +55,7 @@ RANDOM_SEED = 42
 N_TRIALS = 10
 EARLY_STOPPING_ROUNDS = 50
 
-# --- Danh sách 22 Feature Columns ---
+# --- Danh sách 24 Feature Columns (bỏ lms_bucket — PIVOT M2) ---
 FEATURE_COLS = [
     # Categorical + Context (3)
     "subject_id",

@@ -979,6 +979,7 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần học (5, 8, 11, 14, 16)
     evaluated_at_date       DATE NOT NULL DEFAULT CURRENT_DATE,   -- Ngày chạy dự báo thực tế (Audit Trail)
     target_scope            VARCHAR(20) DEFAULT 'SEMESTER',       -- 'SEMESTER' (Học kỳ) hoặc 'FULL_YEAR' (Cả năm)
+    join_date               DATE,                                 -- Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT
 
     -- === TEMPORAL SCORES (coefficient-weighted avg + OLS slope) — 9 Features ===
     weighted_early_avg      DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa đầu
@@ -1017,6 +1018,10 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
 
     CONSTRAINT uq_fssrp_checkpoint UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week)
 );
+
+-- M2-PIVOT: migration cho DB đã tồn tại — thêm cột join_date (idempotent)
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    ADD COLUMN IF NOT EXISTS join_date DATE;
 
 CREATE INDEX IF NOT EXISTS idx_fssrp_v3_student_subject
     ON s360.fact_student_subject_risk_predictions(student_code, subject_id);

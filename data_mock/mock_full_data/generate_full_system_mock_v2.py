@@ -62,7 +62,101 @@ EXAM_CREATED_AT = {
     2: datetime(2025, 12, 20, 8, 0, 0),
     3: datetime(2026, 3, 10, 8, 0, 0),
     4: datetime(2026, 5, 20, 8, 0, 0),
+    5: datetime(2025, 9, 12, 8, 0, 0),    # TX1 HK1
+    6: datetime(2025, 9, 26, 8, 0, 0),    # TX2 HK1
+    7: datetime(2025, 10, 3, 8, 0, 0),    # TX3 HK1
+    8: datetime(2025, 10, 17, 8, 0, 0),   # TX4 HK1 (trước mọi cutoff week 8)
+    9: datetime(2026, 1, 30, 8, 0, 0),    # TX1 HK2
+    10: datetime(2026, 2, 13, 8, 0, 0),   # TX2 HK2
+    11: datetime(2026, 2, 27, 8, 0, 0),   # TX3 HK2
+    12: datetime(2026, 3, 13, 8, 0, 0),   # TX4 HK2
+    13: datetime(2025, 9, 19, 8, 0, 0),   # Module 1 HK1
+    14: datetime(2025, 10, 3, 8, 0, 0),   # Module 2 HK1
+    15: datetime(2025, 10, 13, 8, 0, 0),  # Module 3 HK1
+    16: datetime(2025, 10, 17, 8, 0, 0),  # Module 4 HK1 (trước mọi cutoff week 8)
+    17: datetime(2026, 1, 30, 8, 0, 0),   # Module 1 HK2
+    18: datetime(2026, 2, 13, 8, 0, 0),   # Module 2 HK2
+    19: datetime(2026, 2, 27, 8, 0, 0),   # Module 3 HK2
+    20: datetime(2026, 3, 13, 8, 0, 0),   # Module 4 HK2
 }
+
+# --- Phân loại môn + mốc đánh giá bổ sung (fix EWS temporal degeneracy) ---
+# Môn quốc gia (MOET): thêm 4 điểm thường xuyên TX1-TX4 (hệ số 1) mỗi học kỳ.
+# Môn quốc tế (Cambridge/IB/Tin/STEM/Honor): thêm 4 mốc đánh giá module theo thang điểm riêng
+#   (CAM: chữ cái A-F; IB: 1-7; Tin/STEM: 0-100; Honor: 0-4) rồi chuẩn hóa về 0-10 cho EWS.
+NATIONAL_SUBJECT_IDS = {2, 3, 4, 5, 6, 7, 8, 106, 107, 108, 109, 110, 111}
+INTERNATIONAL_SUBJECT_IDS = {9, 10, 11, 12, 13, 14, 15}
+
+# so_exam_id (fact_gradebooks) == gradebook_type_item_id (fact_gradebooks_moet) cho các mốc bổ sung
+TX_EXAM_IDS = {1: [5, 6, 7, 8], 2: [9, 10, 11, 12]}
+MODULE_EXAM_IDS = {1: [13, 14, 15, 16], 2: [17, 18, 19, 20]}
+
+# Thang điểm gốc của từng môn quốc tế (subject_id -> (scale_name, max_grade))
+SUBJECT_SCALE = {
+    9: ("LETTER_AF", 10),
+    10: ("LETTER_AF", 10),
+    11: ("SCALE_6", 7),
+    12: ("SCALE_6", 7),
+    13: ("SCALE_100", 100),
+    14: ("SCALE_100", 100),
+    15: ("SCALE_4", 4),
+}
+
+# Giá trị 0-10 chuẩn hóa tương ứng mỗi chữ cái Cambridge (A-F)
+LETTER_TO_10 = {
+    "A+": 9.5, "A": 9.0, "B+": 8.5, "B": 8.0,
+    "C+": 7.5, "C": 7.0, "D+": 6.5, "D": 6.0,
+    "E": 4.5, "F": 2.5,
+}
+
+
+def _tx_score(base, idx, prof, noise=0.5):
+    """Điểm thường xuyên (môn quốc gia): quỹ đạo quanh base theo profile.
+    idx bắt đầu từ 0; profile nguy cơ giảm dần -> slope âm cho EWS temporal features."""
+    if prof in ("G5", "G6", "G7", "G8", "G9"):
+        trend = -0.7 * idx
+    elif prof in ("G1", "G3"):
+        trend = 0.3 * idx
+    else:
+        trend = -0.1 * idx
+    return round(float(np.clip(base + trend + random.uniform(-noise, noise), 0.0, 10.0)), 1)
+
+
+def _module_score(sub_id, base, idx, prof, noise=0.7):
+    """Điểm đánh giá module (môn quốc tế) theo thang điểm riêng.
+    Trả về (native_value, score_10):
+      - native_value: giá trị gốc (chữ cái / 1-7 / 0-100 / 0-4) để lưu tham chiếu
+      - score_10: giá trị đã chuẩn hóa 0-10 để feed EWS (final_grade)
+    """
+    scale, _ = SUBJECT_SCALE[sub_id]
+    if prof in ("G5", "G6", "G7", "G8", "G9"):
+        trend = -0.7 * idx
+    elif prof in ("G1", "G3"):
+        trend = 0.3 * idx
+    else:
+        trend = 0.0
+    raw = float(np.clip(base + trend + random.uniform(-noise, noise), 0.0, 10.0))
+
+    if scale == "LETTER_AF":
+        # Băng điểm đặt trùng với giá trị 0-10 chuẩn hóa của từng chữ cái
+        bands = [
+            (9.25, "A+"), (8.75, "A"), (8.25, "B+"), (7.75, "B"),
+            (7.25, "C+"), (6.75, "C"), (6.25, "D+"), (5.75, "D"),
+            (3.5, "E"), (0.0, "F"),
+        ]
+        for th, let in bands:
+            if raw >= th:
+                return let, round(float(LETTER_TO_10[let]), 1)
+        return "F", round(float(LETTER_TO_10["F"]), 1)
+    if scale == "SCALE_6":
+        native = round(float(np.clip(1 + raw / 10.0 * 6.0, 1, 7)), 0)
+        return native, round(float(np.clip((native - 1) / 6.0 * 10.0, 0, 10)), 1)
+    if scale == "SCALE_100":
+        native = round(float(np.clip(raw * 10.0, 0, 100)), 0)
+        return native, round(float(np.clip(native / 10.0, 0, 10)), 1)
+    # SCALE_4 (Honor)
+    native = round(float(np.clip(raw / 10.0 * 4.0, 0, 4)), 1)
+    return native, round(float(np.clip(native / 4.0 * 10.0, 0, 10)), 1)
 
 # --- PHÂN PHỐI HỌ VÀ TÊN VIỆT NAM (Thống kê dân cư thực tế) ---
 FAMILY_PROBABILITIES = {
@@ -303,11 +397,29 @@ def phase_dimensions(session):
         """), {"id": cl[0], "sid": cl[1], "syid": cl[2], "gid": cl[3], "code": cl[4], "name": cl[5]})
 
     # 3.5 Exams Catalog (dim_exam & dim_exam_moet)
+    # 1-4: định kỳ (Mid/Final HK1/HK2); 5-12: TX môn quốc gia (hệ số 1);
+    # 13-20: module/đánh giá định kỳ môn quốc tế (hệ số 1).
     exams = [
         (1, 2025, 5, 7, "EXAM_MID_S1", "Kiểm tra Giữa Học kỳ 1", 1.0, 1),
         (2, 2025, 5, 7, "EXAM_FINAL_S1", "Kiểm tra Cuối Học kỳ 1", 2.0, 1),
         (3, 2025, 5, 7, "EXAM_MID_S2", "Kiểm tra Giữa Học kỳ 2", 1.0, 2),
         (4, 2025, 5, 7, "EXAM_FINAL_S2", "Kiểm tra Cuối Học kỳ 2", 2.0, 2),
+        (5, 2025, 5, 7, "EXAM_TX1_S1", "Điểm thường xuyên 1 - Học kỳ 1", 1.0, 1),
+        (6, 2025, 5, 7, "EXAM_TX2_S1", "Điểm thường xuyên 2 - Học kỳ 1", 1.0, 1),
+        (7, 2025, 5, 7, "EXAM_TX3_S1", "Điểm thường xuyên 3 - Học kỳ 1", 1.0, 1),
+        (8, 2025, 5, 7, "EXAM_TX4_S1", "Điểm thường xuyên 4 - Học kỳ 1", 1.0, 1),
+        (9, 2025, 5, 7, "EXAM_TX1_S2", "Điểm thường xuyên 1 - Học kỳ 2", 1.0, 2),
+        (10, 2025, 5, 7, "EXAM_TX2_S2", "Điểm thường xuyên 2 - Học kỳ 2", 1.0, 2),
+        (11, 2025, 5, 7, "EXAM_TX3_S2", "Điểm thường xuyên 3 - Học kỳ 2", 1.0, 2),
+        (12, 2025, 5, 7, "EXAM_TX4_S2", "Điểm thường xuyên 4 - Học kỳ 2", 1.0, 2),
+        (13, 2025, 5, 7, "EXAM_MOD1_S1", "Module 1 - Học kỳ 1", 1.0, 1),
+        (14, 2025, 5, 7, "EXAM_MOD2_S1", "Module 2 - Học kỳ 1", 1.0, 1),
+        (15, 2025, 5, 7, "EXAM_MOD3_S1", "Module 3 - Học kỳ 1", 1.0, 1),
+        (16, 2025, 5, 7, "EXAM_MOD4_S1", "Module 4 - Học kỳ 1", 1.0, 1),
+        (17, 2025, 5, 7, "EXAM_MOD1_S2", "Module 1 - Học kỳ 2", 1.0, 2),
+        (18, 2025, 5, 7, "EXAM_MOD2_S2", "Module 2 - Học kỳ 2", 1.0, 2),
+        (19, 2025, 5, 7, "EXAM_MOD3_S2", "Module 3 - Học kỳ 2", 1.0, 2),
+        (20, 2025, 5, 7, "EXAM_MOD4_S2", "Module 4 - Học kỳ 2", 1.0, 2),
     ]
     for ex in exams:
         session.execute(text("""
@@ -463,18 +575,33 @@ def phase_students(session, classes_data):
             c_lang = round(float(np.random.uniform(-1.5, 1.5)), 4)
             eff = round(float(np.random.uniform(-2.0, 2.0)), 4)
 
+            # join_date: đa số học sinh học từ đầu năm; một nhóm nhỏ "chuyển trường"
+            # tới giữa kỳ → cửa sổ hiện diện [join_date, cutoff] ngắn hơn → bucket
+            # LMS (NỘP / BỎ KHÔNG LÀM / CHUYỂN TRƯỜNG) phân biệt được.
+            _jd_r = random.random()
+            if _jd_r < 0.88:
+                join_date = date(2025, 9, 5)  # có mặt từ đầu năm học
+            elif _jd_r < 0.96:
+                # gia nhập đầu HK1 (cửa sổ hiện diện một phần — ít bài đáng lẽ nộp)
+                join_date = date(2025, 9, 5) + timedelta(days=random.randint(7, 40))
+            else:
+                # chuyển trường tới SAU cutoff week 8 HK1 (2025-10-20)
+                # → expected = 0 tại các kỳ đánh giá HK1 sớm → bucket CHUYỂN TRƯỜNG
+                join_date = date(2025, 10, 25) + timedelta(days=random.randint(0, 55))
+
             session.execute(text("""
                 INSERT INTO s360.dim_homeroom_class_student
                 (id, so_student_id, student_code, student_name, homeroom_class_id, class_code, class_name,
-                 so_school_id, school_year_id, school_name, grade_id, grade_name, moet_code)
-                VALUES (:idx, :idx, :scode, :sname, :cid, :ccode, :cname, :sid, :syid, :sname_sch, :gid, :gname, :mcode)
+                 so_school_id, school_year_id, school_name, grade_id, grade_name, moet_code, join_date)
+                VALUES (:idx, :idx, :scode, :sname, :cid, :ccode, :cname, :sid, :syid, :sname_sch, :gid, :gname, :mcode, :jdate)
                 ON CONFLICT (id) DO NOTHING;
             """), {
                 "idx": sid_idx, "scode": student_code, "sname": sname,
                 "cid": c_id, "ccode": c_code, "cname": c_name,
                 "sid": school_id, "syid": syid,
                 "sname_sch": "Vinschool Central Park" if school_id == 1 else "Vinschool Golden River",
-                "gid": grade_id, "gname": f"Khối {grade_id}", "mcode": f"MOET_{student_code}"
+                "gid": grade_id, "gname": f"Khối {grade_id}", "mcode": f"MOET_{student_code}",
+                "jdate": join_date
             })
 
             student_meta_map[student_code] = {
@@ -482,6 +609,7 @@ def phase_students(session, classes_data):
                 "grade_id": grade_id, "homeroom_class_id": c_id,
                 "student_name": sname, "persona": persona, "profile": profile,
                 "c_math": c_math, "c_lang": c_lang, "eff": eff,
+                "join_date": join_date,
             }
             sid_idx += 1
 
@@ -502,18 +630,21 @@ def phase_students(session, classes_data):
             continue
         c_id, _, syid, gid, c_code, c_name = matching_class
 
+        # Benchmark students: có mặt từ đầu năm (không phải chuyển trường)
+        join_date = date(2025, 9, 5)
         session.execute(text("""
             INSERT INTO s360.dim_homeroom_class_student
             (id, so_student_id, student_code, student_name, homeroom_class_id, class_code, class_name,
-             so_school_id, school_year_id, school_name, grade_id, grade_name, moet_code)
-            VALUES (:idx, :idx, :scode, :sname, :cid, :ccode, :cname, :sid, :syid, :sname_sch, :gid, :gname, :mcode)
+             so_school_id, school_year_id, school_name, grade_id, grade_name, moet_code, join_date)
+            VALUES (:idx, :idx, :scode, :sname, :cid, :ccode, :cname, :sid, :syid, :sname_sch, :gid, :gname, :mcode, :jdate)
             ON CONFLICT (id) DO NOTHING;
         """), {
             "idx": 100000 + hash(scode) % 9999, "scode": scode, "sname": sname,
             "cid": c_id, "ccode": c_code, "cname": c_name,
             "sid": school_id, "syid": syid,
             "sname_sch": "Vinschool Central Park" if school_id == 1 else "Vinschool Golden River",
-            "gid": gid, "gname": f"Khối {gid}", "mcode": f"MOET_{scode}"
+            "gid": gid, "gname": f"Khối {gid}", "mcode": f"MOET_{scode}",
+            "jdate": join_date
         })
 
         student_meta_map[scode] = {
@@ -521,6 +652,7 @@ def phase_students(session, classes_data):
             "grade_id": gid, "homeroom_class_id": c_id,
             "student_name": sname, "persona": persona, "profile": profile,
             "c_math": c_math, "c_lang": c_lang, "eff": eff,
+            "join_date": join_date,
         }
 
     session.commit()
@@ -555,6 +687,8 @@ def phase_academic(session, student_meta_map, all_assignments):
         c_math, c_lang, eff = meta["c_math"], meta["c_lang"], meta["eff"]
         prof = meta["profile"]
         persona = meta["persona"]
+        # Ngày gia nhập lớp — dùng để không sinh assignment grade trước khi HS vào học
+        join_date = meta.get("join_date") or date(2025, 9, 5)
 
         b_math = np.clip(6.5 + 1.5 * c_math + 0.5 * eff, 0.0, 10.0)
         b_lang = np.clip(6.5 + 1.5 * c_lang + 0.5 * eff, 0.0, 10.0)
@@ -639,7 +773,17 @@ def phase_academic(session, student_meta_map, all_assignments):
         student_remark_subjects = [16, 17, 18]
 
         # --- Gradebook: Mid-term + Final cho cả 2 học kỳ ---
+        # NGỮ NGHĨA BẢNG (theo thực tế MOET/Vinschool):
+        #   - fact_gradebooks      = môn chuẩn QUỐC TẾ (9-15: CAM/IB/Tin/STEM/Honor)
+        #   - fact_gradebooks_moet = môn chuẩn QUỐC GIA/MOET (1-8, 106-111) — GỒM CẢ môn
+        #     PASS_FAIL (16-18: Thể dục/Mỹ thuật/Âm nhạc; final_grade=NULL, nhận xét ở comment)
+        # Mỗi môn chỉ ghi vào ĐÚNG 1 bảng (không trùng lặp giữa 2 bảng)
+        # → UNION trong EWS không còn double-count nữa.
         for sub_id, score_val in student_scored_subjects:
+            is_intl = sub_id in INTERNATIONAL_SUBJECT_IDS
+            scale_name, max_grade = SUBJECT_SCALE.get(sub_id, ("SCALE_10", 10))
+            sub_block_start_id = gradebook_id  # id row đầu tiên của block môn này
+
             for exam_id, sem_idx, type_item_id in [
                 (1, 1, 1),   # Mid-term HK1
                 (2, 1, 2),   # Final HK1
@@ -653,28 +797,69 @@ def phase_academic(session, student_meta_map, all_assignments):
 
                 pf_status = 'DAT' if final_score >= 5.0 else 'CHUA_DAT'
 
-                gradebook_batch.append({
-                    "id": gradebook_id, "sid": sid, "syid": syid,
-                    "sem": sem_idx, "scode": scode, "cid": cid,
-                    "subid": sub_id, "eid": exam_id,
-                    "score": final_score, "pf": pf_status,
-                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
-                })
-
-                gradebook_moet_batch.append({
-                    "id": gradebook_id, "sid": sid, "syid": syid,
-                    "sem": sem_idx, "gid": gid, "cid": cid, "scode": scode,
-                    "subid": sub_id, "type_item_id": type_item_id,
-                    "score": final_score,
-                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
-                })
+                if is_intl:
+                    # Môn quốc tế → fact_gradebooks (kèm thang điểm riêng)
+                    gradebook_batch.append({
+                        "id": gradebook_id, "sid": sid, "syid": syid,
+                        "sem": sem_idx, "scode": scode, "cid": cid,
+                        "subid": sub_id, "eid": exam_id,
+                        "score": final_score, "pf": pf_status,
+                        "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id],
+                        "letter": None, "pct": None,
+                        "scale_name": scale_name, "max_grade": max_grade
+                    })
+                else:
+                    # Môn quốc gia → fact_gradebooks_moet
+                    gradebook_moet_batch.append({
+                        "id": gradebook_id, "sid": sid, "syid": syid,
+                        "sem": sem_idx, "gid": gid, "cid": cid, "scode": scode,
+                        "subid": sub_id, "type_item_id": type_item_id,
+                        "score": final_score, "comment": None,
+                        "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
+                    })
 
                 gradebook_id += 1
+
+            # --- Checkpoints: TX (môn quốc gia → fact_gradebooks_moet) /
+            #     Module (môn quốc tế → fact_gradebooks) ---
+            # Môn quốc gia: điểm thường xuyên (MOET reality, hệ số 1).
+            # Môn quốc tế: đánh giá module theo thang điểm riêng (CAM: chữ cái,
+            # IB: 1-7, Tin/STEM: 0-100, Honor: 0-4) → chuẩn hóa về 0-10 cho EWS.
+            if is_intl:
+                for sem_idx in (1, 2):
+                    for idx, ck_exam_id in enumerate(MODULE_EXAM_IDS[sem_idx]):
+                        native, score_10 = _module_score(sub_id, score_val, idx, prof)
+                        pf_status = 'DAT' if score_10 >= 5.0 else 'CHUA_DAT'
+                        letter = native if isinstance(native, str) else None
+                        pct = native if isinstance(native, (int, float)) else None
+                        gradebook_batch.append({
+                            "id": gradebook_id, "sid": sid, "syid": syid,
+                            "sem": sem_idx, "scode": scode, "cid": cid,
+                            "subid": sub_id, "eid": ck_exam_id,
+                            "score": score_10, "pf": pf_status,
+                            "is_locked": 1, "created_at": EXAM_CREATED_AT[ck_exam_id],
+                            "letter": letter, "pct": pct,
+                            "scale_name": scale_name, "max_grade": max_grade
+                        })
+                        gradebook_id += 1
+            else:
+                for sem_idx in (1, 2):
+                    for idx, ck_exam_id in enumerate(TX_EXAM_IDS[sem_idx]):
+                        ck_score = _tx_score(score_val, idx, prof)
+                        pf_status = 'DAT' if ck_score >= 5.0 else 'CHUA_DAT'
+                        gradebook_moet_batch.append({
+                            "id": gradebook_id, "sid": sid, "syid": syid,
+                            "sem": sem_idx, "gid": gid, "cid": cid, "scode": scode,
+                            "subid": sub_id, "type_item_id": ck_exam_id,
+                            "score": ck_score, "comment": None,
+                            "is_locked": 1, "created_at": EXAM_CREATED_AT[ck_exam_id]
+                        })
+                        gradebook_id += 1
 
             # Course enrolls for elective/advanced subjects
             if sub_id in [9, 10, 11, 12, 13, 14, 15]:
                 course_enroll_batch.append({
-                    "id": gradebook_id - 4,  # re-use first id of this subject's block
+                    "id": sub_block_start_id,  # re-use first id of this subject's block
                     "sid": sid, "scode": scode,
                     "subid": sub_id, "gid": gid
                 })
@@ -693,16 +878,19 @@ def phase_academic(session, student_meta_map, all_assignments):
             for sem_idx in [1, 2]:
                 pf_status = 'DAT' if (eff > -1.0 or prof != "Academic_At_Risk") else 'CHUA_DAT'
                 exam_id_rem = 1 if sem_idx == 1 else 3
+                cmt_text = remark_comments[sub_id][0] if pf_status == 'DAT' else remark_comments[sub_id][1]
 
-                gradebook_batch.append({
+                # Môn đánh giá bằng nhận xét (Đạt/Không đạt) — môn chuẩn QUỐC GIA/Bộ GD
+                # (Thể dục, Mỹ thuật, Âm nhạc) → ghi vào fact_gradebooks_moet: final_grade=NULL,
+                # nhận xét ở cột comment (bảng này không có cột pass_fail_status).
+                gradebook_moet_batch.append({
                     "id": gradebook_id, "sid": sid, "syid": syid,
-                    "sem": sem_idx, "scode": scode, "cid": cid,
-                    "subid": sub_id, "eid": exam_id_rem,
-                    "score": None, "pf": pf_status,
+                    "sem": sem_idx, "gid": gid, "cid": cid, "scode": scode,
+                    "subid": sub_id, "type_item_id": exam_id_rem,
+                    "score": None, "comment": cmt_text,
                     "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id_rem]
                 })
 
-                cmt_text = remark_comments[sub_id][0] if pf_status == 'DAT' else remark_comments[sub_id][1]
                 eval_process_batch.append({
                     "id": gradebook_id, "eid": gradebook_id,
                     "subid": sub_id, "scode": scode, "syid": syid,
@@ -714,11 +902,32 @@ def phase_academic(session, student_meta_map, all_assignments):
                 gradebook_id += 1
 
         # --- Assignment grades (fact_so_assignment_grade) ---
+        # MÔ PHỎNG XÁC SUẤT NỘP BÀI LMS theo hồ sơ học tập (tham chiếu semantics
+        # generate_train_dataset.generate_lms_data): học sinh KHÔNG nộp bài → KHÔNG có
+        # dòng nào trong fact_so_assignment_grade cho bài đó → tỷ lệ nộp < 100% và
+        # BIẾN THIÊN theo học sinh (không còn đồng nhất theo môn như trước fix).
+        _SUB_PROB = {
+            "G1": (0.90, 0.98),   # giỏi ổn định — gần như luôn nộp
+            "G6": (0.85, 0.95),   # học tốt LMS nhưng thi thấp
+            "G3": (0.80, 0.93),
+            "G4": (0.68, 0.88),
+            "G7": (0.55, 0.85),   # đang sa sút — bắt đầu bỏ bài
+            "G5": (0.30, 0.60),   # học lực yếu — hay bỏ bài
+            "G8": (0.15, 0.45),
+            "G9": (0.05, 0.30),   # bỏ học — gần như không nộp
+        }
+        _sub_lo, _sub_hi = _SUB_PROB.get(prof, (0.75, 0.92))
+        submit_prob = random.uniform(_sub_lo, _sub_hi)  # xác suất cố định theo học sinh
+
         student_enrolled_subject_ids = {sub_id for sub_id, _ in student_scored_subjects}
         for assign in all_assignments:
             if (assign["so_school_id"] == sid and
                 assign["grade_id"] == gid and
-                assign["subject_id"] in student_enrolled_subject_ids):
+                assign["subject_id"] in student_enrolled_subject_ids and
+                assign["date_assigned"] >= join_date):  # chưa vào học thì chưa thể nộp bài
+
+                if random.random() > submit_prob:
+                    continue  # học sinh không nộp bài LMS này
 
                 week_off = (assign["date_assigned"] - date(2025, 9, 5)).days // 7
 
@@ -770,16 +979,16 @@ def phase_academic(session, student_meta_map, all_assignments):
     print(f"   Batch inserting {len(gradebook_batch)} gradebook records...")
     _batch_insert(session, """
         INSERT INTO s360.fact_gradebooks
-        (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, pass_fail_status, is_locked, created_at)
-        VALUES (:id, :sid, :syid, :sem, :scode, :cid, :subid, :eid, :score, CAST(:pf AS public.pass_fail_enum), :is_locked, :created_at)
+        (id, so_school_id, school_year_id, semester_index, student_code, homeroom_class_id, subject_id, so_exam_id, final_grade, final_grade_letter, final_grade_percent, scale_name_used, max_grade, pass_fail_status, is_locked, created_at)
+        VALUES (:id, :sid, :syid, :sem, :scode, :cid, :subid, :eid, :score, :letter, :pct, :scale_name, :max_grade, CAST(:pf AS public.pass_fail_enum), :is_locked, :created_at)
         ON CONFLICT (id) DO NOTHING;
     """, gradebook_batch)
 
     print(f"   Batch inserting {len(gradebook_moet_batch)} gradebook_moet records...")
     _batch_insert(session, """
         INSERT INTO s360.fact_gradebooks_moet
-        (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade, is_locked, created_at)
-        VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score, :is_locked, :created_at)
+        (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade, comment, is_locked, created_at)
+        VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score, :comment, :is_locked, :created_at)
         ON CONFLICT (id) DO NOTHING;
     """, gradebook_moet_batch)
 
@@ -1275,18 +1484,22 @@ def phase_benchmark(session, all_assignments, all_school_dates):
         subjects = bm["subjects"]
 
         # Insert into dim_homeroom_class_student
+        # LƯU Ý: class_name PHẢI khớp định dạng phase_students (vd "7A1", KHÔNG có tiền tố
+        # "Lớp "), nếu không sẽ tạo ra "lớp ảo" riêng (vd "Lớp 7A1") trong bộ lọc EWS —
+        # khiến khối 7 hiển thị 4 lớp thay vì 3. join_date = đầu năm (không phải chuyển trường).
         session.execute(text("""
             INSERT INTO s360.dim_homeroom_class_student
             (id, so_student_id, student_code, student_name, homeroom_class_id, class_code, class_name,
-             so_school_id, school_year_id, school_name, grade_id, grade_name, moet_code)
-            VALUES (:idx, :idx, :scode, :sname, :cid, :ccode, :cname, :sid, :syid, :sname_sch, :gid, :gname, :mcode)
+             so_school_id, school_year_id, school_name, grade_id, grade_name, moet_code, join_date)
+            VALUES (:idx, :idx, :scode, :sname, :cid, :ccode, :cname, :sid, :syid, :sname_sch, :gid, :gname, :mcode, :jdate)
             ON CONFLICT (id) DO NOTHING;
         """), {
             "idx": 99990 + i, "scode": scode, "sname": sname, "cid": cid,
-            "ccode": f"CLASS_{sid}_{gid_v}A1", "cname": f"Lớp {gid_v}A1",
+            "ccode": f"CLASS_{sid}_{gid_v}A1", "cname": f"{gid_v}A1",
             "sid": sid, "syid": syid,
             "sname_sch": "Vinschool Central Park",
-            "gid": gid_v, "gname": f"Khối {gid_v}", "mcode": f"MOET_{scode}"
+            "gid": gid_v, "gname": f"Khối {gid_v}", "mcode": f"MOET_{scode}",
+            "jdate": date(2025, 9, 5)
         })
 
         # === ASSIGNMENT SCORES (HK1 + HK2) ===
@@ -1321,18 +1534,14 @@ def phase_benchmark(session, all_assignments, all_school_dates):
                 score_val = sub_exams[exam_idx]
                 pf_status = 'DAT' if score_val >= 5.0 else 'CHUA_DAT'
 
-                gradebook_batch.append({
-                    "id": gid_counter, "sid": sid, "syid": syid,
-                    "sem": sem_idx, "scode": scode, "cid": cid,
-                    "subid": sub_id, "eid": exam_id,
-                    "score": score_val, "pf": pf_status,
-                    "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
-                })
+                # Benchmark students chỉ học môn chuẩn QUỐC GIA (CORE_SUBJECTS_GRADE7
+                # = [107,2,3,7,8]) → chỉ ghi vào fact_gradebooks_moet. KHÔNG ghi vào
+                # fact_gradebooks — bảng này chỉ dành cho môn chuẩn quốc tế (9-15).
                 gradebook_moet_batch.append({
                     "id": gid_counter, "sid": sid, "syid": syid,
                     "sem": sem_idx, "gid": gid_v, "cid": cid, "scode": scode,
                     "subid": sub_id, "type_item_id": type_item_id,
-                    "score": score_val,
+                    "score": score_val, "comment": None,
                     "is_locked": 1, "created_at": EXAM_CREATED_AT[exam_id]
                 })
                 gid_counter += 1
@@ -1418,8 +1627,8 @@ def phase_benchmark(session, all_assignments, all_school_dates):
     if gradebook_moet_batch:
         _batch_insert(session, """
             INSERT INTO s360.fact_gradebooks_moet
-            (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade, is_locked, created_at)
-            VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score, :is_locked, :created_at)
+            (id, so_school_id, school_year_id, semester_index, grade_id, homeroom_class_id, student_code, subject_id, gradebook_type_item_id, final_grade, comment, is_locked, created_at)
+            VALUES (:id, :sid, :syid, :sem, :gid, :cid, :scode, :subid, :type_item_id, :score, :comment, :is_locked, :created_at)
             ON CONFLICT (id) DO NOTHING;
         """, gradebook_moet_batch)
 
@@ -1569,7 +1778,7 @@ def generate_full_system_mock_data(phase="all"):
             print(" Successfully populated all 37 database tables across 2 Schools!")
             print(" Total Students: 1,023 + 5 benchmark | Total Classes: 27 | Total System Tables: 37")
             print(" School Days: ~185 (HK1 + HK2) | Assignments: ~2,800")
-            print(" Exams per subject: 4 (Mid HK1, Final HK1, Mid HK2, Final HK2)")
+            print(" Exams per subject: 12 (4 định kỳ + 4 TX/module HK1 + 4 TX/module HK2)")
             print(" Batch insert mode: ON (chunk size = 10,000)")
 
     except Exception as e:
@@ -1583,7 +1792,7 @@ def generate_full_system_mock_data(phase="all"):
 def _build_student_meta_from_db(session):
     """Build student_meta_map từ DB (dùng khi chạy standalone phase)."""
     rows = session.execute(text("""
-        SELECT student_code, so_school_id, school_year_id, grade_id, homeroom_class_id, student_name
+        SELECT student_code, so_school_id, school_year_id, grade_id, homeroom_class_id, student_name, join_date
         FROM s360.dim_homeroom_class_student
     """)).fetchall()
     meta = {}
@@ -1592,6 +1801,7 @@ def _build_student_meta_from_db(session):
             "school_id": r[1], "school_year_id": r[2],
             "grade_id": r[3], "homeroom_class_id": r[4],
             "student_name": r[5],
+            "join_date": r[6] or date(2025, 9, 5),
             "persona": "Diligent_Average", "profile": "G2",
             "c_math": 0.0, "c_lang": 0.0, "eff": 0.0,
         }

@@ -938,3 +938,168 @@ export interface ObservabilitySummaryResponse {
 // Quyền soạn thông báo chủ động (đồng bộ notifications._BROADCAST_ROLES).
 export const ANNOUNCEMENT_ROLES: UserRole[] = ["ADMIN", "PRINCIPAL", "SUBJECT_HEAD"];
 export const SCHOOL_WIDE_ANNOUNCEMENT_ROLES: UserRole[] = ["ADMIN", "PRINCIPAL"];
+
+// ============================================================================
+// EWS DASHBOARD TYPES & CONSTANTS
+// ============================================================================
+
+export type EwsRiskLevel = "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+
+export const EWS_RISK_ORDER: EwsRiskLevel[] = ["LOW", "MODERATE", "HIGH", "CRITICAL"];
+
+export const EWS_RISK_LABELS: Record<EwsRiskLevel, string> = {
+  LOW: "Thấp",
+  MODERATE: "Trung bình",
+  HIGH: "Cao",
+  CRITICAL: "Nghiêm trọng",
+};
+
+export const EWS_RISK_COLORS: Record<EwsRiskLevel, string> = {
+  LOW: "#10b981",
+  MODERATE: "#f59e0b",
+  HIGH: "#f97316",
+  CRITICAL: "#ef4444",
+};
+
+export interface EwsPredictionRow {
+  student_code: string;
+  student_name: string | null;
+  class_name: string | null;
+  grade_name: string | null;
+  grade_level: number | null;
+  subject_id: number;
+  subject_name: string | null;
+  subject_code: string | null;
+  subject_category: string | null;
+  evaluated_at_week: number;
+  risk_score: number;
+  risk_level: EwsRiskLevel;
+  risk_probability: number | null;
+  risk_factors: string[];
+  evaluated_at_date: string | null;
+  join_date: string | null;
+
+  // 1. Temporal Scores (9)
+  weighted_early_avg: number | null;
+  weighted_late_avg: number | null;
+  score_slope: number | null;
+  score_volatility: number | null;
+  max_drop: number | null;
+  last_score: number | null;
+  max_coefficient_so_far: number | null;
+  high_weight_score_count: number | null;
+  last_high_weight_score: number | null;
+
+  // 2. LMS (5)
+  lms_avg_score: number | null;
+  lms_recent_drop: number | null;
+  lms_submission_rate: number | null;
+  lms_recent_submission_rate: number | null;
+  lms_gradebook_gap: number | null;
+
+  // 3. Attendance (4)
+  daily_absence_rate: number | null;
+  unexcused_absent_rate: number | null;
+  excused_absent_days: number | null;
+  total_late_count: number | null;
+
+  // 4. Behavior (3)
+  total_demerit_points: number | null;
+  repeat_offense_count: number | null;
+  severe_sanction_count: number | null;
+}
+
+export interface EwsLevelCount {
+  level: EwsRiskLevel;
+  count: number;
+}
+
+export interface EwsOverview {
+  school_year_id: number;
+  semester_index: number;
+  evaluated_at_week: number;
+  total_predictions: number;
+  total_students: number;
+  at_risk_count: number;
+  avg_risk_score: number | null;
+  levels: EwsLevelCount[];
+  top_risk_subjects: Array<{ subject_name: string; cnt: number; avg_risk: number }>;
+}
+
+export interface EwsWeekOption {
+  school_year_id: number;
+  semester_index: number;
+  evaluated_at_week: number;
+  school_year_name: string | null;
+}
+
+export interface EwsClassOption {
+  grade_id: number | null;
+  grade_name: string | null;
+  class_name: string;
+}
+
+export interface EwsMeta {
+  weeks: EwsWeekOption[];
+  subjects: Array<{ id: number; name: string; code: string; subject_category: string | null }>;
+  grades: Array<{ grade_id: number; grade_name: string }>;
+  classes: EwsClassOption[];
+}
+
+export interface EwsPagedResult {
+  items: EwsPredictionRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ==== Dữ liệu Gốc (Raw) — đối chiếu dự báo EWS (M2-F2) ====
+export interface EwsRawScore {
+  exam_name: string | null;
+  exam_code: string | null;
+  coefficient: number | null;
+  final_grade: number | null;
+  max_grade: number | null;
+  created_at: string | null;
+  source: string; // QUOC_TE | BO_GD
+}
+
+export interface EwsRawLmsItem {
+  code: string | null;
+  fullname: string | null;
+  max_grade: number | null;
+  due_date: string | null;
+  submitted: boolean;
+  final_grade: number | null;
+}
+
+export interface EwsRawAttendanceItem {
+  date: string;
+  total_periods: number;
+  absent_periods: number;
+  absent_no_permission: number;
+  absent_with_permission: number;
+  status: string; // CÓ MẶT | VẮNG | VẮNG KHÔNG PHÉP | NGHỈ CÓ PHÉP
+}
+
+export interface EwsRawBehaviorItem {
+  comment_date: string | null;
+  behavior_fullname: string | null;
+  behavior_point: number | null;
+  sanction_name: string | null;
+}
+
+export interface EwsRawDetail {
+  student_code: string;
+  subject_id: number;
+  school_year_id: number;
+  semester_index: number;
+  cutoff_date: string | null;
+  join_date: string | null;
+  scores: EwsRawScore[];
+  lms: EwsRawLmsItem[];
+  lms_expected: number;
+  lms_submitted: number;
+  attendance: EwsRawAttendanceItem[];
+  behavior: EwsRawBehaviorItem[];
+}

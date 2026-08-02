@@ -95,18 +95,22 @@ def compute_shap_drivers(
         list[list[dict]]: Mỗi phần tử là list top 3 drivers:
             [{"rank": 1, "feature": "...", "shap_value": ...}, ...]
     """
-    # Subsample nếu batch quá lớn
+    # Subsample nếu batch quá lớn (SHAP O(n²) — chỉ tính trên mẫu con).
+    # Giữ sample_idx để sau đó trải driver về đúng độ dài của X, tránh lỗi
+    # "Length of values (100) does not match length of index (7151)" khi
+    # run_inference gán result["shap_drivers"].
+    sample_idx = None
     if len(X) > n_samples:
         rng = np.random.default_rng(42)
-        idx = rng.choice(len(X), n_samples, replace=False)
-        X_shap = X.iloc[idx].reset_index(drop=True)
+        sample_idx = rng.choice(len(X), n_samples, replace=False)
+        X_shap = X.iloc[sample_idx].reset_index(drop=True)
         logger.info("SHAP subsample: %d → %d rows", len(X), n_samples)
     else:
         X_shap = X.copy()
 
     # Giữ lại metadata columns để trace
-    # (subject_id giờ là FEATURE → KHÔNG loại khỏi X_features; semester_index là metadata → phải loại)
-    meta_cols = ["student_code", "evaluated_at_week", "semester_index"]
+    # (subject_id giờ là FEATURE → KHÔNG loại khỏi X_features; semester_index/join_date là metadata → phải loại)
+    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
     meta_df = X_shap[meta_cols].copy()
 
     # Bỏ metadata columns trước khi tính SHAP
@@ -143,7 +147,15 @@ def compute_shap_drivers(
             })
         drivers.append(row_drivers)
 
-    logger.info("SHAP computed for %d rows", len(drivers))
+    # Khôi phục đúng độ dài của X: dòng ngoài subsample → driver rỗng [].
+    # Đảm bảo list trả về luôn có len == len(X) để gán được vào DataFrame kết quả.
+    if sample_idx is not None:
+        full_drivers: list[list[dict[str, float | int | str]]] = [[] for _ in range(len(X))]
+        for pos, orig_idx in enumerate(sample_idx):
+            full_drivers[int(orig_idx)] = drivers[pos]
+        drivers = full_drivers
+
+    logger.info("SHAP drivers computed: %d rows (subsample %d)", len(drivers), n_samples if sample_idx is not None else len(X))
     return drivers
 
 
@@ -168,7 +180,8 @@ def run_inference(
         - shap_drivers (JSON string, optional)
     """
     # Xác định feature columns — CHỈ loại metadata; KHÔNG loại subject_id (nó là feature của model)
-    meta_cols = ["student_code", "evaluated_at_week", "semester_index"]
+    # join_date là metadata (chỉ để persist/hiển thị, KHÔNG đưa vào model)
+    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
     feature_cols = [c for c in X.columns if c not in meta_cols]
 
     # Step 1: Predict probabilities
@@ -190,7 +203,10 @@ def run_inference(
         shap_drivers = compute_shap_drivers(model, X)
 
     # Gộp kết quả: metadata + toàn bộ feature cols (đủ bind params cho UPSERT) + risk outputs
-    result = X[["student_code", "evaluated_at_week"] + feature_cols].copy()
+    result_cols = ["student_code", "evaluated_at_week"] + (
+        ["join_date"] if "join_date" in X.columns else []
+    ) + feature_cols
+    result = X[result_cols].copy()
     result["risk_score"] = risk_scores
     result["risk_level"] = risk_levels
     result["risk_probability"] = max_probs.round(4)

@@ -169,6 +169,19 @@ def generate_students(
     # Sinh student codes
     codes, grades = _generate_student_codes(n_students)
 
+    # M2: tuần nhập học (global week 1..36, 1 = đầu HK1, 19 = đầu HK2).
+    #   - 88%: có mặt từ đầu HK1 (join_week = 1)
+    #   - 8% : nhập giữa HK1 (week 3..17) → cửa sổ expected ngắn hơn
+    #   - 4% : nhập trong HK2 (week 19..36) → CHUYEN_TRUONG ở toàn bộ HK1
+    # Các học sinh nhập học trễ có submitted/expected khác nhau → model học đúng
+    # 3 bucket (mirror feature_extractor serve-side, tránh train/serve skew).
+    join_r = RNG.uniform(0, 1, size=n_students)
+    join_week_global = np.ones(n_students, dtype=np.int32)
+    mid_mask = (join_r >= 0.88) & (join_r < 0.96)
+    late_mask = join_r >= 0.96
+    join_week_global[mid_mask] = RNG.integers(3, 18, size=int(mid_mask.sum()))
+    join_week_global[late_mask] = RNG.integers(19, 37, size=int(late_mask.sum()))
+
     return {
         "codes": codes,
         "grades": grades,
@@ -179,6 +192,7 @@ def generate_students(
         "eff": eff,
         "conduct": conduct,
         "attend": attend,
+        "join_week_global": join_week_global,
     }
 
 
@@ -584,7 +598,8 @@ def compute_features_at_checkpoint(
     students: dict,
 ) -> pd.DataFrame:
     """
-    Tính 22 features cho tất cả (student, subject) tại 1 checkpoint.
+    Tính 22 features (9 temporal + 6 LMS + 4 attendance + 3 behavior) cho tất cả (student, subject) tại 1 checkpoint.
+    LMS theo 3 bucket (NỘP / BỎ KHÔNG LÀM / CHUYỂN TRƯỜNG) — mirror feature_extractor serve-side.
 
     Chỉ dùng dữ liệu đến checkpoint_week (temporal asymmetry).
     Thêm noise 5% vào features.
@@ -676,34 +691,79 @@ def compute_features_at_checkpoint(
             last_hw = last_score.copy()
 
     # === LMS FEATURES (5) ===
-    # LMS đến checkpoint: tính submission rate từ weekly data
+    #   • NỘP            : submitted > 0                  → avg thực, rate = submitted/expected
+    #   • BỎ KHÔNG LÀM   : submitted = 0 AND expected > 0 → rate = 0.0 (phạt rủi ro), avg = NULL
+    #   • CHUYỂN TRƯỜNG  : submitted = 0 AND expected = 0 → rate = NULL (không phạt), avg = NULL
+    # expected (đáng lẽ nộp) = số bài do trong cửa sổ hiện diện [join_week, checkpoint].
+    # Generator: 1 assignment/tuần → expected = số tuần từ join đến checkpoint.
     weeks_so_far = min(checkpoint_week - sem_offset, 18)
+
+    # Tuần nhập học cục bộ (local week 1..18) trong học kỳ này.
+    #   join trước học kỳ → có mặt từ đầu (local_join = 1);
+    #   join trong học kỳ → local_join = tuần join (19..36 ở HK1 → >18 → chưa có mặt).
+    sem_start_global = 1 if semester_idx == 1 else 19
+    jw = students["join_week_global"]  # (N,) global week 1..36
+    local_join = np.where(
+        jw < sem_start_global,
+        1,
+        jw - sem_start_global + 1,
+    ).astype(np.float64)  # (N,)
+
+    # Đã có mặt tại checkpoint? (local_join <= weeks_so_far)
+    present_at_ck = local_join <= weeks_so_far  # (N,)
+
+    # expected: số assignment do trong [join, checkpoint]
+    expected = np.where(present_at_ck, weeks_so_far - local_join + 1, 0)  # (N,)
+
+    # Weekly scores trong cửa sổ hiện diện: che các tuần trước khi nhập học → NaN
     weekly = lms_data["weekly_scores"][:, :, :weeks_so_far]  # (N, NS, weeks_so_far)
+    week_idx = (np.arange(weeks_so_far) + 1).astype(np.float64)  # 1-based
+    in_window = local_join[:, np.newaxis] <= week_idx[np.newaxis, :]  # (N, weeks_so_far)
+    weekly_eff = np.where(in_window[:, np.newaxis, :], weekly, np.nan)  # (N, NS, weeks_so_far)
 
-    # submission rate = tỷ lệ không NaN
-    submitted_mask = ~np.isnan(weekly)
-    lms_submission_rate = submitted_mask.sum(axis=2) / max(weeks_so_far, 1)
+    submitted = (~np.isnan(weekly_eff)).sum(axis=2)  # (N, NS)
+    exp2d = expected[:, np.newaxis]  # (N, 1) → broadcast (N, NS)
 
-    # avg score của các bài đã nộp
+    # submission rate: submitted>0 → thực; submitted=0 & expected>0 → 0.0; else NULL
+    with np.errstate(invalid="ignore", divide="ignore"):
+        lms_submission_rate = np.where(
+            submitted > 0,
+            submitted / np.maximum(exp2d, 1),
+            np.where(exp2d > 0, 0.0, np.nan),
+        )
+
+    # avg score: chỉ trên các bài đã nộp; NULL nếu không nộp bài nào (không impute 0.0)
     with np.errstate(invalid="ignore"):
-        lms_avg = np.nanmean(weekly, axis=2)
-    lms_avg = np.where(np.isnan(lms_avg), 0.0, lms_avg)
+        lms_avg = np.nanmean(weekly_eff, axis=2)  # (N, NS)
 
-    # recent = 4 tuần gần nhất
+    # recent = 4 tuần gần nhất (do trong [cutoff-28, cutoff])
     recent_weeks = min(weeks_so_far, 4)
     if recent_weeks > 0:
-        recent_weekly = weekly[:, :, -recent_weeks:]
-        recent_submitted = ~np.isnan(recent_weekly)
-        lms_recent_sub_rate = recent_submitted.sum(axis=2) / recent_weeks
+        recent_expected = np.where(
+            present_at_ck,
+            weeks_so_far - np.maximum(local_join, weeks_so_far - 3) + 1,
+            0,
+        )  # (N,)
+        recent_weekly = weekly_eff[:, :, -recent_weeks:]  # (N, NS, recent_weeks)
+        recent_submitted = (~np.isnan(recent_weekly)).sum(axis=2)
+        recent_exp2d = recent_expected[:, np.newaxis]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            lms_recent_sub_rate = np.where(
+                recent_submitted > 0,
+                recent_submitted / np.maximum(recent_exp2d, 1),
+                np.where(recent_exp2d > 0, 0.0, np.nan),
+            )
         with np.errstate(invalid="ignore"):
-            lms_recent_avg = np.nanmean(recent_weekly, axis=2)
-        lms_recent_avg = np.where(np.isnan(lms_recent_avg), 0.0, lms_recent_avg)
-        lms_recent_drop = lms_avg - lms_recent_avg
+            lms_recent_avg = np.nanmean(recent_weekly, axis=2)  # NULL nếu không nộp
+        # drop = lms_avg - COALESCE(recent_avg, lms_avg) (mirror feature_extractor)
+        lms_recent_avg_clean = np.where(np.isnan(lms_recent_avg), lms_avg, lms_recent_avg)
+        lms_recent_drop = lms_avg - lms_recent_avg_clean  # NULL nếu lms_avg NULL
     else:
-        lms_recent_sub_rate = np.zeros((N, NS))
-        lms_recent_drop = np.zeros((N, NS))
+        lms_recent_sub_rate = np.full((N, NS), np.nan)
+        lms_recent_avg = np.full((N, NS), np.nan)
+        lms_recent_drop = np.full((N, NS), np.nan)
 
-    # lms_gradebook_gap = lms_avg - last_score
+    # lms_gradebook_gap = lms_avg - last_score (NULL nếu lms_avg NULL; last_score luôn có trong train)
     lms_gradebook_gap = lms_avg - last_score
 
     # === ATTENDANCE FEATURES (4) ===

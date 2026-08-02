@@ -61,11 +61,22 @@ NUMERIC_FEATURE_COLS = [c for c in EWS_FEATURE_COLS if c not in CATEGORICAL_FEAT
 
 
 SQL_EXTRACT_FEATURES = """
-WITH student_grades AS (
-    -- Lấy grade_id từ dim_homeroom_class_student
+-- LƯU Ý HIỆU NĂNG: PostgreSQL 12+ mặc định INLINE mọi CTE. Nếu để mặc định, CTE
+-- lms_features (nặng: quét fact_so_assignment_grade) bị nhúng thành subquery trong
+-- "LEFT JOIN lms_features lf ON tf.student_code=lf.student_code AND ..." → planner
+-- chọn Nested Loop và TÍNH LẠI lms_features cho TỪNG (student, subject) (loops=7158,
+-- ~86s → vượt statement_timeout=60s). Vì vậy dùng AS MATERIALIZED để mỗi CTE chính
+-- được tính ĐÚNG 1 LẦN rồi join bằng hash join (dữ liệu nhỏ: vài chục nghìn dòng).
+WITH student_grades AS MATERIALIZED (
+    -- Lấy grade_id + so_school_id + join_date từ dim_homeroom_class_student
+    -- (cần so_school_id để giới hạn mẫu số tỷ lệ nộp bài LMS theo đúng trường của học sinh;
+    --  join_date dùng cho cửa sổ hiện diện [join_date, cutoff] phân loại 3 bucket LMS — M2)
     SELECT DISTINCT ON (student_code)
         student_code,
-        grade_id AS grade_level
+        grade_id AS grade_level,
+        so_school_id,
+        COALESCE(join_date, CAST(:semester_start AS DATE)) AS join_date,
+        join_date AS join_date_raw
     FROM s360.dim_homeroom_class_student
     WHERE school_year_id = :school_year_id
 ),
@@ -83,7 +94,7 @@ subject_info AS (
         ) AS subject_category
     FROM s360.dim_subject
 ),
-all_scores AS (
+all_scores AS MATERIALIZED (
     -- NGUỒN 1: fact_gradebooks (Cambridge/IB/Honor)
     -- YÊU CẦU NGHIỆP VỤ: KHÔNG cảnh báo EWS cho môn đánh giá Đạt/Không đạt (PASS_FAIL/REMARK,
     -- vd Thể dục, Mỹ thuật, Âm nhạc — final_grade=NULL nên temporal scores toàn NaN, CatBoost
@@ -103,7 +114,16 @@ all_scores AS (
         AND fg.school_year_id = :school_year_id
         AND COALESCE(ds.assessment_type, 'SCORED') = 'SCORED'
 
-    UNION ALL
+    -- FIX DOUBLE-COUNT: 2 bảng KHÔNG phải mirror mà được TÁCH theo loại môn:
+    --   • fact_gradebooks      = môn chuẩn QUỐC TẾ (9-15: CAM/IB/Tin/STEM/Honor)
+    --   • fact_gradebooks_moet = môn chuẩn QUỐC GIA/Bộ GD (1-8, 106-111) — GỒM CẢ môn
+    --     PASS_FAIL (16-18: Thể dục, Mỹ thuật, Âm nhạc; final_grade=NULL, nhận xét ở comment)
+    -- Mỗi môn chỉ nằm ở ĐÚNG 1 bảng → giữa 2 bảng KHÔNG có dòng trùng lặp, nên UNION
+    -- (thay vì UNION ALL) chỉ là phòng thủ (defensive dedupe) — nếu sau này có dữ liệu
+    -- seed chưa tách bảng thì điểm vẫn không bị đếm 2 lần (tránh early/late avg, slope,
+    -- volatility bị bóp méo). Data agents truy vấn fact_gradebooks trực tiếp (môn quốc tế)
+    -- vẫn hoạt động bình thường.
+    UNION
 
     -- NGUỒN 1b: fact_gradebooks_moet (Bộ GD)
     SELECT
@@ -121,13 +141,13 @@ all_scores AS (
         AND fgm.school_year_id = :school_year_id
         AND COALESCE(dsm.assessment_type, 'SCORED') = 'SCORED'
 ),
-score_series AS (
+score_series AS MATERIALIZED (
     SELECT
         s.*,
         EXTRACT(EPOCH FROM (s.created_at - sy.start_date)) / 86400 / 7 AS week_float
     FROM all_scores s
     JOIN s360.dim_school_year sy ON s.school_year_id = sy.id
-    WHERE s.created_at <= :cutoff_date
+    WHERE s.created_at <= CAST(:cutoff_date AS TIMESTAMPTZ)
         AND s.semester_index = :semester_index
         AND sy.start_date IS NOT NULL
 ),
@@ -161,7 +181,7 @@ max_drops AS (
     WHERE drop_amount > 0
     GROUP BY student_code, subject_id, semester_index
 ),
-temporal_features AS (
+temporal_features AS MATERIALIZED (
     SELECT
         ss.student_code,
         ss.subject_id,
@@ -196,7 +216,7 @@ temporal_features AS (
 
         COUNT(CASE WHEN ss.coefficient >= 2.0 THEN 1 END) AS high_weight_score_count,
 
-        (ARRAY_AGG(ss.final_grade ORDER BY CASE WHEN ss.coefficient >= 2.0 THEN ss.created_at END DESC NULLS LAST))[1] AS last_high_weight_score
+        (ARRAY_AGG(ss.final_grade ORDER BY ss.created_at DESC) FILTER (WHERE ss.coefficient >= 2.0))[1] AS last_high_weight_score
 
     FROM score_series ss
     JOIN medians m
@@ -209,37 +229,94 @@ temporal_features AS (
         AND ss.semester_index = md.semester_index
     GROUP BY ss.student_code, ss.subject_id, ss.semester_index, m.median_week, md.max_drop
 ),
-lms_features AS (
+lms_features AS MATERIALIZED (
+    -- M2 — PHÂN LOẠI 3 BUCKET LMS thay vì impute 5.0/0.0 mù:
+    --   • NỘP            : submitted > 0                  → avg thực, rate = submitted/expected
+    --   • BỎ KHÔNG LÀM   : submitted = 0 AND expected > 0 → rate = 0.0 (phạt rủi ro), avg = NULL
+    --   • CHUYỂN TRƯỜNG  : submitted = 0 AND expected = 0 → rate = NULL (không phạt), avg = NULL
+    --   Với  expected (đáng lẽ nộp) = số bài do trong cửa sổ hiện diện [join_date, cutoff].
+    -- Để có hàng cho học sinh KHÔNG nộp (không có dòng nào trong fact_so_assignment_grade),
+    -- population được xây bằng JOIN từ student_grades × assignments (không còn inner join từ
+    -- fact_so_assignment_grade như cũ → học sinh bỏ bài / chuyển trường vẫn xuất hiện).
+    -- BUG >100% (đã sửa trước đó) vẫn được giữ: tử/mẫu số cùng giới hạn
+    -- due_date<=cutoff + semester_index + (so_school_id, grade_id) của học sinh.
+    WITH pop AS MATERIALIZED (
+        -- Population: mọi (student × subject) có bài tập do trong học kỳ này
+        SELECT
+            sg.student_code,
+            dsa.subject_id,
+            sg.join_date_raw
+        FROM student_grades sg
+        JOIN (
+            SELECT DISTINCT so_school_id, grade_id, semester_index, subject_id
+            FROM s360.dim_so_assignment
+            WHERE semester_index = :semester_index
+              AND due_date <= CAST(:cutoff_date AS DATE)
+        ) dsa
+            ON dsa.so_school_id = sg.so_school_id
+           AND dsa.grade_id = sg.grade_level
+    ),
+    exp AS MATERIALIZED (
+        -- ĐÁNG LẼ NỘP: số bài do trong cửa sổ hiện diện [join_date, cutoff]
+        SELECT
+            sg.student_code,
+            dsa.subject_id,
+            COUNT(*) AS lms_expected,
+            COUNT(*) FILTER (WHERE dsa.due_date >= (CAST(:cutoff_date AS DATE) - 28)) AS lms_recent_expected
+        FROM student_grades sg
+        JOIN s360.dim_so_assignment dsa
+            ON dsa.so_school_id = sg.so_school_id
+           AND dsa.grade_id = sg.grade_level
+           AND dsa.semester_index = :semester_index
+        WHERE dsa.due_date <= CAST(:cutoff_date AS DATE)
+          AND dsa.due_date >= sg.join_date
+        GROUP BY sg.student_code, dsa.subject_id
+    ),
+    sub AS MATERIALIZED (
+        -- THỰC NỘP: số bài HS có dòng chấm điểm trong cửa sổ hiện diện
+        SELECT
+            fag.student_code,
+            dsa.subject_id,
+            COUNT(fag.id) AS lms_submitted,
+            ROUND(AVG(fag.final_grade), 2) AS lms_avg_score,
+            ROUND(AVG(CASE WHEN dsa.due_date >= (CAST(:cutoff_date AS DATE) - 28)
+                           THEN fag.final_grade END), 2) AS lms_recent_avg,
+            COUNT(CASE WHEN dsa.due_date >= (CAST(:cutoff_date AS DATE) - 28)
+                       THEN fag.id END) AS lms_recent_submitted
+        FROM s360.fact_so_assignment_grade fag
+        JOIN s360.dim_so_assignment dsa ON fag.assignment_id = dsa.assignment_id
+        JOIN student_grades sg ON fag.student_code = sg.student_code
+        WHERE (fag.is_locked = 1 OR fag.final_grade IS NOT NULL)
+          AND dsa.due_date <= CAST(:cutoff_date AS DATE)
+          AND dsa.due_date >= sg.join_date
+          AND dsa.semester_index = :semester_index
+          AND dsa.so_school_id = sg.so_school_id
+          AND dsa.grade_id = sg.grade_level
+        GROUP BY fag.student_code, dsa.subject_id
+    )
     SELECT
-        fag.student_code,
-        dsa.subject_id,
-        ROUND(AVG(fag.final_grade), 2) AS lms_avg_score,
-        ROUND(AVG(CASE WHEN dsa.due_date >= (:cutoff_date - INTERVAL '28 days')
-                       THEN fag.final_grade END), 2) AS lms_recent_avg,
-        COUNT(fag.id) * 1.0 / NULLIF(total.total_assigned, 0) AS lms_submission_rate,
-        COUNT(CASE WHEN dsa.due_date >= (:cutoff_date - INTERVAL '28 days')
-                   THEN fag.id END) * 1.0
-            / NULLIF(total_recent.recent_assigned, 0) AS lms_recent_submission_rate
-
-    FROM s360.fact_so_assignment_grade fag
-    JOIN s360.dim_so_assignment dsa ON fag.assignment_id = dsa.assignment_id
-    LEFT JOIN (
-        SELECT subject_id, COUNT(*) AS total_assigned
-        FROM s360.dim_so_assignment
-        WHERE due_date <= :cutoff_date
-        GROUP BY subject_id
-    ) total ON dsa.subject_id = total.subject_id
-    LEFT JOIN (
-        SELECT subject_id, COUNT(*) AS recent_assigned
-        FROM s360.dim_so_assignment
-        WHERE due_date BETWEEN (:cutoff_date - INTERVAL '28 days') AND :cutoff_date
-        GROUP BY subject_id
-    ) total_recent ON dsa.subject_id = total_recent.subject_id
-    WHERE fag.is_locked = 1
-    GROUP BY fag.student_code, dsa.subject_id,
-             total.total_assigned, total_recent.recent_assigned
+        pop.student_code,
+        pop.subject_id,
+        sub.lms_avg_score,
+        sub.lms_recent_avg,
+        CASE
+            WHEN COALESCE(sub.lms_submitted, 0) > 0
+                THEN ROUND(COALESCE(sub.lms_submitted, 0) * 1.0 / NULLIF(exp.lms_expected, 0), 4)
+            WHEN COALESCE(exp.lms_expected, 0) > 0 THEN 0.0
+            ELSE NULL
+        END AS lms_submission_rate,
+        CASE
+            WHEN COALESCE(sub.lms_recent_submitted, 0) > 0
+                THEN ROUND(COALESCE(sub.lms_recent_submitted, 0) * 1.0 / NULLIF(exp.lms_recent_expected, 0), 4)
+            WHEN COALESCE(exp.lms_recent_expected, 0) > 0 THEN 0.0
+            ELSE NULL
+        END AS lms_recent_submission_rate,
+        pop.join_date_raw AS join_date
+    FROM pop
+    LEFT JOIN exp ON pop.student_code = exp.student_code AND pop.subject_id = exp.subject_id
+    LEFT JOIN sub ON pop.student_code = sub.student_code AND pop.subject_id = sub.subject_id
 ),
-attendance_features AS (
+attendance_features AS MATERIALIZED (
     SELECT
         fda.student_code,
         ROUND(SUM(fda.absent_periods) * 1.0 / NULLIF(SUM(fda.total_periods), 0), 4) AS daily_absence_rate,
@@ -250,19 +327,19 @@ attendance_features AS (
     LEFT JOIN (
         SELECT student_code, COUNT(DISTINCT absent_date) AS excused_days
         FROM s360.fact_absent_logs
-        WHERE absent_date <= :cutoff_date AND is_approved = 1
+        WHERE absent_date <= CAST(:cutoff_date AS DATE) AND is_approved = 1
         GROUP BY student_code
     ) fal ON fda.student_code = fal.student_code
     LEFT JOIN (
         SELECT student_code, COUNT(*) AS late_count
         FROM s360.fact_so_homeroom_class_late_attendances
-        WHERE attendance_date <= :cutoff_date AND is_late = 1
+        WHERE attendance_date <= CAST(:cutoff_date AS DATE) AND is_late = 1
         GROUP BY student_code
     ) fla ON fda.student_code = fla.student_code
-    WHERE fda._date <= :cutoff_date AND fda.school_year_id = :school_year_id
+    WHERE fda._date <= CAST(:cutoff_date AS DATE) AND fda.school_year_id = :school_year_id
     GROUP BY fda.student_code, fal.excused_days, fla.late_count
 ),
-behavior_features AS (
+behavior_features AS MATERIALIZED (
     SELECT
         fbl.student_code,
         ROUND(SUM(CASE WHEN fbl.behavior_point < 0 THEN ABS(fbl.behavior_point) ELSE 0 END)::numeric, 2) AS total_demerit_points,
@@ -274,13 +351,13 @@ behavior_features AS (
         FROM (
             SELECT student_code, behavior_id, COUNT(*) AS cnt
             FROM s360.fact_behavior_logs
-            WHERE comment_date <= :cutoff_date AND behavior_point < 0
+            WHERE comment_date <= CAST(:cutoff_date AS DATE) AND behavior_point < 0
             GROUP BY student_code, behavior_id
             HAVING COUNT(*) > 1
         ) t
         GROUP BY student_code
     ) rep ON fbl.student_code = rep.student_code
-    WHERE fbl.comment_date <= :cutoff_date AND fbl.school_year_id = :school_year_id
+    WHERE fbl.comment_date <= CAST(:cutoff_date AS DATE) AND fbl.school_year_id = :school_year_id
     GROUP BY fbl.student_code, rep.repeat_count
 )
 SELECT
@@ -302,6 +379,7 @@ SELECT
     lf.lms_recent_avg,
     lf.lms_submission_rate,
     lf.lms_recent_submission_rate,
+    lf.join_date,
     af.daily_absence_rate,
     af.unexcused_absent_rate,
     af.excused_absent_days,
@@ -338,8 +416,8 @@ def extract_live_features(
     Returns:
         pd.DataFrame chứa 24 features + student_code
     """
+    base_start = date(school_year_id, 9, 5) if semester_index == 1 else date(school_year_id + 1, 1, 20)
     if cutoff_date is None:
-        base_start = date(school_year_id, 9, 5) if semester_index == 1 else date(school_year_id + 1, 1, 20)
         cutoff_date = base_start + timedelta(weeks=evaluated_at_week)
     elif isinstance(cutoff_date, str):
         cutoff_date = datetime.strptime(cutoff_date, "%Y-%m-%d").date()
@@ -350,14 +428,27 @@ def extract_live_features(
         "school_year_id": school_year_id,
         "semester_index": semester_index,
         "cutoff_date": cutoff_date,
+        "semester_start": base_start,
     }
 
     # Engine chung (src/db/session.py) set statement_timeout=3000ms cho MỌI kết nối. Query
-    # extract EWS nặng hơn — đo thực tế ~3.5s ở week 14 (cutoff trễ → scan nhiều dòng hơn) —
-    # nên bị cancel giữa chừng (QueryCanceled). Dùng SET LOCAL (chỉ hiệu lực trong transaction
-    # hiện tại) để nâng timeout riêng cho query này lên 60s; sau commit/rollback sẽ trở về 3s,
-    # KHÔNG ảnh hưởng phần còn lại của hệ thống.
-    session.execute(text("SET LOCAL statement_timeout = 60000"))
+    # extract EWS xử lý toàn trường trên nhiều fact table lớn (fact_so_assignment_grade ~133k,
+    # fact_so_daily_attendance ~190k, fact_gradebooks(+moet) ~91k, fact_behavior_logs ~14k) nên
+    # cần thời gian thực thi đáng kể — đo thực tế ~78.8s (trước MATERIALIZED) và vẫn >60s sau khi
+    # đã MATERIALIZED toàn bộ CTE chính + ANALYZE stats mới. Dùng SET LOCAL (chỉ hiệu lực trong
+    # transaction hiện tại) để nâng timeout riêng cho query này lên 300s; sau commit/rollback sẽ
+    # trở về 3s, KHÔNG ảnh hưởng phần còn lại của hệ thống.
+    session.execute(text("SET LOCAL statement_timeout = 300000"))
+
+    # ROOT CAUSE timeout (2026-08): dù MATERIALIZED + ANALYZE, query vẫn >300s vì planner MISESTIMATE
+    # row count trầm trọng → chọn kế hoạch Nested Loop bệnh lý:
+    #   - lms_features: outer Hash Join (197 assignment × 1009 HS) est rows~5 nhưng THỰC TẾ ~198k cặp,
+    #     kéo theo Index Scan fact_so_assignment_grade rows~59 chạy cho TỪNG cặp → ~198k × index scan.
+    #   - temporal_features: Nested Loop quanh CTE Scan score_series (est 1 row, thực tế ~80k) → re-sort lặp.
+    # Fix: buộc planner chỉ dùng Hash/Merge join (enable_nestloop=off) — tất cả fact table <200k rows
+    # nên hash join luôn tối ưu. Đã xác nhận bằng diag_plan.py: plan NLOFF hết Nested Loop, lms inner
+    # thành Hash Join rows~11721 (khớp thực tế). SET LOCAL → chỉ hiệu lực transaction này.
+    session.execute(text("SET LOCAL enable_nestloop = off"))
 
     result = session.execute(text(SQL_EXTRACT_FEATURES), params)
     rows = result.fetchall()
@@ -366,7 +457,7 @@ def extract_live_features(
     df = pd.DataFrame(rows, columns=cols)
     if df.empty:
         logger.warning(f"No records returned for EWS feature extraction at week {evaluated_at_week}")
-        return pd.DataFrame(columns=["student_code"] + EWS_FEATURE_COLS)
+        return pd.DataFrame(columns=["student_code", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS)
 
     logger.info(f"Retrieved {len(df):,} raw feature rows from s360 DB")
 
@@ -376,7 +467,7 @@ def extract_live_features(
     # Đặt ở ĐẦU để mọi phép tính derived features (lms_recent_drop, lms_gradebook_gap...) chạy float64.
     _NON_NUMERIC_COLS = {
         "student_code", "subject_id", "subject_category",
-        "grade_level", "semester_index", "evaluated_at_week",
+        "grade_level", "semester_index", "evaluated_at_week", "join_date",
     }
     for _c in df.columns:
         if _c not in _NON_NUMERIC_COLS:
@@ -387,16 +478,16 @@ def extract_live_features(
     # =========================================================================
 
     # 1. LMS Derived Features
-    df["lms_avg_score"] = df["lms_avg_score"].fillna(5.0)
+    # M2: KHÔNG impute 5.0 cho lms_avg_score nữa — giữ NULL cho học sinh không có điểm LMS thật.
+    # CatBoost xử lý NaN native (nhánh riêng); model phải retrain với data chứa NULL (xem M2-C1).
     lms_recent_avg_clean = df["lms_recent_avg"].fillna(df["lms_avg_score"])
     df["lms_recent_drop"] = df["lms_avg_score"] - lms_recent_avg_clean
 
     last_score_clean = df["last_score"].fillna(5.0)
     df["lms_gradebook_gap"] = df["lms_avg_score"] - last_score_clean
 
-    # 2. LMS Submission rates missing -> fill 0.0
-    df["lms_submission_rate"] = df["lms_submission_rate"].fillna(0.0)
-    df["lms_recent_submission_rate"] = df["lms_recent_submission_rate"].fillna(0.0)
+    # 2. LMS Submission rates — KHÔNG fillna(0.0): SQL đã trả 0.0 cho BỎ KHÔNG LÀM và NULL cho
+    #    CHUYỂN TRƯỜNG (không phạt). Giữ NULL để CatBoost học đúng 3 bucket.
 
     # 3. Attendance & Behavior missing -> fill 0
     attendance_behavior_cols = [
@@ -426,8 +517,8 @@ def extract_live_features(
     # (Bước ép kiểu numeric → float64 đã thực hiện ngay sau khi tạo df, trước các phép tính derived,
     #  nên mọi cột numeric & derived đều đã là float64 tại thời điểm này.)
 
-    # Reorder columns chuẩn: student_code, evaluated_at_week, semester_index + 24 features
-    final_cols = ["student_code", "evaluated_at_week", "semester_index"] + EWS_FEATURE_COLS
+    # Reorder columns chuẩn: student_code, evaluated_at_week, semester_index, join_date + 24 features
+    final_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS
     df = df[final_cols].copy()
 
     logger.info(f"Feature extraction complete: {df.shape[0]:,} rows, {len(EWS_FEATURE_COLS)} features")
