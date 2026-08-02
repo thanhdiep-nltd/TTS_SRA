@@ -34,6 +34,23 @@ import remarkGfm from "remark-gfm";
 
 import { api, ApiError, getToken } from "@/lib/api";
 import AgentStepTimeline, { AgentStepTrace } from "@/components/chat/AgentStepTimeline";
+import OptionSelectionCard, { OptionCardData } from "@/components/chat/OptionSelectionCard";
+
+function parseOptionCard(content: string): { cleanContent: string; cardData: OptionCardData | null } {
+  if (!content) return { cleanContent: "", cardData: null };
+  const cardRegex = /\[OPTIONS_CARD\]([\s\S]*?)\[\/OPTIONS_CARD\]/i;
+  const match = content.match(cardRegex);
+  if (match) {
+    try {
+      const cardData: OptionCardData = JSON.parse(match[1].trim());
+      const cleanContent = content.replace(cardRegex, "").trim();
+      return { cleanContent, cardData };
+    } catch (e) {
+      console.warn("Failed to parse OPTIONS_CARD JSON:", e);
+    }
+  }
+  return { cleanContent: content, cardData: null };
+}
 
 interface Message {
   id: string;
@@ -828,8 +845,9 @@ function ChatContent() {
                     const rawDisplayContent = isUser
                       ? msg.content
                       : (reportFiles.length > 0 ? (cleanMessageContent(msg.content) || "Dưới đây là tệp báo cáo của bạn:") : msg.content);
-                    const displayContent = rawDisplayContent
-                      ? rawDisplayContent.replace(/(?<=\S)\r?\n(---|___|\*\*\*)(?=\s|$)/g, "\n\n$1\n\n")
+                    const { cleanContent, cardData } = parseOptionCard(rawDisplayContent || "");
+                    const displayContent = cleanContent
+                      ? cleanContent.replace(/(?<=\S)\r?\n(---|___|\*\*\*)(?=\s|$)/g, "\n\n$1\n\n")
                       : "";
                     return (
                       <div key={msg.id} className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -847,7 +865,7 @@ function ChatContent() {
                               ))}
                             </div>
                           )}
-                          {(isUser || !!displayContent || (isCurrentGeneratingAssistant && !msg.content) || (!isUser && msg.step_traces && msg.step_traces.length > 0)) && (
+                          {(isUser || !!displayContent || !!cardData || (isCurrentGeneratingAssistant && !msg.content) || (!isUser && msg.step_traces && msg.step_traces.length > 0)) && (
                             <div
                               className={isUser
                                 ? "rounded-2xl px-4 py-2.5 text-sm leading-relaxed border shadow-sm bg-brand-600 border-brand-500 text-white rounded-br-none"
@@ -957,6 +975,13 @@ function ChatContent() {
                                         {displayContent}
                                       </ReactMarkdown>
                                     </div>
+                                  )}
+                                  {cardData && (
+                                    <OptionSelectionCard
+                                      data={cardData}
+                                      onSelectOption={(opt) => send(opt)}
+                                      disabled={isLoading}
+                                    />
                                   )}
                                 </>
                               )}
