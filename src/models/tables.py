@@ -727,6 +727,7 @@ class AiMessage(Base):
     feedback_text = Column(Text)
     feedback_at = Column(DateTime(timezone=True))
     thought_trace = Column(JSONB)
+    step_trace = Column(JSONB)
     input_token_count = Column(Integer)
     output_token_count = Column(Integer)
     cost = Column(Numeric(10, 6))

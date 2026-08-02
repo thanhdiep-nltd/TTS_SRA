@@ -33,6 +33,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { api, ApiError, getToken } from "@/lib/api";
+import AgentStepTimeline, { AgentStepTrace } from "@/components/chat/AgentStepTimeline";
 
 interface Message {
   id: string;
@@ -43,6 +44,7 @@ interface Message {
   feedback_tag?: string | null;
   feedback_text?: string | null;
   attachmentNames?: string[];
+  step_traces?: AgentStepTrace[];
 }
 
 interface ChatSession {
@@ -476,6 +478,7 @@ function ChatContent() {
       rating?: number | null;
       feedback_tag?: string | null;
       feedback_text?: string | null;
+      step_trace?: AgentStepTrace[] | null;
     }
 
     const loadMessages = async () => {
@@ -493,6 +496,7 @@ function ChatContent() {
           rating: msg.rating,
           feedback_tag: msg.feedback_tag,
           feedback_text: msg.feedback_text,
+          step_traces: msg.step_trace && Array.isArray(msg.step_trace) ? msg.step_trace : undefined,
         }));
 
         if (mapped.length === 0) {
@@ -628,7 +632,7 @@ function ChatContent() {
     const assistantMessageId = generateMessageId("a");
     setMessages((prev) => [
       ...prev,
-      { id: assistantMessageId, role: "assistant", content: "", analysis: "" },
+      { id: assistantMessageId, role: "assistant", content: "", analysis: "", step_traces: [] },
     ]);
 
     setIsLoading(true);
@@ -693,6 +697,21 @@ function ChatContent() {
                 router.push(`/chat?session=${newSessId}`);
                 loadSessions();
               }
+            } else if (data.type === "step_trace") {
+              const newStep: AgentStepTrace = data.step;
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id === assistantMessageId) {
+                    const existing = msg.step_traces || [];
+                    const exists = existing.some((s) => s.id === newStep.id);
+                    const updated = exists
+                      ? existing.map((s) => (s.id === newStep.id ? newStep : s))
+                      : [...existing, newStep];
+                    return { ...msg, step_traces: updated };
+                  }
+                  return msg;
+                })
+              );
             } else if (data.type === "thought") {
               // Cập nhật Thought Trace log suy luận
               setMessages((prev) =>
@@ -772,7 +791,7 @@ function ChatContent() {
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto w-full">
-              <div className={`max-w-4xl mx-auto w-full p-6 space-y-6 flex flex-col min-h-full ${renderedMessages.length <= 1 && !loadingMessages ? "justify-center" : ""}`}>
+              <div className={`max-w-3xl mx-auto w-full px-4 sm:px-6 py-4 space-y-4 flex flex-col min-h-full ${renderedMessages.length <= 1 && !loadingMessages ? "justify-center" : ""}`}>
                 {renderedMessages.length <= 1 && !loadingMessages ? (
                   <div className="flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-6 py-10">
                     <h2 className="text-3xl font-extrabold tracking-tight text-slate-800 dark:text-slate-100">
@@ -814,12 +833,7 @@ function ChatContent() {
                       : "";
                     return (
                       <div key={msg.id} className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}>
-                        {!isUser && (
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-md">
-                            <Sparkles className="w-5 h-5" />
-                          </div>
-                        )}
-                        <div className="max-w-[85%] flex flex-col space-y-3">
+                        <div className={`${isUser ? "max-w-[85%]" : "w-full"} flex flex-col space-y-1.5`}>
                           {isUser && msg.attachmentNames && msg.attachmentNames.length > 0 && (
                             <div className="flex flex-wrap justify-end gap-1.5">
                               {msg.attachmentNames.map((name, idx) => (
@@ -833,14 +847,14 @@ function ChatContent() {
                               ))}
                             </div>
                           )}
-                          {(isUser || !!displayContent || (isCurrentGeneratingAssistant && !msg.content)) && (
+                          {(isUser || !!displayContent || (isCurrentGeneratingAssistant && !msg.content) || (!isUser && msg.step_traces && msg.step_traces.length > 0)) && (
                             <div
-                              className={`rounded-2xl px-6 py-4 text-sm leading-relaxed border shadow-sm ${isUser
-                                ? "bg-brand-600 border-brand-500 text-white rounded-br-none"
-                                : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none"
-                                }`}
+                              className={isUser
+                                ? "rounded-2xl px-4 py-2.5 text-sm leading-relaxed border shadow-sm bg-brand-600 border-brand-500 text-white rounded-br-none"
+                                : "text-sm leading-relaxed text-slate-800 dark:text-slate-100 py-0.5"
+                              }
                             >
-                              {isCurrentGeneratingAssistant && !msg.content ? (
+                              {isCurrentGeneratingAssistant && (!msg.step_traces || msg.step_traces.length === 0) ? (
                                 <div className="flex flex-col gap-2.5 min-w-[240px]">
                                   {processingSteps.map((step, index) => {
                                     const isLast = index === processingSteps.length - 1;
@@ -854,96 +868,97 @@ function ChatContent() {
                                           )}
                                           <span>{step}</span>
                                         </div>
-                                        {isLast && longRunningStepIdx === index && (
-                                          <div className="ml-7 text-[11px] sm:text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 animate-in fade-in slide-in-from-top-1 max-w-[400px]">
-                                            <AlertCircle className="w-3.5 h-3.5 inline mr-1.5 align-text-bottom" />
-                                            {LONG_RUNNING_EXPLANATIONS[step] || "Quá trình này đang tốn nhiều thời gian hơn dự kiến, xin vui lòng đợi thêm chút nữa..."}
-                                          </div>
-                                        )}
                                       </div>
                                     );
                                   })}
                                 </div>
                               ) : (
-                                <div className="prose prose-sm dark:prose-invert max-w-none">
-                                  <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                      table: ({ node, ...props }: React.ComponentPropsWithoutRef<"table"> & { node?: any }) => (
-                                        <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                                          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm" {...props} />
-                                        </div>
-                                      ),
-                                      thead: ({ node, ...props }: React.ComponentPropsWithoutRef<"thead"> & { node?: any }) => (
-                                        <thead className="bg-slate-50 dark:bg-slate-900/50" {...props} />
-                                      ),
-                                      tbody: ({ node, ...props }: React.ComponentPropsWithoutRef<"tbody"> & { node?: any }) => (
-                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950" {...props} />
-                                      ),
-                                      tr: ({ node, ...props }: React.ComponentPropsWithoutRef<"tr"> & { node?: any }) => (
-                                        <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors" {...props} />
-                                      ),
-                                      th: ({ node, ...props }: React.ComponentPropsWithoutRef<"th"> & { node?: any }) => (
-                                        <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider" {...props} />
-                                      ),
-                                      td: ({ node, ...props }: React.ComponentPropsWithoutRef<"td"> & { node?: any }) => (
-                                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap align-middle" {...props} />
-                                      ),
-                                      a: ({ node, href, children, ...props }: React.ComponentPropsWithoutRef<"a"> & { node?: any }) => {
-                                        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-                                        const resolvedHref = href ? href.replace("http://localhost:8000", baseUrl) : href;
-                                        const isDownloadOrPreview = resolvedHref && resolvedHref.includes("/reports/download/");
-                                        if (isDownloadOrPreview) {
-                                          const isHtmlPreview = resolvedHref.endsWith(".html");
-                                          if (isHtmlPreview) {
+                                <>
+                                  {!isUser && msg.step_traces && msg.step_traces.length > 0 && (
+                                    <AgentStepTimeline steps={msg.step_traces} isLiveLoading={isCurrentGeneratingAssistant} />
+                                  )}
+                                  {displayContent && (
+                                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                                      <ReactMarkdown
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                          table: ({ node, ...props }: React.ComponentPropsWithoutRef<"table"> & { node?: any }) => (
+                                            <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                                              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm" {...props} />
+                                            </div>
+                                          ),
+                                          thead: ({ node, ...props }: React.ComponentPropsWithoutRef<"thead"> & { node?: any }) => (
+                                            <thead className="bg-slate-50 dark:bg-slate-900/50" {...props} />
+                                          ),
+                                          tbody: ({ node, ...props }: React.ComponentPropsWithoutRef<"tbody"> & { node?: any }) => (
+                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950" {...props} />
+                                          ),
+                                          tr: ({ node, ...props }: React.ComponentPropsWithoutRef<"tr"> & { node?: any }) => (
+                                            <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors" {...props} />
+                                          ),
+                                          th: ({ node, ...props }: React.ComponentPropsWithoutRef<"th"> & { node?: any }) => (
+                                            <th className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider" {...props} />
+                                          ),
+                                          td: ({ node, ...props }: React.ComponentPropsWithoutRef<"td"> & { node?: any }) => (
+                                            <td className="px-4 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap align-middle" {...props} />
+                                          ),
+                                          a: ({ node, href, children, ...props }: React.ComponentPropsWithoutRef<"a"> & { node?: any }) => {
+                                            const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                                            const resolvedHref = href ? href.replace("http://localhost:8000", baseUrl) : href;
+                                            const isDownloadOrPreview = resolvedHref && resolvedHref.includes("/reports/download/");
+                                            if (isDownloadOrPreview) {
+                                              const isHtmlPreview = resolvedHref.endsWith(".html");
+                                              if (isHtmlPreview) {
+                                                return (
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.preventDefault();
+                                                      handleOpenPreview(resolvedHref);
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 mx-1 my-0.5 rounded-lg bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/50 dark:border-brand-900/30 transition shadow-sm cursor-pointer align-middle"
+                                                  >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    {children}
+                                                  </button>
+                                                );
+                                              } else {
+                                                return (
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.preventDefault();
+                                                      const a = document.createElement("a");
+                                                      a.href = resolvedHref;
+                                                      a.target = "_blank";
+                                                      a.click();
+                                                    }}
+                                                    className="text-brand-600 hover:text-brand-500 font-semibold underline dark:text-brand-400 cursor-pointer bg-transparent border-0 p-0 align-baseline"
+                                                  >
+                                                    {children}
+                                                  </button>
+                                                );
+                                              }
+                                            }
                                             return (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  handleOpenPreview(resolvedHref);
-                                                }}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 mx-1 my-0.5 rounded-lg bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/50 dark:border-brand-900/30 transition shadow-sm cursor-pointer align-middle"
-                                              >
-                                                <Eye className="w-3.5 h-3.5" />
-                                                {children}
-                                              </button>
-                                            );
-                                          } else {
-                                            return (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  const a = document.createElement("a");
-                                                  a.href = resolvedHref;
-                                                  a.target = "_blank";
-                                                  a.click();
-                                                }}
-                                                className="text-brand-600 hover:text-brand-500 font-semibold underline dark:text-brand-400 cursor-pointer bg-transparent border-0 p-0 align-baseline"
+                                              <a
+                                                href={resolvedHref}
+                                                className="text-brand-600 hover:text-brand-500 font-semibold underline dark:text-brand-400"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                {...props}
                                               >
                                                 {children}
-                                              </button>
+                                              </a>
                                             );
-                                          }
-                                        }
-                                        return (
-                                          <a
-                                            href={resolvedHref}
-                                            className="text-brand-600 hover:text-brand-500 font-semibold underline dark:text-brand-400"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            {...props}
-                                          >
-                                            {children}
-                                          </a>
-                                        );
-                                      },
-                                    }}
-                                  >
-                                    {displayContent}
-                                  </ReactMarkdown>
-                                </div>
+                                          },
+                                        }}
+                                      >
+                                        {displayContent}
+                                      </ReactMarkdown>
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           )}
