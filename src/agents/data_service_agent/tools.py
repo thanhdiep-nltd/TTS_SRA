@@ -30,15 +30,15 @@ def _rbac_denied(scope: str) -> str:
     )
 
 
-def _is_scope_allowed(
-    rbac_meta: dict, grade_id=None, homeroom_class_id=None, subject_id=None
-) -> bool:
+def _is_scope_allowed(rbac_meta: dict, grade_id=None, homeroom_class_id=None, subject_id=None) -> bool:
     """Kiểm tra một phạm vi (grade/class/subject) có nằm trong phân quyền của user hay không."""
     if rbac_meta.get("is_full_access", False):
         return True
     if grade_id is not None and str(grade_id) in {str(g) for g in (rbac_meta.get("grade_ids") or [])}:
         return True
-    if homeroom_class_id is not None and str(homeroom_class_id) in {str(c) for c in (rbac_meta.get("homeroom_class_ids") or [])}:
+    if homeroom_class_id is not None and str(homeroom_class_id) in {
+        str(c) for c in (rbac_meta.get("homeroom_class_ids") or [])
+    }:
         return True
     if homeroom_class_id is not None and subject_id is not None:
         pairs = {(str(c), str(s)) for c, s in (rbac_meta.get("subject_class_pairs") or [])}
@@ -76,10 +76,7 @@ def get_student_info(name_or_id: str) -> str:
         # RBAC: chỉ trả về các học sinh nằm trong phạm vi phân quyền
         rbac_meta = _get_rbac_meta()
         scope = rbac_meta.get("scope_summary", "")
-        allowed_rows = [
-            r for r in rows
-            if _is_scope_allowed(rbac_meta, grade_id=r[5], homeroom_class_id=r[6])
-        ]
+        allowed_rows = [r for r in rows if _is_scope_allowed(rbac_meta, grade_id=r[5], homeroom_class_id=r[6])]
         if not allowed_rows:
             return _rbac_denied(scope)
 
@@ -97,7 +94,9 @@ def get_student_info(name_or_id: str) -> str:
 
 
 @tool
-def get_student_grades(student_code: str, year: int | None = None, semester: int | None = None, subject: str | None = None) -> str:
+def get_student_grades(
+    student_code: str, year: int | None = None, semester: int | None = None, subject: str | None = None
+) -> str:
     """Tra cứu điểm số và kết quả đánh giá của một học sinh theo Mã học sinh.
 
     Args:
@@ -194,7 +193,7 @@ def get_student_grades(student_code: str, year: int | None = None, semester: int
         for r in rows:
             pf_val = str(r[9]).upper() if r[9] else None
             pf_str = "ĐẠT" if pf_val == "DAT" else ("CHƯA ĐẠT" if pf_val == "CHUA_DAT" else "N/A")
-            is_remark = (r[10] == "REMARK")
+            is_remark = r[10] == "REMARK"
 
             item = {
                 "Mã học sinh": r[0],
@@ -216,7 +215,9 @@ def get_student_grades(student_code: str, year: int | None = None, semester: int
 
 
 @tool
-def get_class_grades(class_name: str, year: int | None = None, semester: int | None = None, subject: str | None = None) -> str:
+def get_class_grades(
+    class_name: str, year: int | None = None, semester: int | None = None, subject: str | None = None
+) -> str:
     """Tra cứu danh sách điểm trung bình/điểm thi/kết quả đánh giá của tất cả học sinh trong một lớp học cụ thể (ví dụ: '7A1', '10A1').
 
     Args:
@@ -315,7 +316,7 @@ def get_class_grades(class_name: str, year: int | None = None, semester: int | N
         for r in rows:
             pf_val = str(r[8]).upper() if r[8] else None
             pf_str = "ĐẠT" if pf_val == "DAT" else ("CHƯA ĐẠT" if pf_val == "CHUA_DAT" else "N/A")
-            is_remark = (r[9] == "REMARK")
+            is_remark = r[9] == "REMARK"
 
             item = {
                 "Mã học sinh": r[0],
@@ -347,14 +348,16 @@ def execute_read_only_query(sql_query: str) -> str:
     user_id = current_user_id.get()
 
     # Pre-check: Phát hiện multi-statement SQL (semicolon split)
-    cleaned = re.sub(r"--.*$", "", sql_query, flags=re.MULTILINE)       # Xoá line comment -- ...
-    cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)        # Xoá block comment /* ... */
-    cleaned = re.sub(r"'(?:[^'\\]|\\.)*'", "", cleaned)                  # Xoá string literals
-    cleaned = cleaned.rstrip(";")                                        # Strip trailing ; (hợp lệ)
+    cleaned = re.sub(r"--.*$", "", sql_query, flags=re.MULTILINE)  # Xoá line comment -- ...
+    cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)  # Xoá block comment /* ... */
+    cleaned = re.sub(r"'(?:[^'\\]|\\.)*'", "", cleaned)  # Xoá string literals
+    cleaned = cleaned.rstrip(";")  # Strip trailing ; (hợp lệ)
     if ";" in cleaned:
-        return "LỖI: Phát hiện nhiều câu lệnh SQL trong 1 lượt gọi. " \
-               "Mỗi lượt gọi chỉ được gửi DUY NHẤT 1 câu lệnh SELECT. " \
-               "Vui lòng chia thành các câu lệnh đơn riêng biệt."
+        return (
+            "LỖI: Phát hiện nhiều câu lệnh SQL trong 1 lượt gọi. "
+            "Mỗi lượt gọi chỉ được gửi DUY NHẤT 1 câu lệnh SELECT. "
+            "Vui lòng chia thành các câu lệnh đơn riêng biệt."
+        )
 
     try:
         # 1. Bảo mật và lọc theo school_id + user assignments sử dụng SQLGlot
@@ -363,6 +366,9 @@ def execute_read_only_query(sql_query: str) -> str:
             str(school_id),
             user_id=user_id,
             user_role=user_role,
+            # Bảng điểm lớp/khối có thể vượt 100 dòng (vd lớp 6A1 Ngữ văn HK2 = 216 dòng).
+            # Limit Guardrail mặc định 100 sẽ cắt dữ liệu -> LLM báo "chưa hiển thị đầy đủ".
+            max_rows=2000,
         )
 
         # 2. Thực thi câu lệnh SQL thô trên DB

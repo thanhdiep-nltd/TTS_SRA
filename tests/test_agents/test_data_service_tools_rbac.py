@@ -75,9 +75,7 @@ def test_get_class_grades_in_scope_allowed(rbac_grade6, fake_session):
     """Trưởng khối 6 hỏi lớp 6A1 -> hợp lệ, trả dữ liệu điểm thật (không ACCESS_DENIED)."""
     row = ("HS1001", "Nguyễn Văn A", "Toán học", "6A1", 2, "Cuối kỳ", 8.5, "A", "DAT", "SCORED")
     fake_session(class_grade_id=6, rows=[row])
-    result = ds_tools.get_class_grades.invoke(
-        {"class_name": "6A1", "year": 2025, "semester": 2, "subject": "Toán học"}
-    )
+    result = ds_tools.get_class_grades.invoke({"class_name": "6A1", "year": 2025, "semester": 2, "subject": "Toán học"})
     assert "ACCESS_DENIED" not in result
     assert "Nguyễn Văn A" in result
     assert "8.5" in result
@@ -172,9 +170,7 @@ def test_get_class_grades_kiem_nhiem_moet_union_queries_both_tables(rbac_kiem_nh
     mock_session_local.return_value.__enter__.return_value = session
     monkeypatch.setattr(ds_tools, "SessionLocal", mock_session_local)
 
-    result = ds_tools.get_class_grades.invoke(
-        {"class_name": "6A2", "semester": 2, "subject": "Ngữ văn"}
-    )
+    result = ds_tools.get_class_grades.invoke({"class_name": "6A2", "semester": 2, "subject": "Ngữ văn"})
     assert "ACCESS_DENIED" not in result
     assert "Ngữ văn" in result
     assert "6.0" in result
@@ -191,8 +187,17 @@ def test_get_student_grades_kiem_nhiem_moet_union_queries_both_tables(rbac_kiem_
     # student lookup -> (grade_id=6, homeroom_class_id=2)
     session.execute.return_value.fetchone.return_value = (6, 2)
     row = (
-        "HS1001", "Nguyễn Văn A", "Ngữ văn", "6A2", "Năm học 2025-2026",
-        2, "Kiểm tra Giữa Học kỳ 2", 6.0, None, None, "SCORED",
+        "HS1001",
+        "Nguyễn Văn A",
+        "Ngữ văn",
+        "6A2",
+        "Năm học 2025-2026",
+        2,
+        "Kiểm tra Giữa Học kỳ 2",
+        6.0,
+        None,
+        None,
+        "SCORED",
     )
     session.execute.return_value.fetchall.return_value = [row]
 
@@ -200,9 +205,7 @@ def test_get_student_grades_kiem_nhiem_moet_union_queries_both_tables(rbac_kiem_
     mock_session_local.return_value.__enter__.return_value = session
     monkeypatch.setattr(ds_tools, "SessionLocal", mock_session_local)
 
-    result = ds_tools.get_student_grades.invoke(
-        {"student_code": "HS1001", "semester": 2, "subject": "Ngữ văn"}
-    )
+    result = ds_tools.get_student_grades.invoke({"student_code": "HS1001", "semester": 2, "subject": "Ngữ văn"})
     assert "ACCESS_DENIED" not in result
     assert "Ngữ văn" in result
     assert "6.0" in result
@@ -223,8 +226,9 @@ def test_execute_read_only_query_empty_result_neutral_note(rbac_kiem_nhiem, monk
     Fix: note trung lập — 0 dòng = "không tìm thấy dữ liệu", chỉ ACCESS_DENIED mới là hết quyền.
     """
     monkeypatch.setattr(
-        ds_tools, "validate_and_secure_sql",
-        lambda q, sid, user_id=None, user_role=None: q,
+        ds_tools,
+        "validate_and_secure_sql",
+        lambda q, sid, user_id=None, user_role=None, **kwargs: q,
     )
     mock_engine = MagicMock()
     mock_conn = mock_engine.connect.return_value.__enter__.return_value
@@ -232,9 +236,7 @@ def test_execute_read_only_query_empty_result_neutral_note(rbac_kiem_nhiem, monk
     mock_conn.execute.return_value.keys.return_value = []
     monkeypatch.setattr(ds_tools, "engine", mock_engine)
 
-    result = ds_tools.execute_read_only_query.invoke(
-        {"sql_query": "SELECT * FROM s360.fact_gradebooks"}
-    )
+    result = ds_tools.execute_read_only_query.invoke({"sql_query": "SELECT * FROM s360.fact_gradebooks"})
     payload = json.loads(result)
     assert payload["data"] == []
     note = payload["note"]

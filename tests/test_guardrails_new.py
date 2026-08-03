@@ -1,9 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from src.agents.context import current_user_role, current_user_school_id
+from src.agents.context import current_user_id, current_user_role, current_user_school_id
+from src.agents.data_service_agent.tools import execute_read_only_query
 from src.agents.knowledge_agent.tools import search_textbook
-from src.agents.sql_agent.tools import execute_read_only_query
 from src.core.security.sql_validator import validate_and_secure_sql
 
 
@@ -29,24 +29,65 @@ def test_sql_limit_guardrail():
     assert "LIMIT 100" not in res3
 
 
+def test_sql_limit_guardrail_max_rows_override():
+    """max_rows cho phép caller (tool bảng điểm lớp/khối) nới trần dòng trả về."""
+    school_id = "00000000-0000-0000-0000-000000000001"
+
+    # 1. max_rows=2000: không có LIMIT -> ép LIMIT 2000
+    res1 = validate_and_secure_sql("SELECT * FROM students", school_id, max_rows=2000)
+    assert "LIMIT 2000" in res1
+
+    # 2. max_rows=2000: LIMIT 1000 (< trần) -> giữ nguyên
+    res2 = validate_and_secure_sql("SELECT * FROM students LIMIT 1000", school_id, max_rows=2000)
+    assert "LIMIT 1000" in res2
+    assert "LIMIT 2000" not in res2
+
+    # 3. max_rows=2000: LIMIT 5000 (> trần) -> hạ về 2000
+    res3 = validate_and_secure_sql("SELECT * FROM students LIMIT 5000", school_id, max_rows=2000)
+    assert "LIMIT 2000" in res3
+    assert "LIMIT 5000" not in res3
+
+
 def test_sql_agent_role_blocking():
-    """Kiểm tra xem SQL Analyst Agent có chặn tài khoản Giáo viên (non-PRINCIPAL) hay không."""
+    """RBAC trong kiến trúc hiện tại: `execute_read_only_query` chặn user ngoài phạm vi.
+
+    - User có phân quyền giới hạn + truy vấn ngoài phạm vi -> validator raise
+      `PermissionDeniedError` -> tool trả ACCESS_DENIED (KHÔNG retry/đi tiếp).
+    - User PRINCIPAL (full access) -> đi tiếp tới DB execution (engine.connect được gọi).
+    """
+    from src.agents.data_service_agent import tools as ds_tools
+    from src.core.security.sql_validator import PermissionDeniedError
+
     school_id = uuid4()
+    token_school = current_user_school_id.set(school_id)
+    token_id = current_user_id.set(100)
+    token_role = current_user_role.set("SUBJECT_TEACHER")
+    try:
+        # 1. Truy vấn ngoài phạm vi -> ACCESS_DENIED
+        def _raise(*args, **kwargs):
+            raise PermissionDeniedError("Ngoài phạm vi phân công.")
 
-    # Giả lập vai trò SUBJECT_TEACHER
-    current_user_school_id.set(school_id)
-    current_user_role.set("SUBJECT_TEACHER")
+        with patch.object(ds_tools, "validate_and_secure_sql", _raise):
+            res = execute_read_only_query.invoke({"sql_query": "SELECT * FROM students"})
+        assert "ACCESS_DENIED" in res
+        assert "Lỗi thực thi truy vấn SQL" not in res
 
-    res = execute_read_only_query.invoke({"sql_query": "SELECT * FROM students"})
-    assert "Lỗi bảo mật" in res
-    assert "chỉ dành riêng cho Ban Giám Hiệu" in res
-
-    # Giả lập vai trò PRINCIPAL -> Cho phép đi tiếp (sẽ lỗi kết nối DB thật nhưng không chặn quyền ở tool level)
-    current_user_role.set("PRINCIPAL")
-    with patch("src.agents.sql_agent.tools.engine.connect") as mock_connect:
-        # Mock connection to bypass real database execute
-        execute_read_only_query.invoke({"sql_query": "SELECT * FROM students"})
-        assert mock_connect.called
+        # 2. PRINCIPAL (full access) -> đi tiếp tới DB execution
+        current_user_role.set("PRINCIPAL")
+        fake_conn = MagicMock()
+        fake_result = MagicMock()
+        fake_result.keys.return_value = ["student_code"]
+        fake_result.fetchall.return_value = [{"student_code": "HS1"}]
+        fake_conn.execute.return_value = fake_result
+        with patch.object(ds_tools, "engine") as mock_engine:
+            mock_engine.connect.return_value.__enter__.return_value = fake_conn
+            out = execute_read_only_query.invoke({"sql_query": "SELECT * FROM students"})
+            mock_engine.connect.assert_called()
+        assert '"student_code"' in out
+    finally:
+        current_user_school_id.reset(token_school)
+        current_user_id.reset(token_id)
+        current_user_role.reset(token_role)
 
 
 def test_rag_score_threshold_guardrail():
