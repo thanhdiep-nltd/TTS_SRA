@@ -126,6 +126,11 @@ def main() -> None:
         "--skip-shap", action="store_true", default=False,
         help="Bỏ qua SHAP TreeExplainer để tăng tốc",
     )
+    parser.add_argument(
+        "--model-version", type=str, default="v1_single",
+        choices=["v1_single", "v2_ensemble"],
+        help="Phiên bản model: v1_single (model đơn) hoặc v2_ensemble (factor-ensemble)",
+    )
 
     args = parser.parse_args()
 
@@ -150,6 +155,7 @@ def main() -> None:
             evaluated_at_week=args.week,
             cutoff_date=cutoff_date,
             skip_shap=args.skip_shap,
+            model_version=args.model_version,
         )
         logger.info("✅ Pipeline completed successfully: %d predictions", len(result))
     except Exception:

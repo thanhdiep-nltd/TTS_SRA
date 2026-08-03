@@ -79,3 +79,4 @@ uploads/
 .mcp.json
 .roo/
 .gemini/
+*.cbm

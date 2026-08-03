@@ -268,6 +268,7 @@ def get_ews_predictions(
     school_year_id: int = Query(2025, description="Năm học"),
     semester_index: int = Query(1, description="Học kỳ"),
     evaluated_at_week: int = Query(8, description="Tuần đánh giá"),
+    model_version: str = Query("v1_single", description="v1_single | v2_ensemble"),
     risk_level: str | None = Query(None, description="LOW | MODERATE | HIGH | CRITICAL"),
     subject_id: int | None = Query(None, description="ID môn học"),
     grade_id: int | None = Query(None, description="ID khối lớp"),
@@ -287,8 +288,12 @@ def get_ews_predictions(
         "rp.school_year_id = :sy",
         "rp.semester_index = :sem",
         "rp.evaluated_at_week = :wk",
+        "rp.model_version = :model_version",
     ]
-    params: dict = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}
+    params: dict = {
+        "sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week,
+        "model_version": model_version,
+    }
 
     rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
     params.update(rbac_params)
@@ -349,8 +354,10 @@ def get_ews_predictions(
         SELECT rp.student_code, hcs.student_name, hcs.class_name, hcs.grade_name, hcs.grade_id AS grade_level,
                rp.subject_id, sub.name AS subject_name, sub.code AS subject_code,
                sub.subject_category,
-               rp.evaluated_at_week, rp.risk_score, rp.risk_level, rp.risk_probability,
+               rp.evaluated_at_week, rp.model_version, rp.risk_score, rp.risk_level, rp.risk_probability,
                rp.evaluated_at_date, rp.cutoff_date, rp.join_date,
+               rp.score_risk, rp.lms_risk, rp.attendance_risk, rp.behavior_risk,
+               rp.weight_score, rp.weight_lms, rp.weight_attendance, rp.weight_behavior,
                -- Temporal
                rp.weighted_early_avg, rp.weighted_late_avg, rp.score_slope, rp.score_volatility,
                rp.max_drop, rp.last_score, rp.max_coefficient_so_far, rp.high_weight_score_count,
@@ -407,6 +414,15 @@ def get_ews_predictions(
                 evaluated_at_date=r.evaluated_at_date,
                 cutoff_date=r.cutoff_date,
                 join_date=r.join_date,
+                model_version=r.model_version or "v1_single",
+                score_risk=_flt(r.score_risk),
+                lms_risk=_flt(r.lms_risk),
+                attendance_risk=_flt(r.attendance_risk),
+                behavior_risk=_flt(r.behavior_risk),
+                weight_score=_flt(r.weight_score),
+                weight_lms=_flt(r.weight_lms),
+                weight_attendance=_flt(r.weight_attendance),
+                weight_behavior=_flt(r.weight_behavior),
                 # Temporal
                 weighted_early_avg=_flt(r.weighted_early_avg),
                 weighted_late_avg=_flt(r.weighted_late_avg),

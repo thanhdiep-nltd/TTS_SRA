@@ -977,6 +977,7 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     
     -- === KHÓA ĐỊNH VỊ THỜI GIAN DỰ BÁO ===
     evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần học (5, 8, 11, 14, 16)
+    model_version           VARCHAR(20) DEFAULT 'v1_single',     -- 'v1_single' | 'v2_ensemble' (2 phiên bản song song)
     evaluated_at_date       DATE NOT NULL DEFAULT CURRENT_DATE,   -- Ngày chạy dự báo thực tế (Audit Trail)
     cutoff_date             DATE,                                 -- Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     target_scope            VARCHAR(20) DEFAULT 'SEMESTER',       -- 'SEMESTER' (Học kỳ) hoặc 'FULL_YEAR' (Cả năm)
@@ -1011,13 +1012,23 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     repeat_offense_count        INTEGER DEFAULT 0,         -- Số lần vi phạm lặp đi lặp lại (tái phạm)
     severe_sanction_count       INTEGER DEFAULT 0,         -- Số lần có hình thức xử lý kỷ luật chính thức
 
+    -- === SUB-SCORES & TRỌNG SỐ (chỉ dùng cho v2_ensemble) ===
+    score_risk              DECIMAL(5,2),  -- risk score riêng yếu tố Điểm (0-100)
+    lms_risk                DECIMAL(5,2),  -- risk score riêng yếu tố LMS (0-100)
+    attendance_risk         DECIMAL(5,2),  -- risk score riêng yếu tố Chuyên cần (0-100)
+    behavior_risk           DECIMAL(5,2),  -- risk score riêng yếu tố Hạnh kiểm (0-100)
+    weight_score            DECIMAL(5,4),  -- trọng số động đã dùng cho Điểm
+    weight_lms              DECIMAL(5,4),  -- trọng số động đã dùng cho LMS
+    weight_attendance       DECIMAL(5,4),  -- trọng số động đã dùng cho Chuyên cần
+    weight_behavior         DECIMAL(5,4),  -- trọng số động đã dùng cho Hạnh kiểm
+
     -- === KẾT QUẢ DỰ BÁO EWS RUNTIME (Thang 0-100 & 4 Mức Rủi Ro) ===
     risk_score              DECIMAL(5,2),         -- Thang điểm rủi ro 0.00 -> 100.00 (0: Safe, 100: Critical)
     risk_level              VARCHAR(15) NOT NULL, -- 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
     risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
     created_at              TIMESTAMPTZ DEFAULT NOW(),
 
-    CONSTRAINT uq_fssrp_checkpoint UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week)
+    CONSTRAINT uq_fssrp_checkpoint UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
 );
 
 -- M2-PIVOT: migration cho DB đã tồn tại — thêm cột join_date (idempotent)
@@ -1027,6 +1038,30 @@ ALTER TABLE s360.fact_student_subject_risk_predictions
 -- M2-CUTOFF: migration cho DB đã tồn tại — thêm cột cutoff_date (idempotent)
 ALTER TABLE s360.fact_student_subject_risk_predictions
     ADD COLUMN IF NOT EXISTS cutoff_date DATE;
+
+-- M2-ENSEMBLE: migration cho DB đã tồn tại — thêm model_version + sub-scores/weights (idempotent)
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    ADD COLUMN IF NOT EXISTS model_version VARCHAR(20) DEFAULT 'v1_single',
+    ADD COLUMN IF NOT EXISTS score_risk DECIMAL(5,2),
+    ADD COLUMN IF NOT EXISTS lms_risk DECIMAL(5,2),
+    ADD COLUMN IF NOT EXISTS attendance_risk DECIMAL(5,2),
+    ADD COLUMN IF NOT EXISTS behavior_risk DECIMAL(5,2),
+    ADD COLUMN IF NOT EXISTS weight_score DECIMAL(5,4),
+    ADD COLUMN IF NOT EXISTS weight_lms DECIMAL(5,4),
+    ADD COLUMN IF NOT EXISTS weight_attendance DECIMAL(5,4),
+    ADD COLUMN IF NOT EXISTS weight_behavior DECIMAL(5,4);
+
+-- M2-ENSEMBLE: backfill model_version cho dữ liệu cũ (idempotent)
+UPDATE s360.fact_student_subject_risk_predictions
+    SET model_version = 'v1_single'
+    WHERE model_version IS NULL;
+
+-- M2-ENSEMBLE: sửa UNIQUE constraint để cho phép 2 phiên bản song song (idempotent)
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    DROP CONSTRAINT IF EXISTS uq_fssrp_checkpoint;
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    ADD CONSTRAINT uq_fssrp_checkpoint
+        UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version);
 
 CREATE INDEX IF NOT EXISTS idx_fssrp_v3_student_subject
     ON s360.fact_student_subject_risk_predictions(student_code, subject_id);

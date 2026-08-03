@@ -197,6 +197,54 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               </div>
             </div>
 
+            {/* BREAKDOWN THEO YẾU TỐ (v1: mức đóng góp học được từ model, chung mọi học sinh; v2: trọng số động theo từng em) */}
+            {item.model_version === "v2_ensemble" || item.model_version === "v1_single" ? (
+              <div className="pt-2 space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {item.model_version === "v2_ensemble"
+                    ? "Trọng số quyết định theo từng yếu tố (động, riêng cho từng học sinh):"
+                    : "Mức đóng góp của từng yếu tố vào quyết định (học được từ model, chung cho mọi học sinh):"}
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Điểm số", risk: item.score_risk, w: item.weight_score, def: 0.65 },
+                    { label: "LMS", risk: item.lms_risk, w: item.weight_lms, def: 0.15 },
+                    { label: "Chuyên cần", risk: item.attendance_risk, w: item.weight_attendance, def: 0.10 },
+                    { label: "Hạnh kiểm", risk: item.behavior_risk, w: item.weight_behavior, def: 0.10 },
+                  ].map((f) => {
+                    const w = f.w !== null ? f.w : f.def;
+                    // v1: weight_* luôn có (mức đóng góp học được) dù risk_* = null (model đơn).
+                    // v2: yếu tố không có dữ liệu → risk null → hiển thị "—".
+                    const hasData = item.model_version === "v1_single" ? true : f.risk !== null;
+                    return (
+                      <div key={f.label} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{f.label}</span>
+                          <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                            {hasData ? `${(w * 100).toFixed(0)}%` : "—"}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, f.risk ?? 0)}%`,
+                                backgroundColor: (f.risk ?? 0) >= 70 ? "#ef4444" : (f.risk ?? 0) >= 50 ? "#f97316" : "#22c55e",
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {f.risk !== null ? f.risk.toFixed(0) : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             {/* CỜ NGUYÊN NHÂN BADGES */}
             {item.risk_factors && item.risk_factors.length > 0 && (
               <div className="space-y-1.5 pt-2">

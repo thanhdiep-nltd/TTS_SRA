@@ -30,7 +30,30 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 MODEL_PATH = Path("src/models/gbdt/saved/catboost_ews_model.cbm")
+SHAP_PATH = Path("src/models/gbdt/saved/shap_feature_importance.json")
 CAT_FEATURES = ["subject_id", "subject_category", "grade_level"]  # same as training
+
+# Nhóm feature theo 4 yếu tố quyết định (khớp FEATURE_COLS trong training).
+# Dùng để tính mức đóng góp (%) của từng nhóm vào quyết định của model v1_single
+# từ SHAP feature importance (mean |SHAP|) — giá trị học được sau khi train.
+FACTOR_GROUP_FEATURES: dict[str, list[str]] = {
+    "score": [
+        "weighted_early_avg", "weighted_late_avg", "score_slope",
+        "score_volatility", "max_drop", "last_score",
+        "max_coefficient_so_far", "high_weight_score_count", "last_high_weight_score",
+    ],
+    "lms": [
+        "lms_avg_score", "lms_recent_drop", "lms_submission_rate",
+        "lms_recent_submission_rate", "lms_gradebook_gap",
+    ],
+    "attendance": [
+        "daily_absence_rate", "unexcused_absent_rate",
+        "excused_absent_days", "total_late_count",
+    ],
+    "behavior": [
+        "total_demerit_points", "repeat_offense_count", "severe_sanction_count",
+    ],
+}
 
 # Trọng số risk score — giống training
 RISK_SCORE_WEIGHTS = np.array([0.00, 0.35, 0.70, 1.00], dtype=np.float64)
@@ -54,6 +77,46 @@ def load_model(path: Path = MODEL_PATH) -> cb.CatBoostClassifier:
     model.load_model(str(path))
     logger.info("Model loaded: iterations=%d", model.tree_count_)
     return model
+
+
+def compute_v1_group_contributions(
+    shap_path: Path = SHAP_PATH,
+) -> dict[str, float]:
+    """
+    Tính mức đóng góp (%) của từng nhóm yếu tố vào quyết định của model v1_single.
+
+    Đọc SHAP feature importance (mean |SHAP|) đã lưu sau khi train, cộng dồn theo
+    nhóm (score/lms/attendance/behavior) rồi chuẩn hoá về tổng = 1.0.
+
+    Đây là giá trị HỌC ĐƯỢC từ model (không phải trọng số cấu hình) — chung cho
+    mọi học sinh vì v1 là model đơn.
+
+    Returns:
+        {"score": 0.746, "lms": 0.112, "attendance": 0.075, "behavior": 0.066}
+    """
+    if not shap_path.exists():
+        logger.warning("SHAP file not found (%s) — fallback to default weights", shap_path)
+        return {"score": 0.65, "lms": 0.15, "attendance": 0.10, "behavior": 0.10}
+
+    with open(shap_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # feature -> mean_abs_shap
+    imp = {row["feature"]: row["mean_abs_shap"] for row in data.get("feature_importance", [])}
+
+    group_sum: dict[str, float] = {}
+    for group, feats in FACTOR_GROUP_FEATURES.items():
+        group_sum[group] = sum(imp.get(f, 0.0) for f in feats)
+
+    total = sum(group_sum.values())
+    if total <= 0:
+        logger.warning("SHAP group total <= 0 — fallback to default weights")
+        return {"score": 0.65, "lms": 0.15, "attendance": 0.10, "behavior": 0.10}
+
+    contrib = {g: s / total for g, s in group_sum.items()}
+    logger.info("v1 group contributions (learned from SHAP): %s",
+                {g: round(v, 4) for g, v in contrib.items()})
+    return contrib
 
 
 def compute_risk_score(probs: np.ndarray) -> np.ndarray:
@@ -218,5 +281,124 @@ def run_inference(
         len(result),
         result["risk_score"].min(),
         result["risk_score"].max(),
+    )
+    return result
+
+
+# ============================================================================
+# FACTOR-ENSEMBLE (v2) — 4 sub-model + dynamic weighting
+# ============================================================================
+
+# Nhóm feature cho từng sub-model (khớp train_catboost_ews_ensemble.py)
+ENSEMBLE_FACTOR_GROUPS = {
+    "score": [
+        "weighted_early_avg", "weighted_late_avg", "score_slope", "score_volatility",
+        "max_drop", "last_score", "max_coefficient_so_far",
+        "high_weight_score_count", "last_high_weight_score",
+    ],
+    "lms": [
+        "lms_avg_score", "lms_recent_drop", "lms_submission_rate",
+        "lms_recent_submission_rate", "lms_gradebook_gap",
+    ],
+    "attendance": [
+        "daily_absence_rate", "unexcused_absent_rate", "excused_absent_days", "total_late_count",
+    ],
+    "behavior": [
+        "total_demerit_points", "repeat_offense_count", "severe_sanction_count",
+    ],
+}
+
+ENSEMBLE_MODEL_PATHS = {
+    "score": Path("src/models/gbdt/saved/catboost_ews_score.cbm"),
+    "lms": Path("src/models/gbdt/saved/catboost_ews_lms.cbm"),
+    "attendance": Path("src/models/gbdt/saved/catboost_ews_attendance.cbm"),
+    "behavior": Path("src/models/gbdt/saved/catboost_ews_behavior.cbm"),
+}
+
+
+def load_ensemble(paths: dict | None = None) -> dict:
+    """Load 4 sub-model CatBoost (factor-ensemble)."""
+    paths = paths or ENSEMBLE_MODEL_PATHS
+    models = {}
+    for factor, p in paths.items():
+        if not p.exists():
+            raise FileNotFoundError(f"Ensemble model not found: {p}")
+        m = cb.CatBoostClassifier()
+        m.load_model(str(p))
+        models[factor] = m
+        logger.info("Loaded ensemble model [%s]: iterations=%d", factor, m.tree_count_)
+    return models
+
+
+def run_ensemble_inference(
+    models: dict,
+    X: pd.DataFrame,
+    return_shap: bool = False,
+) -> pd.DataFrame:
+    """
+    Inference factor-ensemble: mỗi sub-model xuất risk_score riêng, rồi kết hợp
+    bằng trọng số động (risk_config.combine_risk_scores).
+
+    Output DataFrame gồm:
+      - metadata + toàn bộ feature cols (đủ bind UPSERT)
+      - score_risk, lms_risk, attendance_risk, behavior_risk (sub-score 0-100)
+      - weight_score, weight_lms, weight_attendance, weight_behavior (trọng số động đã dùng)
+      - risk_score (final), risk_level (final), risk_probability
+    """
+    from src.ews.risk_config import FACTOR_KEYS, combine_risk_scores
+
+    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
+    feature_cols = [c for c in X.columns if c not in meta_cols]
+
+    result = X[["student_code", "evaluated_at_week"] + (
+        ["join_date"] if "join_date" in X.columns else []
+    ) + feature_cols].copy()
+
+    # Feature cols thực của từng nhóm (bỏ context) để xác định yếu tố "có dữ liệu"
+    factor_feat_cols = {
+        f: [c for c in ENSEMBLE_FACTOR_GROUPS[f] if c in X.columns]
+        for f in FACTOR_KEYS
+    }
+
+    sub_scores = {}
+    for factor in FACTOR_KEYS:
+        cols = [c for c in CAT_FEATURES + factor_feat_cols[factor] if c in X.columns]
+        y_proba = models[factor].predict_proba(X[cols])
+        sub_scores[factor] = compute_risk_score(y_proba)  # (N,) 0-100
+
+    # Kết hợp từng dòng; yếu tố toàn NaN (không có dữ liệu) bị LOẠI khỏi ensemble
+    # (không coi "không có dữ liệu" như "không nộp bài / rủi ro cao").
+    final_scores = []
+    final_levels = []
+    weight_cols = {f: [] for f in FACTOR_KEYS}
+    risk_cols = {f: [] for f in FACTOR_KEYS}
+    for i in range(len(X)):
+        available = [
+            f for f in FACTOR_KEYS
+            if factor_feat_cols[f]
+            and not X.iloc[i][factor_feat_cols[f]].isna().all()
+        ]
+        row = {f: float(sub_scores[f][i]) for f in FACTOR_KEYS}
+        comb = combine_risk_scores(row, available=available)
+        final_scores.append(comb["final_risk_score"])
+        final_levels.append(comb["final_risk_level"])
+        for f in FACTOR_KEYS:
+            weight_cols[f].append(comb["weights"][f])
+            risk_cols[f].append(float(sub_scores[f][i]) if f in available else None)
+
+    result["risk_score"] = np.array(final_scores)
+    result["risk_level"] = np.array(final_levels)
+    for f in FACTOR_KEYS:
+        result[f"weight_{f}"] = np.array(weight_cols[f])
+        result[f"{f}_risk"] = np.array(risk_cols[f], dtype=object)
+
+    # risk_probability: dùng max prob của sub-model score (xấp xỉ độ tin cậy)
+    result["risk_probability"] = models["score"].predict_proba(
+        X[[c for c in CAT_FEATURES + ENSEMBLE_FACTOR_GROUPS["score"] if c in X.columns]]
+    ).max(axis=1).round(4)
+
+    logger.info(
+        "Ensemble inference complete: %d rows, final risk_score range [%.2f, %.2f]",
+        len(result), result["risk_score"].min(), result["risk_score"].max(),
     )
     return result

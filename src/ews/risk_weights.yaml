@@ -1,0 +1,32 @@
+# ============================================================================
+# Cấu hình trọng số EWS (v2_ensemble)
+#
+# - weights: trọng số GỐC (neo chính sách trường) cho từng yếu tố. Tổng = 1.0.
+# - dynamic: cơ chế trọng số động theo từng học sinh (Dynamic Adaptive Weighting).
+#   * alpha: hệ số khuếch đại softmax (càng cao → yếu tố rủi ro càng "nở" trọng số).
+#   * weight_floor: sàn trọng số tối thiểu mỗi yếu tố (tránh triệt tiêu).
+#   * worst_factor_beta: pha trộn Worst-Factor Dominance vào final score.
+# - risk_level_thresholds: ngưỡng trên final risk_score [0,100] để suy risk_level.
+#
+# Env override (đổi không cần retrain):
+#   EWS_WEIGHT_SCORE, EWS_WEIGHT_LMS, EWS_WEIGHT_ATTENDANCE, EWS_WEIGHT_BEHAVIOR
+#   EWS_ALPHA, EWS_WEIGHT_FLOOR, EWS_WORST_FACTOR_BETA
+# ============================================================================
+
+weights:
+  score: 0.65
+  lms: 0.15
+  attendance: 0.10
+  behavior: 0.10
+
+dynamic:
+  enabled: true
+  alpha: 2.5
+  weight_floor: 0.05
+  worst_factor_beta: 0.20
+
+risk_level_thresholds:
+  LOW: 17.5
+  MODERATE: 52.5
+  HIGH: 85.0
+  CRITICAL: 100.0

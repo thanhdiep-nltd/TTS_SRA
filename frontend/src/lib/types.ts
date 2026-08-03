@@ -979,6 +979,17 @@ export interface EwsPredictionRow {
   evaluated_at_date: string | null;
   cutoff_date: string | null;
   join_date: string | null;
+  model_version: string | null;
+
+  // Sub-scores & trọng số (chỉ có ở v2_ensemble)
+  score_risk: number | null;
+  lms_risk: number | null;
+  attendance_risk: number | null;
+  behavior_risk: number | null;
+  weight_score: number | null;
+  weight_lms: number | null;
+  weight_attendance: number | null;
+  weight_behavior: number | null;
 
   // 1. Temporal Scores (9)
   weighted_early_avg: number | null;

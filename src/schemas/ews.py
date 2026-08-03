@@ -33,6 +33,17 @@ class EwsPredictionRow(BaseModel):
     evaluated_at_date: Optional[date] = None
     cutoff_date: Optional[date] = None  # Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     join_date: Optional[date] = None  # Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT
+    model_version: Optional[str] = "v1_single"  # 'v1_single' | 'v2_ensemble' — M2-ENSEMBLE
+
+    # Sub-scores & trọng số (chỉ có ở v2_ensemble)
+    score_risk: Optional[float] = None
+    lms_risk: Optional[float] = None
+    attendance_risk: Optional[float] = None
+    behavior_risk: Optional[float] = None
+    weight_score: Optional[float] = None
+    weight_lms: Optional[float] = None
+    weight_attendance: Optional[float] = None
+    weight_behavior: Optional[float] = None
 
     # 1. Temporal Scores (9)
     weighted_early_avg: Optional[float] = None

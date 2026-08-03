@@ -17,7 +17,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.ews.feature_extractor import extract_live_features
-from src.ews.inference_service import load_model, run_inference
+from src.ews.inference_service import (
+    compute_v1_group_contributions,
+    load_ensemble,
+    load_model,
+    run_ensemble_inference,
+    run_inference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +34,7 @@ logger = logging.getLogger(__name__)
 UPSERT_SQL = """
 INSERT INTO s360.fact_student_subject_risk_predictions (
     student_code, subject_id, school_year_id, semester_index,
-    evaluated_at_week, join_date, evaluated_at_date, cutoff_date,
+    evaluated_at_week, model_version, join_date, evaluated_at_date, cutoff_date,
     weighted_early_avg, weighted_late_avg, score_slope,
     score_volatility, max_drop, last_score,
     max_coefficient_so_far, high_weight_score_count, last_high_weight_score,
@@ -37,11 +43,13 @@ INSERT INTO s360.fact_student_subject_risk_predictions (
     daily_absence_rate, unexcused_absent_rate,
     excused_absent_days, total_late_count,
     total_demerit_points, repeat_offense_count, severe_sanction_count,
+    score_risk, lms_risk, attendance_risk, behavior_risk,
+    weight_score, weight_lms, weight_attendance, weight_behavior,
     risk_score, risk_level, risk_probability
 )
 VALUES (
     :student_code, :subject_id, :school_year_id, :semester_index,
-    :evaluated_at_week, :join_date, CURRENT_DATE, :cutoff_date,
+    :evaluated_at_week, :model_version, :join_date, CURRENT_DATE, :cutoff_date,
     :weighted_early_avg, :weighted_late_avg, :score_slope,
     :score_volatility, :max_drop, :last_score,
     :max_coefficient_so_far, :high_weight_score_count, :last_high_weight_score,
@@ -50,9 +58,11 @@ VALUES (
     :daily_absence_rate, :unexcused_absent_rate,
     :excused_absent_days, :total_late_count,
     :total_demerit_points, :repeat_offense_count, :severe_sanction_count,
+    :score_risk, :lms_risk, :attendance_risk, :behavior_risk,
+    :weight_score, :weight_lms, :weight_attendance, :weight_behavior,
     :risk_score, :risk_level, :risk_probability
 )
-ON CONFLICT (student_code, subject_id, school_year_id, semester_index, evaluated_at_week)
+ON CONFLICT (student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
 DO UPDATE SET
     join_date = EXCLUDED.join_date,
     evaluated_at_date = CURRENT_DATE,
@@ -78,6 +88,14 @@ DO UPDATE SET
     total_demerit_points = EXCLUDED.total_demerit_points,
     repeat_offense_count = EXCLUDED.repeat_offense_count,
     severe_sanction_count = EXCLUDED.severe_sanction_count,
+    score_risk = EXCLUDED.score_risk,
+    lms_risk = EXCLUDED.lms_risk,
+    attendance_risk = EXCLUDED.attendance_risk,
+    behavior_risk = EXCLUDED.behavior_risk,
+    weight_score = EXCLUDED.weight_score,
+    weight_lms = EXCLUDED.weight_lms,
+    weight_attendance = EXCLUDED.weight_attendance,
+    weight_behavior = EXCLUDED.weight_behavior,
     risk_score = EXCLUDED.risk_score,
     risk_level = EXCLUDED.risk_level,
     risk_probability = EXCLUDED.risk_probability;
@@ -87,7 +105,7 @@ DO UPDATE SET
 # Nguồn: feature_extractor sinh 24 features; inference_service giữ chúng trong result.
 UPSERT_REQUIRED_COLS = [
     "student_code", "subject_id", "school_year_id", "semester_index",
-    "evaluated_at_week", "join_date", "cutoff_date",
+    "evaluated_at_week", "model_version", "join_date", "cutoff_date",
     "weighted_early_avg", "weighted_late_avg", "score_slope",
     "score_volatility", "max_drop", "last_score",
     "max_coefficient_so_far", "high_weight_score_count", "last_high_weight_score",
@@ -96,6 +114,8 @@ UPSERT_REQUIRED_COLS = [
     "daily_absence_rate", "unexcused_absent_rate",
     "excused_absent_days", "total_late_count",
     "total_demerit_points", "repeat_offense_count", "severe_sanction_count",
+    "score_risk", "lms_risk", "attendance_risk", "behavior_risk",
+    "weight_score", "weight_lms", "weight_attendance", "weight_behavior",
     "risk_score", "risk_level", "risk_probability",
 ]
 
@@ -127,6 +147,7 @@ def run_pipeline(
     evaluated_at_week: int,
     cutoff_date: date,
     skip_shap: bool = False,
+    model_version: str = "v1_single",
 ) -> pd.DataFrame:
     """
     Pipeline tích hợp EWS hoàn chỉnh.
@@ -138,14 +159,15 @@ def run_pipeline(
         evaluated_at_week: Tuần đánh giá (VD: 8)
         cutoff_date: Ngày cutoff để lấy dữ liệu
         skip_shap: Nếu True, bỏ qua SHAP TreeExplainer để tăng tốc
+        model_version: 'v1_single' (model đơn) hoặc 'v2_ensemble' (factor-ensemble)
 
     Returns:
         DataFrame kết quả đã persist vào DB
     """
     start_time = datetime.now()
     logger.info("=" * 60)
-    logger.info("EWS Pipeline started: school_year=%d, semester=%d, week=%d, cutoff=%s",
-                school_year_id, semester_index, evaluated_at_week, cutoff_date)
+    logger.info("EWS Pipeline started: school_year=%d, semester=%d, week=%d, cutoff=%s, model=%s",
+                school_year_id, semester_index, evaluated_at_week, cutoff_date, model_version)
     logger.info("=" * 60)
 
     # Step 1: Extract features
@@ -159,18 +181,32 @@ def run_pipeline(
     )
     logger.info("[Step 1/3] Done: %d rows x %d cols", len(X), len(X.columns))
 
-    # Step 2: Load model & inference
-    logger.info("[Step 2/3] Running inference (skip_shap=%s)...", skip_shap)
-    model = load_model()
-    result = run_inference(model, X, return_shap=not skip_shap)
+    # Step 2: Load model & inference (theo model_version)
+    logger.info("[Step 2/3] Running inference (model=%s, skip_shap=%s)...", model_version, skip_shap)
+    if model_version == "v2_ensemble":
+        models = load_ensemble()
+        result = run_ensemble_inference(models, X, return_shap=False)
+    else:
+        model = load_model()
+        result = run_inference(model, X, return_shap=not skip_shap)
+        # v1 là model đơn: không có sub-score riêng từng yếu tố → None.
+        # weight_* = mức đóng góp (%) HỌC ĐƯỢC từ model (SHAP theo nhóm), chung mọi học sinh.
+        contrib = compute_v1_group_contributions()
+        for col in ("score_risk", "lms_risk", "attendance_risk", "behavior_risk"):
+            result[col] = None
+        result["weight_score"] = contrib["score"]
+        result["weight_lms"] = contrib["lms"]
+        result["weight_attendance"] = contrib["attendance"]
+        result["weight_behavior"] = contrib["behavior"]
     logger.info("[Step 2/3] Done: %d predictions", len(result))
 
     # Step 3: Persist to DB
     logger.info("[Step 3/3] Persisting to DB...")
-    # Thêm school_year_id, semester_index, cutoff_date vào result trước khi persist
+    # Thêm school_year_id, semester_index, cutoff_date, model_version vào result trước khi persist
     result["school_year_id"] = school_year_id
     result["semester_index"] = semester_index
     result["cutoff_date"] = cutoff_date
+    result["model_version"] = model_version
     persist_predictions(session, result)
 
     elapsed = (datetime.now() - start_time).total_seconds()

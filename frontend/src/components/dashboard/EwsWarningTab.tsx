@@ -86,6 +86,7 @@ export default function EwsWarningTab() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
+  const [modelVersion, setModelVersion] = useState<string>("v1_single");
 
   // 1. Fetch Metadata on Mount
   useEffect(() => {
@@ -161,6 +162,7 @@ export default function EwsWarningTab() {
       school_year_id: String(schoolYearId),
       semester_index: String(semesterIndex),
       evaluated_at_week: String(week),
+      model_version: modelVersion,
       limit: String(PAGE_SIZE),
       offset: String(offset),
     });
@@ -186,7 +188,7 @@ export default function EwsWarningTab() {
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, riskLevel, subjectId, gradeId, className, debouncedQuery, page, loadingMeta]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, debouncedQuery, page, loadingMeta]);
 
   // Debounce từ khóa tìm kiếm (300ms) → tìm kiếm server-side qua param q
   useEffect(() => {
@@ -456,6 +458,22 @@ export default function EwsWarningTab() {
               <option value="HIGH">🟠 HIGH (Rủi ro cao)</option>
               <option value="MODERATE">🟡 MODERATE (Trung bình)</option>
               <option value="LOW">🟢 LOW (An toàn)</option>
+            </select>
+          </div>
+
+          {/* 2b. Phiên bản Model */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Phiên bản Model</label>
+            <select
+              value={modelVersion}
+              onChange={(e) => {
+                setModelVersion(e.target.value);
+                setPage(1);
+              }}
+              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 font-medium"
+            >
+              <option value="v1_single">v1 — Model đơn (hiện tại)</option>
+              <option value="v2_ensemble">v2 — Factor-Ensemble (mới)</option>
             </select>
           </div>
 
