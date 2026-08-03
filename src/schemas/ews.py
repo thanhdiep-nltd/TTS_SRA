@@ -31,6 +31,7 @@ class EwsPredictionRow(BaseModel):
     risk_probability: Optional[float] = None
     risk_factors: List[str] = Field(default_factory=list, description="Cơ chế cờ rủi ro: SLOPE_DOWN | LAST_SCORE_LOW | ABSENTEEISM")
     evaluated_at_date: Optional[date] = None
+    cutoff_date: Optional[date] = None  # Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     join_date: Optional[date] = None  # Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT
 
     # 1. Temporal Scores (9)

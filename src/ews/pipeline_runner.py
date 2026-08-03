@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 UPSERT_SQL = """
 INSERT INTO s360.fact_student_subject_risk_predictions (
     student_code, subject_id, school_year_id, semester_index,
-    evaluated_at_week, join_date, evaluated_at_date,
+    evaluated_at_week, join_date, evaluated_at_date, cutoff_date,
     weighted_early_avg, weighted_late_avg, score_slope,
     score_volatility, max_drop, last_score,
     max_coefficient_so_far, high_weight_score_count, last_high_weight_score,
@@ -41,7 +41,7 @@ INSERT INTO s360.fact_student_subject_risk_predictions (
 )
 VALUES (
     :student_code, :subject_id, :school_year_id, :semester_index,
-    :evaluated_at_week, :join_date, CURRENT_DATE,
+    :evaluated_at_week, :join_date, CURRENT_DATE, :cutoff_date,
     :weighted_early_avg, :weighted_late_avg, :score_slope,
     :score_volatility, :max_drop, :last_score,
     :max_coefficient_so_far, :high_weight_score_count, :last_high_weight_score,
@@ -54,18 +54,40 @@ VALUES (
 )
 ON CONFLICT (student_code, subject_id, school_year_id, semester_index, evaluated_at_week)
 DO UPDATE SET
+    join_date = EXCLUDED.join_date,
+    evaluated_at_date = CURRENT_DATE,
+    cutoff_date = EXCLUDED.cutoff_date,
+    weighted_early_avg = EXCLUDED.weighted_early_avg,
+    weighted_late_avg = EXCLUDED.weighted_late_avg,
+    score_slope = EXCLUDED.score_slope,
+    score_volatility = EXCLUDED.score_volatility,
+    max_drop = EXCLUDED.max_drop,
+    last_score = EXCLUDED.last_score,
+    max_coefficient_so_far = EXCLUDED.max_coefficient_so_far,
+    high_weight_score_count = EXCLUDED.high_weight_score_count,
+    last_high_weight_score = EXCLUDED.last_high_weight_score,
+    lms_avg_score = EXCLUDED.lms_avg_score,
+    lms_recent_drop = EXCLUDED.lms_recent_drop,
+    lms_submission_rate = EXCLUDED.lms_submission_rate,
+    lms_recent_submission_rate = EXCLUDED.lms_recent_submission_rate,
+    lms_gradebook_gap = EXCLUDED.lms_gradebook_gap,
+    daily_absence_rate = EXCLUDED.daily_absence_rate,
+    unexcused_absent_rate = EXCLUDED.unexcused_absent_rate,
+    excused_absent_days = EXCLUDED.excused_absent_days,
+    total_late_count = EXCLUDED.total_late_count,
+    total_demerit_points = EXCLUDED.total_demerit_points,
+    repeat_offense_count = EXCLUDED.repeat_offense_count,
+    severe_sanction_count = EXCLUDED.severe_sanction_count,
     risk_score = EXCLUDED.risk_score,
     risk_level = EXCLUDED.risk_level,
-    risk_probability = EXCLUDED.risk_probability,
-    join_date = EXCLUDED.join_date,
-    evaluated_at_date = CURRENT_DATE;
+    risk_probability = EXCLUDED.risk_probability;
 """
 
 # Các cột bắt buộc phải có trong DataFrame trước khi persist (khớp với UPSERT_SQL).
 # Nguồn: feature_extractor sinh 24 features; inference_service giữ chúng trong result.
 UPSERT_REQUIRED_COLS = [
     "student_code", "subject_id", "school_year_id", "semester_index",
-    "evaluated_at_week", "join_date",
+    "evaluated_at_week", "join_date", "cutoff_date",
     "weighted_early_avg", "weighted_late_avg", "score_slope",
     "score_volatility", "max_drop", "last_score",
     "max_coefficient_so_far", "high_weight_score_count", "last_high_weight_score",
@@ -145,9 +167,10 @@ def run_pipeline(
 
     # Step 3: Persist to DB
     logger.info("[Step 3/3] Persisting to DB...")
-    # Thêm school_year_id, semester_index vào result trước khi persist
+    # Thêm school_year_id, semester_index, cutoff_date vào result trước khi persist
     result["school_year_id"] = school_year_id
     result["semester_index"] = semester_index
+    result["cutoff_date"] = cutoff_date
     persist_predictions(session, result)
 
     elapsed = (datetime.now() - start_time).total_seconds()

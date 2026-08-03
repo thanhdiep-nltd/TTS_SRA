@@ -732,9 +732,17 @@ def compute_features_at_checkpoint(
             np.where(exp2d > 0, 0.0, np.nan),
         )
 
-    # avg score: chỉ trên các bài đã nộp; NULL nếu không nộp bài nào (không impute 0.0)
+    # avg score theo 3 bucket (đồng bộ serve-side feature_extractor):
+    #   • NỘP            : submitted > 0                  → avg thực
+    #   • BỎ KHÔNG LÀM   : submitted = 0 AND expected > 0 → 0.0 (có trách nhiệm, phạt rủi ro)
+    #   • CHUYỂN TRƯỜNG  : submitted = 0 AND expected = 0 → NaN (không phạt)
     with np.errstate(invalid="ignore"):
         lms_avg = np.nanmean(weekly_eff, axis=2)  # (N, NS)
+    lms_avg = np.where(
+        (submitted == 0) & (exp2d > 0),
+        0.0,
+        lms_avg,
+    )
 
     # recent = 4 tuần gần nhất (do trong [cutoff-28, cutoff])
     recent_weeks = min(weeks_so_far, 4)
@@ -755,6 +763,11 @@ def compute_features_at_checkpoint(
             )
         with np.errstate(invalid="ignore"):
             lms_recent_avg = np.nanmean(recent_weekly, axis=2)  # NULL nếu không nộp
+        lms_recent_avg = np.where(
+            (recent_submitted == 0) & (recent_exp2d > 0),
+            0.0,
+            lms_recent_avg,
+        )
         # drop = lms_avg - COALESCE(recent_avg, lms_avg) (mirror feature_extractor)
         lms_recent_avg_clean = np.where(np.isnan(lms_recent_avg), lms_avg, lms_recent_avg)
         lms_recent_drop = lms_avg - lms_recent_avg_clean  # NULL nếu lms_avg NULL

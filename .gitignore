@@ -73,3 +73,9 @@ out/
 private_docs/
 # Uploaded files (đề thi)
 uploads/
+# Added by code-review-graph
+.code-review-graph/
+# code-review-graph MCP config (local, chứa đường dẫn tuyệt đối — không commit)
+.mcp.json
+.roo/
+.gemini/

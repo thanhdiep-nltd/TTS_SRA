@@ -978,6 +978,7 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     -- === KHÓA ĐỊNH VỊ THỜI GIAN DỰ BÁO ===
     evaluated_at_week       INTEGER NOT NULL,                     -- Mốc tuần học (5, 8, 11, 14, 16)
     evaluated_at_date       DATE NOT NULL DEFAULT CURRENT_DATE,   -- Ngày chạy dự báo thực tế (Audit Trail)
+    cutoff_date             DATE,                                 -- Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     target_scope            VARCHAR(20) DEFAULT 'SEMESTER',       -- 'SEMESTER' (Học kỳ) hoặc 'FULL_YEAR' (Cả năm)
     join_date               DATE,                                 -- Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT
 
@@ -1022,6 +1023,10 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
 -- M2-PIVOT: migration cho DB đã tồn tại — thêm cột join_date (idempotent)
 ALTER TABLE s360.fact_student_subject_risk_predictions
     ADD COLUMN IF NOT EXISTS join_date DATE;
+
+-- M2-CUTOFF: migration cho DB đã tồn tại — thêm cột cutoff_date (idempotent)
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    ADD COLUMN IF NOT EXISTS cutoff_date DATE;
 
 CREATE INDEX IF NOT EXISTS idx_fssrp_v3_student_subject
     ON s360.fact_student_subject_risk_predictions(student_code, subject_id);

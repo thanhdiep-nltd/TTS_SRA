@@ -350,7 +350,7 @@ def get_ews_predictions(
                rp.subject_id, sub.name AS subject_name, sub.code AS subject_code,
                sub.subject_category,
                rp.evaluated_at_week, rp.risk_score, rp.risk_level, rp.risk_probability,
-               rp.evaluated_at_date, rp.join_date,
+               rp.evaluated_at_date, rp.cutoff_date, rp.join_date,
                -- Temporal
                rp.weighted_early_avg, rp.weighted_late_avg, rp.score_slope, rp.score_volatility,
                rp.max_drop, rp.last_score, rp.max_coefficient_so_far, rp.high_weight_score_count,
@@ -405,6 +405,7 @@ def get_ews_predictions(
                 risk_probability=_flt(r.risk_probability),
                 risk_factors=factors,
                 evaluated_at_date=r.evaluated_at_date,
+                cutoff_date=r.cutoff_date,
                 join_date=r.join_date,
                 # Temporal
                 weighted_early_avg=_flt(r.weighted_early_avg),

@@ -297,8 +297,20 @@ lms_features AS MATERIALIZED (
     SELECT
         pop.student_code,
         pop.subject_id,
-        sub.lms_avg_score,
-        sub.lms_recent_avg,
+        -- M2 — ĐTB LMS theo 3 bucket (đồng bộ với generator train):
+        --   • NỘP            : submitted > 0                  → avg thực
+        --   • BỎ KHÔNG LÀM   : submitted = 0 AND expected > 0 → 0.0 (có trách nhiệm, phạt rủi ro)
+        --   • CHUYỂN TRƯỜNG  : submitted = 0 AND expected = 0 → NULL (không phạt)
+        CASE
+            WHEN COALESCE(sub.lms_submitted, 0) > 0 THEN sub.lms_avg_score
+            WHEN COALESCE(exp.lms_expected, 0) > 0 THEN 0.0
+            ELSE NULL
+        END AS lms_avg_score,
+        CASE
+            WHEN COALESCE(sub.lms_recent_submitted, 0) > 0 THEN sub.lms_recent_avg
+            WHEN COALESCE(exp.lms_recent_expected, 0) > 0 THEN 0.0
+            ELSE NULL
+        END AS lms_recent_avg,
         CASE
             WHEN COALESCE(sub.lms_submitted, 0) > 0
                 THEN ROUND(COALESCE(sub.lms_submitted, 0) * 1.0 / NULLIF(exp.lms_expected, 0), 4)

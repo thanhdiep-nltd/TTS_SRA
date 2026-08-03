@@ -82,7 +82,9 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
       semester_index: String(semesterIndex ?? 1),
       evaluated_at_week: String(item.evaluated_at_week),
     });
-    if (item.evaluated_at_date) params.set("cutoff_date", item.evaluated_at_date);
+    // Dùng cutoff_date thật (ngày cắt dữ liệu để trích xuất feature) thay vì evaluated_at_date
+    // (ngày chạy pipeline = CURRENT_DATE) — tránh hiển thị bài tập vượt qua mốc cắt.
+    if (item.cutoff_date) params.set("cutoff_date", item.cutoff_date);
     api
       .get<EwsRawDetail>(`/ews/raw?${params.toString()}`)
       .then((data) => {
