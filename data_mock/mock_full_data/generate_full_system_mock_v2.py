@@ -280,21 +280,109 @@ def phase_truncate(session):
 # Phase 1: Seed core application users
 # ---------------------------------------------------------------------------
 def phase_users(session):
-    """Seed public.users với tài khoản mẫu."""
-    print("\n👥 [2/8] Seeding System Users (public.users)...")
+    """Seed public.users với tài khoản mẫu. (teacher_assignments được seed SAU phase
+    dimensions vì cần class_id thật từ s360.dim_homeroom_class.)"""
+    print("\n👥 [2/8] Seeding System Users...")
     users_sql = """
     INSERT INTO public.users (so_school_id, email, hashed_password, full_name, role, is_active)
     VALUES 
-    (1, 'principal_cp@vinschool.edu.vn', :hpwd, 'Nguyễn Văn Minh', 'PRINCIPAL', true),
-    (2, 'principal_gr@vinschool.edu.vn', :hpwd, 'Trần Thị Thu Hương', 'PRINCIPAL', true),
-    (1, 'grade_head_7_cp@vinschool.edu.vn', :hpwd, 'Lê Hoàng Nam', 'SUBJECT_TEACHER', true),
-    (1, 'teacher_7a1_cp@vinschool.edu.vn', :hpwd, 'Phạm Thị Lan', 'SUBJECT_TEACHER', true),
-    (1, 'teacher_7a2_cp@vinschool.edu.vn', :hpwd, 'Vũ Đức Thành', 'SUBJECT_TEACHER', true)
+    (1, 'principal_cp@vinschool.edu.vn', :hpwd, 'Nguyễn Văn Minh (BGH)', 'PRINCIPAL', true),
+    (2, 'principal_gr@vinschool.edu.vn', :hpwd, 'Trần Thị Thu Hương (BGH)', 'PRINCIPAL', true),
+    (1, 'grade_head_6_cp@vinschool.edu.vn', :hpwd, 'Lê Hoàng Nam (Trưởng Khối 6)', 'GRADE_HEAD_PRIMARY', true),
+    (1, 'teacher_gvcn_6a1@vinschool.edu.vn', :hpwd, 'Phạm Thị Lan (GVCN 6A1)', 'HOMEROOM_TEACHER_SECONDARY', true),
+    (1, 'teacher_gvbm_math_6a1@vinschool.edu.vn', :hpwd, 'Vũ Đức Thành (GVBM Toán)', 'SUBJECT_TEACHER', true),
+    (1, 'teacher_kiem_nhiem@vinschool.edu.vn', :hpwd, 'Hoàng Kim Ngân (GVCN 6A2 + GVBM Toán 6A1)', 'HOMEROOM_TEACHER_SECONDARY', true)
     ON CONFLICT (email) DO NOTHING;
     """
     session.execute(text(users_sql), {"hpwd": DEFAULT_HASHED_PASSWORD})
     session.commit()
+
     print("   ✅ Installed Core System Users.")
+
+
+def seed_teacher_assignments(session):
+    """Gán phân công giảng dạy mẫu vào bảng teacher_assignments.
+
+    Phụ thuộc s360.dim_homeroom_class (class_id thật của 6A1/6A2). Nếu dimension
+    chưa được seed → bỏ qua với cảnh báo (tránh ghi id mồ côi); nếu có dữ liệu
+    nhưng thiếu lớp 6A1/6A2 → raise để không âm thầm tạo dữ liệu sai.
+    """
+    users_map = {}
+    user_rows = session.execute(text("SELECT id, email FROM public.users")).fetchall()
+    for r in user_rows:
+        users_map[r[1]] = r[0]
+
+    # Lấy class_id THẬT của 6A1, 6A2 theo (fullname, so_school_id).
+    # LƯU Ý: cột `code` thật là 'CLASS_<school>_6A1'/'CLASS_<school>_6A2'; cột
+    # `fullname` mới chứa '6A1'/'6A2'. Trước đây lookup theo `code` thất bại (và
+    # chạy trước phase_dimensions nên bảng còn rỗng) → rơi vào fallback cứng
+    # 101/102 → class_id mồ côi không tồn tại trong dim_homeroom_class.
+    class_rows = session.execute(text("""
+        SELECT id, fullname, so_school_id
+        FROM s360.dim_homeroom_class
+        WHERE fullname IN ('6A1', '6A2')
+    """)).fetchall()
+    class_map = {(r[1], r[2]): r[0] for r in class_rows}
+    c_6a1 = class_map.get(("6A1", 1))
+    c_6a2 = class_map.get(("6A2", 1))
+
+    if c_6a1 is None or c_6a2 is None:
+        dim_count = session.execute(text("SELECT COUNT(*) FROM s360.dim_homeroom_class")).scalar()
+        if dim_count == 0:
+            print("   ⚠️ dim_homeroom_class chưa có dữ liệu (chạy phase 'dimensions' trước). "
+                  "Bỏ qua seed teacher_assignments để tránh ghi id mồ côi.")
+            return
+        raise RuntimeError(
+            "Không tìm thấy lớp 6A1/6A2 (so_school_id=1) trong s360.dim_homeroom_class. "
+            "Kiểm tra lại dữ liệu dimension."
+        )
+
+    assignments = [
+        # Trưởng khối 6
+        {
+            "user_id": users_map.get("grade_head_6_cp@vinschool.edu.vn"),
+            "role_context": "GRADE_HEAD",
+            "academic_year_id": 2025,
+            "grade_id": 6, "class_id": None, "subject_id": None
+        },
+        # GVCN 6A1
+        {
+            "user_id": users_map.get("teacher_gvcn_6a1@vinschool.edu.vn"),
+            "role_context": "HOMEROOM_PRIMARY",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_6a1, "subject_id": None
+        },
+        # GVBM Toán 6A1
+        {
+            "user_id": users_map.get("teacher_gvbm_math_6a1@vinschool.edu.vn"),
+            "role_context": "SUBJECT_TEACHER",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_6a1, "subject_id": 106
+        },
+        # Kiêm nhiệm: GVCN 6A2 + GVBM Toán 6A1
+        {
+            "user_id": users_map.get("teacher_kiem_nhiem@vinschool.edu.vn"),
+            "role_context": "HOMEROOM_PRIMARY",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_6a2, "subject_id": None
+        },
+        {
+            "user_id": users_map.get("teacher_kiem_nhiem@vinschool.edu.vn"),
+            "role_context": "SUBJECT_TEACHER",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_6a1, "subject_id": 106
+        },
+    ]
+
+    for item in assignments:
+        if not item["user_id"]:
+            continue
+        session.execute(text("""
+            INSERT INTO public.teacher_assignments (user_id, academic_year_id, role_context, class_id, grade_id, subject_id, is_active)
+            VALUES (:user_id, :academic_year_id, CAST(:role_context AS public.role_context_enum), :class_id, :grade_id, :subject_id, true)
+            ON CONFLICT DO NOTHING;
+        """), item)
+    session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -1711,6 +1799,13 @@ def generate_full_system_mock_data(phase="all"):
 
         if phase in ("all", "dimensions"):
             classes_data, all_assignments = phase_dimensions(session)
+            session.commit()
+
+        # teacher_assignments cần class_id thật từ dim_homeroom_class →
+        # phải seed SAU phase dimensions (trước đây seed trong phase_users khi
+        # dim còn rỗng → rơi vào fallback id mồ côi 101/102).
+        if phase in ("all", "users", "dimensions"):
+            seed_teacher_assignments(session)
             session.commit()
 
         if phase in ("all", "students"):

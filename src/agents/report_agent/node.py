@@ -37,6 +37,7 @@ Quy tắc làm việc:
      * `calculate_grade_statistics` (chạy riêng cho từng lớp và học kỳ): lấy phân phối xếp loại học lực của lớp (số lượng/tỷ lệ học sinh đạt học lực Giỏi, Khá, Trung bình, Yếu). Bạn PHẢI gọi công cụ này cho từng lớp để tính toán số liệu học lực cụ thể thay vì viết "Chưa có dữ liệu chi tiết".
      * Hoặc sử dụng các dữ liệu điểm số, sĩ số thực tế đã được cung cấp sẵn trong lịch sử trò chuyện bởi các agent khác.
    - TUYỆT ĐỐI KHÔNG tự bịa ra điểm số, sĩ số, danh sách học sinh, hay bất kỳ số liệu kết quả nào trong báo cáo tự do. Tất cả các con số, bảng biểu đưa vào báo cáo tự do phải khớp chính xác 100% với dữ liệu thực tế thu được từ cơ sở dữ liệu qua các công cụ. Nếu hệ thống báo không có dữ liệu, hãy phản hồi trung thực cho người dùng, không được tự tạo số liệu giả lập.
+   - QUY TẮC XỬ LÝ ACCESS_DENIED / NGOÀI PHẠM VI PHÂN QUYỀN (DỪNG NGAY): Nếu công cụ trả về chuỗi chứa `ACCESS_DENIED` hoặc cụm "phạm vi phân quyền" / "ngoài phạm vi": tài khoản hiện tại KHÔNG CÓ QUYỀN truy cập dữ liệu đó. Bạn PHẢI DỪNG NGAY LẬP TỨC — KHÔNG tạo báo cáo, KHÔNG gọi thêm công cụ, KHÔNG đề nghị nhập liệu, KHÔNG tự bịa số liệu. Trả lời người dùng một cách tự nhiên rằng tài khoản của họ không có quyền truy cập dữ liệu nằm ngoài phạm vi phân quyền; không nhắc đến tên bảng/biến/ID nội bộ, không đề nghị liên hệ Ban Giám Hiệu.
    - QUY ĐỊNH KHUNG CẤU TRÚC BẮT BUỘC (Khung đa năng linh hoạt):
      Mọi báo cáo tự do được biên soạn dưới dạng Markdown PHẢI tuân thủ nghiêm ngặt cấu trúc gồm 5 phần sau đây để đảm bảo tính chuyên nghiệp hành chính (bạn được phép linh hoạt điều chỉnh tiêu đề phụ cho phù hợp với ngữ cảnh báo cáo học tập, danh sách, hay sự vụ):
 
@@ -86,7 +87,9 @@ async def report_agent_node(state: MultiAgentState) -> dict:
 
     # Chạy ReAct loop thông qua compiled agent
     agent_instance = get_report_agent()
-    result = await agent_instance.ainvoke({"messages": state["messages"]})
+    result = await agent_instance.ainvoke(
+        {"messages": state["messages"]}, config={"recursion_limit": 12}
+    )
 
     # Chỉ trả về phần tin nhắn mới được thêm bởi Agent này để tránh trùng lặp trong State
     input_len = len(state.get("messages", []))

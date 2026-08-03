@@ -73,14 +73,10 @@ Quy trình & Quy tắc tối ưu hóa phản hồi:
        "options": ["Năm học 2024-2025", "Năm học 2025-2026", "Tất cả các năm học"]
      }
      [/OPTIONS_CARD]
-- Nếu câu hỏi của người dùng là câu hỏi chào hỏi, xã giao, giới thiệu thông thường (ví dụ: "chào bạn", "hãy giới thiệu về bạn", "bạn làm được gì") mà không cần gọi sub-agent để phân tích số liệu: Hãy chọn `next_agent` là 'CLARIFICATION' và viết trực tiếp câu trả lời đầy đủ, thân thiện vào trường `response` của `RouterDecision`.
-- Quyết định Sub-Agent tiếp theo cần chạy và đưa ra hướng dẫn cụ thể cho Agent đó nếu là câu hỏi cần phân tích dữ liệu.
-- QUY TẮC ĐÁNH GIÁ ĐỦ DỮ LIỆU & TRUY VẤN ĐA BƯỚC (DYNAMIC MULTI-STEP SUFFICIENCY):
-  1. Hãy đọc kỹ câu hỏi gốc của người dùng và TOÀN BỘ dữ liệu đã thu thập được từ các Sub-Agent trong lượt hiện tại.
-  2. Nếu dữ liệu đã thu thập ĐỦ để trả lời trọn vẹn tất cả các ý trong câu hỏi -> Bạn BẮT BUỘC chọn `FINISH` và tổng hợp câu trả lời đầy đủ.
-  3. QUY TẮC XỬ LÝ KẾT QUẢ ĐÁNH GIÁ MÔN HỌC (DYNAMIC ASSESSMENT): Đối với các môn học có hình thức đánh giá nhận xét (`s360.dim_subject.assessment_type = 'REMARK'`), kết quả được chấm theo chuẩn Đạt / Chưa đạt (`pass_fail_status`) hoặc lời nhận xét tiến trình. Khi dữ liệu trả về kết quả hiển thị "ĐẠT", "CHƯA ĐẠT" hoặc lời nhận xét, nghĩa là ĐÃ ĐỦ DỮ LIỆU, bạn BẮT BUỘC chọn `FINISH` để tổng hợp trả lời, KHÔNG ĐƯỢC gọi lại Sub-Agent đòi lấy điểm số float 0-10.
-  4. Nếu câu hỏi phức tạp cần THU THẬP THÊM DỮ LIỆU BỔ SUNG (ví dụ: mới lấy được lớp 7A1, cần lấy thêm lớp 7A2 để so sánh) -> Bạn ĐƯỢC PHÉP tiếp tục gọi Sub-Agent với `instruction` MỚI nêu rõ phần dữ liệu cụ thể còn thiếu cần lấy thêm.
-  5. TUYỆT ĐỐI KHÔNG lặp lại cùng một instruction hoặc yêu cầu cùng một câu truy vấn đã có kết quả trong lịch sử lượt chat hiện tại.
+- QUY TẮC PHÂN QUYỀN BẢO MẬT GIÁO VIÊN (RBAC Security Guardrail):
+  Nếu sub-agent trả về kết quả chứa `ACCESS_DENIED` hoặc có nội dung "nằm ngoài phạm vi phân quyền"/"không có quyền truy cập" (ví dụ: Giáo viên hỏi lớp/khối/môn không được phân công), hãy chọn `FINISH` NGAY và phản hồi lịch sự:
+  "Rất tiếc, theo chính sách phân quyền học vụ, tài khoản của bạn không có quyền truy cập dữ liệu của lớp/khối/môn học này."
+  TUYỆT ĐỐI KHÔNG xem ACCESS_DENIED là "không có dữ liệu", KHÔNG yêu cầu sub-agent thử lại lần nữa, KHÔNG hướng dẫn nhập liệu.
 
 QUY TẮC ĐỊNH DẠNG BẮT BUỘC:
 - Bạn phải LUÔN LUÔN đưa ra quyết định bằng cách gọi công cụ `RouterDecision`.
@@ -313,8 +309,9 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     current_year_str = "2025-2026"
     current_semester_str = "HK2"
     try:
-        from src.db.session import SessionLocal
         from sqlalchemy import text
+
+        from src.db.session import SessionLocal
         with SessionLocal() as db_session:
             row = db_session.execute(text("""
                 SELECT fullname FROM s360.dim_school_year ORDER BY id DESC LIMIT 1
@@ -358,6 +355,12 @@ async def supervisor_node(state: MultiAgentState) -> dict:
             f"-> BẮT BUỘC chọn FINISH để tổng hợp.\n"
             f"  * Dữ liệu MỚI CHỈ ĐỦ 1 PHẦN -> Tiếp tục gọi Sub-Agent với instruction MỚI CHỈ RÕ phần dữ liệu còn thiếu. "
             f"Tuyệt đối KHÔNG yêu cầu lấy lại phần dữ liệu đã thu thập.\n"
+            f"\n"
+            f"- ĐÁNH GIÁ PHÂN QUYỀN (ACCESS_DENIED HANDLING):\n"
+            f"  * Nếu Sub-Agent phản hồi chứa 'ACCESS_DENIED' hoặc 'nằm ngoài phạm vi phân quyền' "
+            f"-> ĐÂY LÀ VẤN ĐỀ QUYỀN TRUY CẬP, KHÔNG phải 'không có dữ liệu'.\n"
+            f"  * BẮT BUỘC chọn FINISH để phản hồi lịch sự theo RBAC Security Guardrail.\n"
+            f"  * TUYỆT ĐỐI KHÔNG thử lại, KHÔNG sinh instruction truy vấn khác, KHÔNG khuyến nghị nhập liệu.\n"
             f"\n"
             f"- ĐÁNH GIÁ KHI KHÔNG CÓ DỮ LIỆU (NO DATA HANDLING):\n"
             f"  * Nếu Sub-Agent phản hồi 'Không tìm thấy...', 'Dữ liệu trống', 'Không có học sinh/lớp học này' "
@@ -483,16 +486,16 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     # ── Anti-Loop Guardrail: Circuit Breaker Only ──
     # LLM (Prompt Instruction) đảm nhiệm đánh giá đủ/thiếu/không có dữ liệu
     # Code chỉ đếm số lượt route để ngắt mạch nếu Supervisor kẹt loop
-    MAX_SUB_AGENT_TURNS = 4
+    max_sub_agent_turns = 4
     current_turn_sub_calls = sum(
         1 for msg in current_turn_messages
         if "Chuyển yêu cầu sang" in str(getattr(msg, "content", "") or "")
     )
 
-    if decision.next_agent != "FINISH" and current_turn_sub_calls >= MAX_SUB_AGENT_TURNS:
+    if decision.next_agent != "FINISH" and current_turn_sub_calls >= max_sub_agent_turns:
         logger.warning(
             "supervisor_anti_loop",
-            msg=f"Reached MAX_SUB_AGENT_TURNS ({MAX_SUB_AGENT_TURNS}). "
+            msg=f"Reached max_sub_agent_turns ({max_sub_agent_turns}). "
                 f"Forcing FINISH as safety circuit breaker. "
                 f"next_agent was '{decision.next_agent}', instruction='{decision.instruction}'",
         )
@@ -551,16 +554,16 @@ async def supervisor_node(state: MultiAgentState) -> dict:
                 response_content = sub_agent_responses[0]
             else:
                 # Synthesis: chỉ dùng current_turn_messages, KHÔNG dùng toàn bộ messages_list
-                synthesis_prompt = """Bạn là trợ lý AI chuyên nghiệp phân tích học vụ cho Ban Giám Hiệu.
+                synthesis_prompt = """Bạn là trợ lý AI chuyên nghiệp phân tích dữ liệu học vụ của nhà trường.
 Nhiệm vụ của bạn là tổng hợp toàn bộ dữ liệu, kết quả tính toán, bảng biểu và phân tích thu được từ các Sub-Agent trong lịch sử hội thoại để trả lời người dùng.
 
 LƯU Ý QUAN TRỌNG:
 1. Người dùng CHƯA nhìn thấy các tin nhắn hoặc kết quả thô của các Sub-Agent. Bạn BẮT BUỘC phải đưa đầy đủ các số liệu, bảng kết quả (sử dụng định dạng bảng Markdown đẹp mắt), nhận xét và phân tích chi tiết vào câu trả lời cuối cùng này. Tuyệt đối không được bỏ sót dữ liệu hoặc trả lời chung chung.
 2. Nếu trong các tin nhắn của Sub-Agent có chứa các đường liên kết tải xuống (ví dụ: các định dạng Markdown như `[Tải Báo Cáo Tại Đây](http://...)` hoặc các URL), bạn BẮT BUỘC phải giữ nguyên văn và in các đường liên kết này ở vị trí thích hợp hoặc ở cuối câu trả lời của bạn. Không được lược bỏ, và không được nói chung chung 'đã cung cấp đường link' mà không hiển thị link cụ thể.
-3. Trình bày câu trả lời một cách chuyên nghiệp, thân thiện, có cấu trúc rõ ràng bằng tiếng Việt cho Ban Giám Hiệu.
+3. Trình bày câu trả lời một cách chuyên nghiệp, thân thiện, có cấu trúc rõ ràng bằng tiếng Việt cho người dùng (thầy/cô).
 4. Không nhắc đến tên của các Agent kỹ thuật (như "Data Agent", "Stat Agent", "Pandas Agent", "Supervisor") trong câu trả lời cuối cùng.
 5. Tuyệt đối KHÔNG sao chép tin nhắn chuyển giao nhiệm vụ của Supervisor (ví dụ: '[Supervisor]: Chuyển yêu cầu sang...'). Bạn phải tự sinh văn bản trả lời tổng hợp và trình bày các dữ liệu thực tế thu được từ các Sub-Agent dưới dạng bảng và phân tích của riêng bạn.
-6. Nếu dữ liệu thu được bị trống hoặc không tìm thấy, hãy thông báo lịch sự cho Ban Giám Hiệu rằng không tìm thấy dữ liệu phù hợp trong hệ thống cho yêu cầu này, tuyệt đối không lặp lại tin nhắn chuyển tiếp của Supervisor.
+6. Nếu dữ liệu thu được bị trống hoặc không tìm thấy, hãy thông báo lịch sự cho người dùng rằng không tìm thấy dữ liệu phù hợp trong hệ thống cho yêu cầu này, tuyệt đối không lặp lại tin nhắn chuyển tiếp của Supervisor. QUAN TRỌNG: Nếu dữ liệu/Sub-Agent báo chứa 'ACCESS_DENIED' hoặc 'nằm ngoài phạm vi phân quyền', hãy trả lời một cách ĐƠN GIẢN, TỰ NHIÊN như "Tài khoản của bạn không có quyền truy cập nội dung này" — KHÔNG nói "không có dữ liệu", KHÔNG khuyến nghị nhập liệu, KHÔNG đề nghị liên hệ Ban Giám Hiệu, KHÔNG nhắc đến tên bảng/biến/ID nội bộ (như grade_id, homeroom_class_id, subject_class_pairs).
 7. Tuyệt đối KHÔNG sử dụng bất kỳ biểu tượng cảm xúc (emoji/icon) nào như 📊, 🎯, 📌, ⚠️, 🔴, 🟢, 🏆, 📈, 📉, 🥇... trong toàn bộ văn bản phản hồi. Hãy trình bày văn bản trang trọng, học thuật thuần túy chỉ dùng các yếu tố markdown chuẩn (in đậm, danh sách, bảng) thay thế cho emoji.
 8. LỌC CỘT ĐIỂM: Nếu người dùng hỏi một kỳ thi/cột điểm cụ thể (như: "giữa kỳ 2", "giữa kỳ 1", "GK2", "GK1"), hãy đảm bảo chỉ tổng hợp thông tin, bảng biểu và phân tích của đúng cột điểm đó (ví dụ giữa kỳ 2 -> column_index = 2). Không hiển thị cột điểm khác của kỳ thi khác để tránh gây loãng thông tin. Phải phân biệt rõ "Học kỳ 2" (kỳ học) và "Giữa kỳ 2" (cột điểm column_index=2 của kỳ học đó). Khi hỏi "giữa kỳ 2 năm 2025-2026", tức là cột điểm Giữa kỳ 2 (column_index=2) của Học kỳ 2 (semester=2).
 """

@@ -243,7 +243,7 @@ def resolve_uuid_parameters(db, school_id, class_id_str, semester_id_str, subjec
                     # 3. Partial match (case-insensitive, searching keyword in name or code)
                     stmt = select(Subject).where(Subject.school_id == school_id)
                     all_school_subs = db.execute(stmt).scalars().all()
-                    
+
                     search_term = str(subject_id_str).lower().strip()
                     matched_subs = []
                     for sub in all_school_subs:
@@ -251,7 +251,7 @@ def resolve_uuid_parameters(db, school_id, class_id_str, semester_id_str, subjec
                         s_code = sub.code.lower()
                         if search_term in s_name or search_term in s_code:
                             matched_subs.append(sub)
-                    
+
                     if matched_subs:
                         # Prioritize exact/closer matches by sorting by name length (e.g. "Vật lý" vs "Lịch sử và Địa lý" when searching for "Lý")
                         matched_subs.sort(key=lambda s: len(s.name))
@@ -606,7 +606,7 @@ async def generate_report_download_link(
 ) -> str:
     """Tạo tệp báo cáo thống kê thực tế ở server và trả về link tải trực tiếp trong khung chat.
 
-    IMPORTANT WARNING: Công cụ này sẽ tự động tạo đồng thời cả 3 định dạng file (.docx, .pdf, .html) và trả về đường link của cả 3 định dạng này trong cùng 1 lần gọi. 
+    IMPORTANT WARNING: Công cụ này sẽ tự động tạo đồng thời cả 3 định dạng file (.docx, .pdf, .html) và trả về đường link của cả 3 định dạng này trong cùng 1 lần gọi.
     BẠN CHỈ ĐƯỢC PHÉP GỌI CÔNG CỤ NÀY ĐÚNG 1 LẦN DUY NHẤT CHO MỖI YÊU CẦU BÁO CÁO. Tuyệt đối KHÔNG gọi công cụ này nhiều lần trong vòng lặp hoặc gọi riêng rẽ cho từng định dạng.
 
     Args:

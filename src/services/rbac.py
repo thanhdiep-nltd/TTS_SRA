@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from src.models import enums
-from src.models.tables import Class, Grade, Score, TeacherAssignment, User
+from src.models.tables import Class, Grade, Score, Subject, TeacherAssignment, User
 
 FULL_ACCESS_ROLES = {enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL}
 
@@ -96,6 +96,61 @@ def accessible_class_ids(db: Session, user: User) -> list[UUID] | None:
         rows = db.execute(select(Class.id).where(Class.grade_id.in_(grade_ids))).scalars().all()
         class_ids.update(rows)
     return list(class_ids)
+
+
+def scope_summary_for_user(db: Session, user: User) -> str:
+    """Mô tả phạm vi phân quyền hiện tại của user dưới dạng chuỗi thân thiện (cho tool báo ACCESS_DENIED).
+
+    Quy ước:
+    - ADMIN/PRINCIPAL → "toàn trường (không giới hạn)".
+    - Trưởng bộ môn → môn phụ trách ở mọi lớp.
+    - Trưởng khối → mọi lớp trong khối phụ trách.
+    - GV chủ nhiệm/bộ môn → các lớp/môn được phân công cụ thể.
+    - Không có phân công → không thể truy cập dữ liệu điểm.
+    """
+    if user.role in FULL_ACCESS_ROLES:
+        return "toàn trường (không giới hạn)"
+
+    class_ids: set[UUID] = set()
+    grade_desc: set[str] = set()
+    subject_desc: set[str] = set()
+    for a in _active_assignments(db, user.id):
+        if a.role_context == enums.RoleContext.GRADE_HEAD and a.grade_id:
+            grade = db.get(Grade, a.grade_id)
+            if grade is not None:
+                grade_desc.add(f"khối {grade.grade_number}")
+        elif a.role_context == enums.RoleContext.SUBJECT_HEAD and a.subject_id:
+            subject = db.get(Subject, a.subject_id)
+            if subject is not None:
+                subject_desc.add(f"môn {subject.name}")
+        elif a.class_id:
+            class_ids.add(a.class_id)
+            if a.subject_id:
+                subject = db.get(Subject, a.subject_id)
+                if subject is not None:
+                    subject_desc.add(f"môn {subject.name}")
+
+    parts: list[str] = []
+    if grade_desc:
+        parts.append(", ".join(sorted(grade_desc)))
+    if class_ids:
+        class_names = db.execute(select(Class.name).where(Class.id.in_(class_ids))).scalars().all()
+        parts.append("lớp " + ", ".join(sorted(class_names)))
+    if subject_desc:
+        parts.append(", ".join(sorted(subject_desc)))
+
+    if not parts:
+        return "không có phân công (không thể truy cập dữ liệu điểm)"
+    return "; ".join(parts)
+
+
+def rbac_denied_message(scope: str) -> str:
+    """Tín hiệu ACCESS_DENIED chuẩn để agent DỪNG NGAY thay vì coi là "không có dữ liệu"."""
+    return (
+        "ACCESS_DENIED: Tài khoản của bạn không có quyền truy cập dữ liệu này — "
+        "dữ liệu nằm ngoài phạm vi phân quyền hiện tại. "
+        f"Phạm vi bạn được phép truy cập: {scope}."
+    )
 
 
 def can_write_score(

@@ -51,3 +51,45 @@ def test_match_units_reports_unmatched_names():
     matched, not_found = _match_units(units, ["Phân thức", "Chương không tồn tại"])
     assert [u.name for u in matched] == ["Phân thức đại số"]
     assert not_found == ["Chương không tồn tại"]
+
+
+def test_calculate_grade_statistics_missing_oltp_returns_clear_message(monkeypatch):
+    """OLTP (bảng scores) không tồn tại trong môi trường DWH-only -> trả thông báo rõ ràng
+    thay vì exception tràn ra ngoài khiến agent hiểu nhầm thành từ chối phân quyền."""
+    from sqlalchemy.exc import ProgrammingError
+
+    import src.agents.stat_agent.tools as stat_tools
+    from src.agents.context import current_user_id, current_user_role, current_user_school_id
+
+    def _fake_execute(stmt, *args, **kwargs):
+        # Chỉ bảng scores (OLTP) bị "thiếu"; teacher_assignments vẫn trả rỗng để
+        # accessible_score_filter chạy đủ trước khi guard của tool bắt lỗi.
+        if "scores" in str(stmt):
+            raise ProgrammingError(
+                "SELECT ...", {}, Exception('relation "scores" does not exist')
+            )
+        res = MagicMock()
+        res.scalars.return_value.all.return_value = []
+        return res
+
+    mock_session = MagicMock()
+    mock_session.execute.side_effect = _fake_execute
+    mock_local = MagicMock()
+    mock_local.return_value.__enter__.return_value = mock_session
+    monkeypatch.setattr(stat_tools, "SessionLocal", mock_local)
+
+    tok_id = current_user_id.set(36)
+    tok_role = current_user_role.set("HOMEROOM_TEACHER_SECONDARY")
+    tok_school = current_user_school_id.set(1)
+    try:
+        result = stat_tools.calculate_grade_statistics.invoke(
+            {"class_name": "6A2", "semester": 2, "subject": "Ngữ văn"}
+        )
+    finally:
+        current_user_id.reset(tok_id)
+        current_user_role.reset(tok_role)
+        current_user_school_id.reset(tok_school)
+
+    assert "chưa cấu hình" in result
+    assert "get_class_grades" in result
+    assert "does not exist" not in result

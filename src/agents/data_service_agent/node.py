@@ -8,13 +8,11 @@ from src.agents.context import current_user_id, current_user_role, current_user_
 from src.agents.data_service_agent.prompts import DATA_SERVICE_AGENT_SQL_PROMPT
 from src.agents.data_service_agent.tools import (
     execute_read_only_query,
-    get_class_grades,
     get_student_grades,
-    get_student_info,
 )
 from src.agents.state import MultiAgentState
 from src.observability import logger
-from src.services.entity_linker import resolve_entities, DynamicEntityContext
+from src.services.entity_linker import DynamicEntityContext, resolve_entities
 from src.services.llm import get_llm
 
 _sql_generator_agent = None
@@ -32,7 +30,7 @@ def get_data_service_agent():
     return get_sql_generator_agent()
 
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field  # noqa: E402
 
 
 class FastTemplateDecision(BaseModel):
@@ -213,7 +211,10 @@ async def data_service_agent_node(state: MultiAgentState) -> dict:
 
     logger.info("[data_service_agent] Thực thi Tầng 2 (Dynamic SQL Generator)...")
     agent_instance = get_sql_generator_agent()
-    result = await agent_instance.ainvoke({"messages": exec_messages})
+    # Giới hạn vòng lặp ReAct để tránh retry lãng phí (vd: lặp lại "Lỗi thực thi truy vấn SQL")
+    result = await agent_instance.ainvoke(
+        {"messages": exec_messages}, config={"recursion_limit": 12}
+    )
 
     input_len = 0  # Vì exec_messages là list mới (không phải messages gốc)
     new_messages = result["messages"][input_len:]

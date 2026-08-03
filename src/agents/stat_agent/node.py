@@ -60,6 +60,13 @@ Quy tắc làm việc:
 - Chỉ phân tích dựa trên số liệu thực từ công cụ, không tự biên soạn kết quả.
 - Với draft_exam_blueprint: KHÔNG tự bịa câu hỏi hay nội dung đề thi; chỉ trình bày đúng ma trận
   (cells) và rationale mà công cụ trả về, kèm nhắc người dùng phải tự lưu/chỉnh trong hệ thống.
+- QUY TẮC XỬ LÝ ACCESS_DENIED / NGOÀI PHẠM VI PHÂN QUYỀN (DỪNG NGAY):
+  Nếu kết quả công cụ chứa `ACCESS_DENIED` hoặc cụm "phạm vi phân quyền" / "ngoài phạm vi": nghĩa là
+  tài khoản hiện tại KHÔNG CÓ QUYỀN truy cập dữ liệu đó. Bạn PHẢI DỪNG NGAY LẬP TỨC (FINISH):
+  KHÔNG gọi thêm công cụ khác, KHÔNG thử lại, KHÔNG tự bịa số liệu, KHÔNG đề nghị nhập liệu.
+  Trả lời người dùng một cách tự nhiên rằng tài khoản của họ không có quyền truy cập dữ liệu
+  nằm ngoài phạm vi phân quyền; không nhắc đến tên bảng/biến/ID nội bộ, không đề nghị liên hệ
+  Ban Giám Hiệu.
 """
 
 # Khởi tạo agent trễ (lazy initialization) để tránh gọi get_llm() lúc import file,
@@ -100,7 +107,9 @@ async def stat_agent_node(state: MultiAgentState) -> dict:
 
     # Chạy ReAct loop thông qua compiled agent
     agent_instance = get_stat_agent()
-    result = await agent_instance.ainvoke({"messages": state["messages"]})
+    result = await agent_instance.ainvoke(
+        {"messages": state["messages"]}, config={"recursion_limit": 12}
+    )
 
     # Chỉ trả về phần tin nhắn mới được thêm bởi Agent này để tránh trùng lặp trong State
     input_len = len(state.get("messages", []))

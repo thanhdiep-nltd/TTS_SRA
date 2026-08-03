@@ -109,9 +109,14 @@ export const AgentStepTimeline: React.FC<AgentStepTimelineProps> = ({
             const CategoryIcon = config.icon;
             const isLast = index === steps.length - 1;
             const isRunning = isLiveLoading && isLast && step.status === "running";
+            // Backend có thể tạo NHIỀU step cùng id tĩnh trong một message
+            // (vd routing ×2, retrieval_<tool> ×N, filtering ×N) → id không unique.
+            // Dùng key composite `${step.id}-${index}` để đảm bảo React key luôn duy nhất
+            // và activeDetailId không bị va chạm giữa các step trùng id.
+            const stepKey = `${step.id}-${index}`;
 
             return (
-              <div key={step.id || index} className="relative flex items-center gap-2 group">
+              <div key={stepKey} className="relative flex items-center gap-2 group">
                 {/* Column for Icon & Perfectly Centered Line */}
                 <div className="relative flex items-center justify-center w-4 shrink-0 self-stretch">
                   {/* Vertical Line perfectly centered under icon */}
@@ -157,13 +162,13 @@ export const AgentStepTimeline: React.FC<AgentStepTimelineProps> = ({
                     <button
                       type="button"
                       onClick={() =>
-                        setActiveDetailId(activeDetailId === step.id ? null : step.id)
+                        setActiveDetailId(activeDetailId === stepKey ? null : stepKey)
                       }
                       className="text-[10px] text-brand-600 dark:text-brand-400 hover:underline font-medium cursor-pointer"
                     >
-                      {activeDetailId === step.id ? "Ẩn" : "Chi tiết"}
+                      {activeDetailId === stepKey ? "Ẩn" : "Chi tiết"}
                     </button>
-                    {activeDetailId === step.id && (
+                    {activeDetailId === stepKey && (
                       <pre className="mt-1 p-2 rounded-lg bg-slate-900 text-slate-200 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap max-h-48 border border-slate-800">
                         {step.detail}
                       </pre>

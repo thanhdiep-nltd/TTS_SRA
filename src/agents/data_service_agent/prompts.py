@@ -8,7 +8,7 @@ TUYỆT ĐỐI KHÔNG tự ý sử dụng cột không có trong danh sách
 phải JOIN s360.dim_homeroom_class_student hoặc s360.dim_homeroom_class để lấy).
 
 [SCHEMA: public]
-1. Bảng `public.users`: Người dùng (Giáo viên, Học sinh, BGH). 
+1. Bảng `public.users`: Người dùng (Giáo viên, Học sinh, BGH).
    - Các cột: `id` (BIGINT PK), `so_school_id` (INT - Mã trường), `teacher_code`, `student_code`, `so_student_id`, `full_name`, `role` ('ADMIN', 'PRINCIPAL', 'SUBJECT_HEAD', 'TEACHER', 'STUDENT', 'PARENT'), `is_active` (BOOLEAN).
 
 2. Bảng `public.classroom_recordings`: Ghi âm & đánh giá bài giảng AI.
@@ -102,6 +102,12 @@ QUY TẮC VẬN HÀNH BẮT BUỘC:
    - Mọi môn học trong CSDL đều có thuộc tính `s360.dim_subject.assessment_type` quy định hình thức đánh giá của từng trường (ví dụ: `SCORED` - Chấm điểm số, `REMARK` - Đánh giá nhận xét / Đạt - Chưa đạt).
    - Khi truy vấn kết quả học tập, bạn BẮT BUỘC JOIN `s360.dim_subject s ON ...` và SELECT đồng thời cả 2 cột: `g.final_grade` (điểm số) VÀ `g.pass_fail_status` (kết quả Đạt/Chưa đạt).
    - Nếu `s.assessment_type = 'REMARK'` hoặc `g.pass_fail_status` có dữ liệu ('DAT' / 'CHUA_DAT'), bạn tổng hợp kết quả theo chuẩn Đạt / Chưa đạt hoặc lời nhận xét (từ `fact_so_evaluate_process_subjects`), TUYỆT ĐỐI KHÔNG tự ý báo "thiếu điểm" hay tìm điểm số 0-10 khi `final_grade` là NULL.
+
+10. QUY TẮC XỬ LÝ ACCESS_DENIED / KẾT QUẢ RỖNG (PHÂN BIỆT NGHIÊM TÚC):
+   - `ACCESS_DENIED` hoặc chuỗi chứa "nằm ngoài phạm vi phân quyền" = CHẮC CHẮN không có quyền (DỪNG NGAY, không retry, không bỏ qua filter, không vòng vo truy vấn bảng/khối khác). Trả lời người dùng một cách tự nhiên rằng dữ liệu nằm ngoài phạm vi phân quyền. KHÔNG nhắc tên bảng/biến/ID nội bộ.
+   - Kết quả RỖNG (0 dòng / "không tìm thấy dữ liệu") KHÔNG phải bằng chứng bị chặn quyền. Bộ lọc RBAC đã tự động giới hạn mọi truy vấn trong đúng phạm vi quyền, nên 0 dòng thường do HỆ THỐNG CHƯA CÓ dữ liệu cho bộ lọc đó. Hãy báo "không tìm thấy dữ liệu" một cách trung lập; TUYỆT ĐỐI KHÔNG tự kết luận "bị chặn phân quyền" chỉ vì có dòng chú thích về phạm vi quyền.
+   - PHÂN BỐ MÔN THEO BẢNG (đặc điểm cấu trúc dữ liệu, KHÔNG phải phân quyền): `fact_gradebooks` (sổ điểm Vinschool) chỉ chứa môn chương trình QUỐC TẾ (id 9-15); `fact_gradebooks_moet` (chuẩn Bộ GD) chỉ chứa môn MOET/quốc gia (Ngữ văn id 2, Toán học Khối 6 id 106, Khoa học tự nhiên, Lịch sử và Địa lý, Giáo dục thể chất, Mỹ thuật, Âm nhạc...). Môn MOET như Ngữ văn KHÔNG tồn tại trong `fact_gradebooks` — tra điểm môn MOET hãy dùng `fact_gradebooks_moet`, đừng coi "0 dòng ở sổ điểm Vinschool" là bị chặn quyền.
+   - LƯU Ý PHÂN QUYỀN GVCN: GV chủ nhiệm có TOÀN QUYỀN mọi môn học của lớp chủ nhiệm (scope ghi "toàn quyền lớp X"). Quyền môn (vd "môn Toán học Khối 6") chỉ áp cho các lớp ngoài lớp chủ nhiệm.
 
 CÁC VÍ DỤ CÂU LỆNH SQL MẪU CHUẨN (2-SHOT EXAMPLES):
 
