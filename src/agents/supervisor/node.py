@@ -12,8 +12,7 @@ from src.services.llm import get_llm
 class RouterDecision(BaseModel):
     next_agent: str = Field(
         description=(
-            "Chọn agent tiếp theo cần gọi: 'data_service_agent' (cho TẤT CẢ tra cứu CSDL, thông tin/điểm số thô, bảng điểm cá nhân, bảng điểm lớp, hoặc truy vấn thống kê toàn khối lớp), "
-            "'stat_agent' (cho phân tích thống kê/chỉ số sâu GDI, Delta G, Momentum, độ khó đề thi EDI/CDI), "
+            "Chọn agent tiếp theo cần gọi: 'data_service_agent' (cho TẤT CẢ tra cứu CSDL, thông tin/điểm số thô, bảng điểm cá nhân, bảng điểm lớp, truy vấn thống kê toàn khối lớp, và phân tích thống kê/chỉ số sâu GDI, Delta G, Momentum, độ khó đề thi EDI/CDI), "
             "'knowledge_agent' (cho tra cứu NỘI DUNG kiến thức môn học từ sách giáo khoa: định nghĩa, công thức, giải thích bài học), "
             "'report_agent' (cho lập báo cáo, xem trước hoặc tải về báo cáo Word, PDF), "
             "'CLARIFICATION' (nếu cần hỏi lại để làm rõ thông tin thiếu hoặc khi câu hỏi chỉ là chào hỏi xã giao thông thường), "
@@ -34,7 +33,7 @@ class RouterDecision(BaseModel):
 
 SUPERVISOR_PROMPT = """Bạn là Supervisor điều phối hệ thống phân tích kết quả học tập toàn trường (Trợ Lý A.I EduOwl).
 1. `data_service_agent`: Chuyên trách TẤT CẢ các tác vụ liên quan đến CSDL (tra cứu điểm số cá nhân, điểm lớp học, sĩ số, danh sách học sinh, học bạ, hoặc phân tích truy vấn SQL). Viết instruction rõ ràng truyền đạt nhiệm vụ cần tra cứu và bảo toàn nguyên văn các từ khóa họ tên học sinh, tên lớp, môn học của người dùng.
-2. `stat_agent`: Chuyên trách tính toán thống kê, tìm thủ khoa/học sinh yếu, phân tích xu hướng học tập, so sánh các lớp, tính toán chỉ số GDI, Delta G, Momentum, và phân tích tam giác hóa độ khó đề thi (đối chiếu độ tin cậy điểm số EDI vs độ khó đề thi CDI). ĐẶC BIỆT LƯU Ý: Mọi câu hỏi của người dùng hỏi về "độ khó của đề thi", "đánh giá đề thi", "nhận xét đề thi", hoặc "đề thi khó hay dễ" đều ứng với nghiệp vụ tam giác hóa độ khó đề thi và BẮT BUỘC phải định tuyến sang `stat_agent` (không chuyển sang data_service_agent). Ngoài ra, nếu người dùng hỏi về một lớp học cụ thể (ví dụ: lớp 6A1), hãy suy luận ra khối lớp tương ứng (ví dụ: Khối 6) và điều hướng sang stat_agent vì đề thi và ma trận đề (CDI) được quản lý chung theo khối lớp.
+2. `data_service_agent` (thay cho `stat_agent` đã NGỪNG dùng): Mọi câu hỏi thống kê, tìm thủ khoa/học sinh yếu, phân tích xu hướng học tập, so sánh các lớp, tính toán chỉ số GDI, Delta G, Momentum, và phân tích tam giác hóa độ khó đề thi (EDI/CDI) đều định tuyến sang `data_service_agent`. KHÔNG còn agent `stat_agent` — tuyệt đối không chọn `stat_agent`.
 3. `knowledge_agent`: Chuyên trách tra cứu NỘI DUNG KIẾN THỨC trong sách giáo khoa (định nghĩa, công thức, khái niệm, giải thích bài học của các môn Toán, Ngữ Văn, KHTN, Sử-Địa...). Dùng cho câu hỏi về nội dung học thuật, KHÔNG dùng cho điểm số/hồ sơ học sinh.
 4. `report_agent`: Chuyên trách tổng hợp số liệu báo cáo, tạo bảng hiển thị xem trước báo cáo thống kê, hoặc cung cấp đường link tải xuống các tệp báo cáo thống kê (Word, HTML/PDF). Hãy gọi agent này khi người dùng yêu cầu xuất báo cáo, tải báo cáo, lập báo cáo, hoặc khi muốn xem số liệu tổng quan của một loại báo cáo cụ thể.
 5. `CLARIFICATION`: Chọn trạng thái này khi bạn cần hỏi lại người dùng để làm rõ thông tin thiếu (như thiếu năm học, thiếu học kỳ, mơ hồ lớp học) HOẶC khi câu hỏi chỉ là chào hỏi xã giao bình thường. Bắt buộc viết nội dung phản hồi trực tiếp vào trường `response`.
@@ -104,6 +103,7 @@ Tuyệt đối KHÔNG trả lời bằng lời thoại trò chuyện thông thư
 """
 
 # ── LLM Query Contextualizer: Helper functions ──────────────────────────────
+
 
 def _build_recent_context(messages_list: list, max_turns: int = 2) -> str:
     """Build text context từ 2-3 turn gần nhất để làm đầu vào cho Contextualizer."""
@@ -175,14 +175,18 @@ async def _reformulate_standalone_query(
     )
 
     try:
-        result = await llm.ainvoke([
-            SystemMessage(content=prompt),
-            HumanMessage(content=(
-                f"[LỊCH SỬ CHAT (2 TURN GẦN NHẤT)]:\n{recent_history}\n\n"
-                f"[CÂU HỎI HIỆN TẠI]: {current_query}\n\n"
-                f"Hãy viết lại [CÂU HỎI HIỆN TẠI] thành Standalone Query:"
-            ))
-        ])
+        result = await llm.ainvoke(
+            [
+                SystemMessage(content=prompt),
+                HumanMessage(
+                    content=(
+                        f"[LỊCH SỬ CHAT (2 TURN GẦN NHẤT)]:\n{recent_history}\n\n"
+                        f"[CÂU HỎI HIỆN TẠI]: {current_query}\n\n"
+                        f"Hãy viết lại [CÂU HỎI HIỆN TẠI] thành Standalone Query:"
+                    )
+                ),
+            ]
+        )
         standalone = (result.content or "").strip()
         return standalone if standalone else current_query
     except Exception as e:
@@ -290,7 +294,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     else:
         past_messages = []
     if last_human_idx != -1:
-        current_turn_messages = messages_list[last_human_idx + 1:]
+        current_turn_messages = messages_list[last_human_idx + 1 :]
     else:
         current_turn_messages = []
 
@@ -312,10 +316,13 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         from sqlalchemy import text
 
         from src.db.session import SessionLocal
+
         with SessionLocal() as db_session:
-            row = db_session.execute(text("""
+            row = db_session.execute(
+                text("""
                 SELECT fullname FROM s360.dim_school_year ORDER BY id DESC LIMIT 1
-            """)).first()
+            """)
+            ).first()
             if row and row[0]:
                 current_year_str = row[0]
     except Exception as e:
@@ -335,9 +342,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     if past_messages:
         past_text = _messages_to_text(past_messages)
         system_prompt += (
-            f"\n\n<conversation_history_FOR_REFERENCE_ONLY>\n"
-            f"{past_text}\n"
-            f"</conversation_history_FOR_REFERENCE_ONLY>"
+            f"\n\n<conversation_history_FOR_REFERENCE_ONLY>\n{past_text}\n</conversation_history_FOR_REFERENCE_ONLY>"
         )
 
     # 4b: <current_turn_collected_data> — dữ liệu sub-agent trong lượt HIỆN TẠI
@@ -375,9 +380,7 @@ async def supervisor_node(state: MultiAgentState) -> dict:
         )
 
     # Tách user query (đã reformulate) sang HumanMessage riêng
-    user_message = HumanMessage(
-        content=f"<current_user_query>\n{standalone_query}\n</current_user_query>"
-    )
+    user_message = HumanMessage(content=f"<current_user_query>\n{standalone_query}\n</current_user_query>")
 
     messages = [SystemMessage(content=system_prompt), user_message]
 
@@ -393,7 +396,11 @@ async def supervisor_node(state: MultiAgentState) -> dict:
 
         # Log raw reasoning content của supervisor LLM trước khi extract decision
         if res.content:
-            logger.info("supervisor_reasoning", provider="deepseek", reasoning=res.content[:2000] if len(str(res.content)) > 2000 else res.content)
+            logger.info(
+                "supervisor_reasoning",
+                provider="deepseek",
+                reasoning=res.content[:2000] if len(str(res.content)) > 2000 else res.content,
+            )
         if res.tool_calls:
             logger.info("supervisor_tool_calls", tool_calls=res.tool_calls)
 
@@ -434,9 +441,12 @@ async def supervisor_node(state: MultiAgentState) -> dict:
                         instruction = f"Lập báo cáo {data.get('report_type', 'academic_conduct')} cho khối {data.get('grade_level', 'all')}"
 
                     next_agent = next_agent or "FINISH"
+                    # stat_agent đã ngừng dùng (dựa trên schema OLTP cũ không tồn tại) -> chuyển sang data_service_agent
+                    if next_agent == "stat_agent":
+                        next_agent = "data_service_agent"
                     valid_agents = [
+                        "data_service_agent",
                         "data_agent",
-                        "stat_agent",
                         "sql_agent",
                         "knowledge_agent",
                         "report_agent",
@@ -463,8 +473,6 @@ async def supervisor_node(state: MultiAgentState) -> dict:
                 next_agent = "FINISH"
                 if "data_agent" in text_content:
                     next_agent = "data_agent"
-                elif "stat_agent" in text_content:
-                    next_agent = "stat_agent"
                 elif "sql_agent" in text_content:
                     next_agent = "sql_agent"
                 elif "knowledge_agent" in text_content:
@@ -488,16 +496,15 @@ async def supervisor_node(state: MultiAgentState) -> dict:
     # Code chỉ đếm số lượt route để ngắt mạch nếu Supervisor kẹt loop
     max_sub_agent_turns = 4
     current_turn_sub_calls = sum(
-        1 for msg in current_turn_messages
-        if "Chuyển yêu cầu sang" in str(getattr(msg, "content", "") or "")
+        1 for msg in current_turn_messages if "Chuyển yêu cầu sang" in str(getattr(msg, "content", "") or "")
     )
 
     if decision.next_agent != "FINISH" and current_turn_sub_calls >= max_sub_agent_turns:
         logger.warning(
             "supervisor_anti_loop",
             msg=f"Reached max_sub_agent_turns ({max_sub_agent_turns}). "
-                f"Forcing FINISH as safety circuit breaker. "
-                f"next_agent was '{decision.next_agent}', instruction='{decision.instruction}'",
+            f"Forcing FINISH as safety circuit breaker. "
+            f"next_agent was '{decision.next_agent}', instruction='{decision.instruction}'",
         )
         decision.next_agent = "FINISH"
 
@@ -604,8 +611,15 @@ Hãy tổng hợp toàn bộ thông tin trên để trả lời câu hỏi gốc
 "{standalone_query}"
 """
 
-                logger.info("supervisor_synthesis_debug", sub_agent_responses_count=len(sub_agent_responses), transcript_text=transcript_text, synthesis_input=synthesis_input)
-                print(f"\n================ [SUPERVISOR SYNTHESIS DEBUG] ================\n[sub_agent_responses_count]: {len(sub_agent_responses)}\n[synthesis_input]:\n{synthesis_input}\n==============================================================\n")
+                logger.info(
+                    "supervisor_synthesis_debug",
+                    sub_agent_responses_count=len(sub_agent_responses),
+                    transcript_text=transcript_text,
+                    synthesis_input=synthesis_input,
+                )
+                print(
+                    f"\n================ [SUPERVISOR SYNTHESIS DEBUG] ================\n[sub_agent_responses_count]: {len(sub_agent_responses)}\n[synthesis_input]:\n{synthesis_input}\n==============================================================\n"
+                )
 
                 synthesis_messages = [SystemMessage(content=synthesis_prompt), HumanMessage(content=synthesis_input)]
 

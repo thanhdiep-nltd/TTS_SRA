@@ -1,29 +1,29 @@
-# -*- coding: utf-8 -*-
 """
 src/api/v1/ews.py — FastAPI Router cho Early Warning System (EWS) Dashboard APIs
 """
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Optional, List
-from fastapi import APIRouter, Depends, Query, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.api.deps import CurrentUser, get_db
+from src.core.security.sql_validator import get_user_assignment_constraints
 from src.schemas.ews import (
+    EwsClassOption,
+    EwsLevelCount,
     EwsMeta,
     EwsOverview,
     EwsPagedResult,
     EwsPredictionRow,
-    EwsWeekOption,
-    EwsLevelCount,
-    EwsClassOption,
-    EwsRawDetail,
-    EwsRawScore,
-    EwsRawLmsItem,
     EwsRawAttendanceItem,
     EwsRawBehaviorItem,
+    EwsRawDetail,
+    EwsRawLmsItem,
+    EwsRawScore,
+    EwsWeekOption,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,58 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ews", tags=["Early Warning System"])
 
 
+def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
+    """Trả (where_sql, params) giới hạn dữ liệu EWS theo phân quyền user.
+
+    Luôn giới hạn theo ``so_school_id`` của user (chống rò rỉ giữa trường).
+    Nếu user không full-access (ADMIN/PRINCIPAL), thêm giới hạn theo khối/lớp/môn
+    từ ``teacher_assignments`` — cùng logic với chatbot (get_user_assignment_constraints).
+
+    Query gọi helper phải có alias ``hcs`` = s360.dim_homeroom_class_student
+    và ``rp`` = s360.fact_student_subject_risk_predictions.
+    """
+    constraints = get_user_assignment_constraints(user.id, user.role)
+    params: dict = {"school_id": user.so_school_id}
+    clauses = ["hcs.so_school_id = :school_id"]
+
+    if not constraints.get("is_full_access", False):
+        grade_ids = constraints.get("grade_ids") or []
+        class_ids = constraints.get("homeroom_class_ids") or []
+        pairs = constraints.get("subject_class_pairs") or []
+        scope: list[str] = []
+
+        if grade_ids:
+            ph = ", ".join(f":g{i}" for i in range(len(grade_ids)))
+            scope.append(f"hcs.grade_id IN ({ph})")
+            for i, g in enumerate(grade_ids):
+                params[f"g{i}"] = int(g)
+        if class_ids:
+            ph = ", ".join(f":c{i}" for i in range(len(class_ids)))
+            scope.append(f"hcs.homeroom_class_id IN ({ph})")
+            for i, c in enumerate(class_ids):
+                params[f"c{i}"] = int(c)
+        if pairs:
+            pair_clauses = []
+            for i, (c, s) in enumerate(pairs):
+                pair_clauses.append(f"(hcs.homeroom_class_id = :pc{i} AND rp.subject_id = :ps{i})")
+                params[f"pc{i}"] = int(c)
+                params[f"ps{i}"] = int(s)
+            scope.append("(" + " OR ".join(pair_clauses) + ")")
+
+        if scope:
+            clauses.append("(" + " OR ".join(scope) + ")")
+        else:
+            # Không có quyền lớp/khối/môn nào -> không thấy dữ liệu EWS.
+            clauses.append("1 = 0")
+
+    return " AND ".join(clauses), params
+
+
 @router.get("/meta", response_model=EwsMeta)
 def get_ews_meta(
-    school_year_id: Optional[int] = Query(None, description="Năm học (mặc định: mốc mới nhất)"),
-    semester_index: Optional[int] = Query(None, description="Học kỳ (mặc định: mốc mới nhất)"),
-    evaluated_at_week: Optional[int] = Query(None, description="Tuần đánh giá (mặc định: mốc mới nhất)"),
+    school_year_id: int | None = Query(None, description="Năm học (mặc định: mốc mới nhất)"),
+    semester_index: int | None = Query(None, description="Học kỳ (mặc định: mốc mới nhất)"),
+    evaluated_at_week: int | None = Query(None, description="Tuần đánh giá (mặc định: mốc mới nhất)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -70,43 +117,48 @@ def get_ews_meta(
     target_sem = semester_index or (weeks[0].semester_index if weeks else 1)
     target_wk = evaluated_at_week or (weeks[0].evaluated_at_week if weeks else 8)
 
+    rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
+    base_params = {"sy": target_sy, "sem": target_sem, "wk": target_wk, **rbac_params}
+
     # 2. Lấy danh sách Môn học có trong kết quả EWS
-    subjects_sql = text("""
+    subjects_sql = text(f"""
         SELECT DISTINCT sub.id, sub.name, sub.code, sub.subject_category
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+        JOIN s360.dim_homeroom_class_student hcs
+             ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         ORDER BY sub.name;
     """)
-    subjects_rows = db.execute(subjects_sql, {"sy": target_sy, "sem": target_sem, "wk": target_wk}).fetchall()
+    subjects_rows = db.execute(subjects_sql, base_params).fetchall()
     subjects = [
         {"id": row.id, "name": row.name, "code": row.code, "subject_category": row.subject_category}
         for row in subjects_rows
     ]
 
     # 3. Lấy danh sách Khối lớp
-    grades_sql = text("""
+    grades_sql = text(f"""
         SELECT DISTINCT hcs.grade_id, hcs.grade_name
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         ORDER BY hcs.grade_id;
     """)
-    grades_rows = db.execute(grades_sql, {"sy": target_sy, "sem": target_sem, "wk": target_wk}).fetchall()
-    grades = [
-        {"grade_id": row.grade_id, "grade_name": row.grade_name}
-        for row in grades_rows
-    ]
+    grades_rows = db.execute(grades_sql, base_params).fetchall()
+    grades = [{"grade_id": row.grade_id, "grade_name": row.grade_name} for row in grades_rows]
 
     # 4. Lấy danh sách Tên Lớp KÈM khối chủ quản (liên kết bộ lọc Khối → Lớp)
-    classes_sql = text("""
+    classes_sql = text(f"""
         SELECT DISTINCT hcs.grade_id, hcs.grade_name, hcs.class_name
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         ORDER BY hcs.grade_id, hcs.class_name;
     """)
-    classes_rows = db.execute(classes_sql, {"sy": target_sy, "sem": target_sem, "wk": target_wk}).fetchall()
+    classes_rows = db.execute(classes_sql, base_params).fetchall()
     classes = [
         EwsClassOption(grade_id=row.grade_id, grade_name=row.grade_name, class_name=row.class_name)
         for row in classes_rows
@@ -132,7 +184,10 @@ def get_ews_overview(
     """
     Endpoint 2: Lấy dữ liệu KPI tổng quan phân hệ EWS (Tổng số dự báo, số lượng theo 4 mức, top môn rủi ro).
     """
-    summary_sql = text("""
+    rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
+    base_params = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week, **rbac_params}
+
+    summary_sql = text(f"""
         SELECT
             COUNT(*) AS total_predictions,
             COUNT(DISTINCT rp.student_code) AS total_students,
@@ -143,11 +198,14 @@ def get_ews_overview(
             COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
             COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
         FROM s360.fact_student_subject_risk_predictions rp
+        JOIN s360.dim_homeroom_class_student hcs
+             ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy
           AND rp.semester_index = :sem
-          AND rp.evaluated_at_week = :wk;
+          AND rp.evaluated_at_week = :wk
+          AND {rbac_where};
     """)
-    row = db.execute(summary_sql, {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}).fetchone()
+    row = db.execute(summary_sql, base_params).fetchone()
 
     if not row or row.total_predictions == 0:
         return EwsOverview(
@@ -168,17 +226,20 @@ def get_ews_overview(
         )
 
     # Top 10 môn học nguy cơ nhất
-    top_sub_sql = text("""
+    top_sub_sql = text(f"""
         SELECT sub.name AS subject_name, COUNT(*) AS cnt, ROUND(AVG(rp.risk_score)::numeric, 2) AS avg_risk
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+        JOIN s360.dim_homeroom_class_student hcs
+             ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy
           AND rp.semester_index = :sem
           AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         GROUP BY sub.name
         ORDER BY avg_risk DESC LIMIT 10;
     """)
-    top_sub_rows = db.execute(top_sub_sql, {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}).fetchall()
+    top_sub_rows = db.execute(top_sub_sql, base_params).fetchall()
     top_risk_subjects = [
         {"subject_name": r.subject_name, "cnt": r.cnt, "avg_risk": float(r.avg_risk) if r.avg_risk else 0.0}
         for r in top_sub_rows
@@ -207,12 +268,12 @@ def get_ews_predictions(
     school_year_id: int = Query(2025, description="Năm học"),
     semester_index: int = Query(1, description="Học kỳ"),
     evaluated_at_week: int = Query(8, description="Tuần đánh giá"),
-    risk_level: Optional[str] = Query(None, description="LOW | MODERATE | HIGH | CRITICAL"),
-    subject_id: Optional[int] = Query(None, description="ID môn học"),
-    grade_id: Optional[int] = Query(None, description="ID khối lớp"),
-    class_name: Optional[str] = Query(None, description="Tên lớp"),
-    q: Optional[str] = Query(None, description="Tìm kiếm theo mã/tên học sinh hoặc tên môn học (ILIKE)"),
-    min_risk_score: Optional[float] = Query(None, description="Lọc risk_score tối thiểu"),
+    risk_level: str | None = Query(None, description="LOW | MODERATE | HIGH | CRITICAL"),
+    subject_id: int | None = Query(None, description="ID môn học"),
+    grade_id: int | None = Query(None, description="ID khối lớp"),
+    class_name: str | None = Query(None, description="Tên lớp"),
+    q: str | None = Query(None, description="Tìm kiếm theo mã/tên học sinh hoặc tên môn học (ILIKE)"),
+    min_risk_score: float | None = Query(None, description="Lọc risk_score tối thiểu"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = None,
@@ -228,6 +289,10 @@ def get_ews_predictions(
         "rp.evaluated_at_week = :wk",
     ]
     params: dict = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}
+
+    rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
+    params.update(rbac_params)
+    where_clauses.append(rbac_where)
 
     if risk_level:
         where_clauses.append("rp.risk_level = :risk_level")
@@ -253,7 +318,8 @@ def get_ews_predictions(
     count_sql = text(f"""
         WITH hcs AS (
             SELECT DISTINCT ON (student_code)
-                student_code, student_name, class_name, grade_id, grade_name
+                student_code, student_name, class_name, grade_id, grade_name,
+                so_school_id, homeroom_class_id
             FROM s360.dim_homeroom_class_student
             WHERE school_year_id = :sy
             ORDER BY student_code, is_active DESC, homeroom_class_id
@@ -274,7 +340,8 @@ def get_ews_predictions(
     query_sql = text(f"""
         WITH hcs AS (
             SELECT DISTINCT ON (student_code)
-                student_code, student_name, class_name, grade_id, grade_name
+                student_code, student_name, class_name, grade_id, grade_name,
+                so_school_id, homeroom_class_id
             FROM s360.dim_homeroom_class_student
             WHERE school_year_id = :sy
             ORDER BY student_code, is_active DESC, homeroom_class_id
@@ -339,7 +406,6 @@ def get_ews_predictions(
                 risk_factors=factors,
                 evaluated_at_date=r.evaluated_at_date,
                 join_date=r.join_date,
-
                 # Temporal
                 weighted_early_avg=_flt(r.weighted_early_avg),
                 weighted_late_avg=_flt(r.weighted_late_avg),
@@ -350,20 +416,17 @@ def get_ews_predictions(
                 max_coefficient_so_far=_flt(r.max_coefficient_so_far),
                 high_weight_score_count=_int(r.high_weight_score_count),
                 last_high_weight_score=_flt(r.last_high_weight_score),
-
                 # LMS
                 lms_avg_score=_flt(r.lms_avg_score),
                 lms_recent_drop=_flt(r.lms_recent_drop),
                 lms_submission_rate=_flt(r.lms_submission_rate),
                 lms_recent_submission_rate=_flt(r.lms_recent_submission_rate),
                 lms_gradebook_gap=_flt(r.lms_gradebook_gap),
-
                 # Attendance
                 daily_absence_rate=_flt(r.daily_absence_rate),
                 unexcused_absent_rate=_flt(r.unexcused_absent_rate),
                 excused_absent_days=_int(r.excused_absent_days),
                 total_late_count=_int(r.total_late_count),
-
                 # Behavior
                 total_demerit_points=_int(r.total_demerit_points),
                 repeat_offense_count=_int(r.repeat_offense_count),
@@ -386,7 +449,7 @@ def get_ews_raw(
     school_year_id: int = Query(2025, description="Năm học (VD: 2025)"),
     semester_index: int = Query(1, description="Học kỳ (1 hoặc 2)"),
     evaluated_at_week: int = Query(8, description="Tuần đánh giá (dùng khi không truyền cutoff_date)"),
-    cutoff_date: Optional[str] = Query(None, description="Ngày cutoff dạng YYYY-MM-DD (ưu tiên hơn evaluated_at_week)"),
+    cutoff_date: str | None = Query(None, description="Ngày cutoff dạng YYYY-MM-DD (ưu tiên hơn evaluated_at_week)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -404,20 +467,36 @@ def get_ews_raw(
     else:
         cutoff = base_start + timedelta(weeks=evaluated_at_week)
 
-    # 1. Context học sinh (so_school_id, grade_id, join_date)
+    # 1. Context học sinh (so_school_id, grade_id, homeroom_class_id, join_date)
     sg_sql = text("""
         SELECT DISTINCT ON (student_code)
-            student_code, so_school_id, grade_id, join_date
+            student_code, so_school_id, grade_id, homeroom_class_id, join_date
         FROM s360.dim_homeroom_class_student
         WHERE student_code = :sc AND school_year_id = :sy
         ORDER BY student_code, is_active DESC, homeroom_class_id
     """)
     sg = db.execute(sg_sql, {"sc": student_code, "sy": school_year_id}).fetchone()
     if sg is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy học sinh {student_code} trong năm học {school_year_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Không tìm thấy học sinh {student_code} trong năm học {school_year_id}"
+        )
     so_school_id = sg.so_school_id
     grade_id = sg.grade_id
+    homeroom_class_id = sg.homeroom_class_id
     join_date = sg.join_date or base_start
+
+    # 1b. Kiểm tra phân quyền: học sinh này có nằm trong phạm vi user không?
+    constraints = get_user_assignment_constraints(current_user.id, current_user.role)
+    if not constraints.get("is_full_access", False):
+        grade_ids = constraints.get("grade_ids") or []
+        class_ids = constraints.get("homeroom_class_ids") or []
+        pairs = constraints.get("subject_class_pairs") or []
+        allowed = grade_id in grade_ids or homeroom_class_id in class_ids or (homeroom_class_id, subject_id) in pairs
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Bạn không có quyền truy cập dữ liệu EWS của học sinh này (ngoài phạm vi phân quyền).",
+            )
 
     base_params = {"sc": student_code, "sid": subject_id, "sy": school_year_id, "sem": semester_index, "cutoff": cutoff}
 
@@ -532,14 +611,16 @@ def get_ews_raw(
             status = "NGHỈ CÓ PHÉP"
         else:
             status = "VẮNG"
-        attendance.append(EwsRawAttendanceItem(
-            date=r._date,
-            total_periods=r.total_periods or 0,
-            absent_periods=r.absent_periods or 0,
-            absent_no_permission=r.absent_no_permission or 0,
-            absent_with_permission=r.absent_with_permission or 0,
-            status=status,
-        ))
+        attendance.append(
+            EwsRawAttendanceItem(
+                date=r._date,
+                total_periods=r.total_periods or 0,
+                absent_periods=r.absent_periods or 0,
+                absent_no_permission=r.absent_no_permission or 0,
+                absent_with_permission=r.absent_with_permission or 0,
+                status=status,
+            )
+        )
 
     # 5. Nhật ký kỷ luật / hành vi
     beh_sql = text("""
@@ -588,35 +669,45 @@ def get_ews_filters(
     """
     Endpoint 4: Lấy danh sách distinct subjects, grades, classes theo bộ lọc mốc tuần hiện tại.
     """
-    subjects_sql = text("""
+    rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
+    base_params = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week, **rbac_params}
+
+    subjects_sql = text(f"""
         SELECT DISTINCT sub.id, sub.name, sub.code, sub.subject_category
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+        JOIN s360.dim_homeroom_class_student hcs
+             ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         ORDER BY sub.name;
     """)
-    s_rows = db.execute(subjects_sql, {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}).fetchall()
+    s_rows = db.execute(subjects_sql, base_params).fetchall()
 
-    grades_sql = text("""
+    grades_sql = text(f"""
         SELECT DISTINCT hcs.grade_id, hcs.grade_name
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         ORDER BY hcs.grade_id;
     """)
-    g_rows = db.execute(grades_sql, {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}).fetchall()
+    g_rows = db.execute(grades_sql, base_params).fetchall()
 
-    classes_sql = text("""
+    classes_sql = text(f"""
         SELECT DISTINCT hcs.class_name
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
+          AND {rbac_where}
         ORDER BY hcs.class_name;
     """)
-    c_rows = db.execute(classes_sql, {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week}).fetchall()
+    c_rows = db.execute(classes_sql, base_params).fetchall()
 
     return {
-        "subjects": [{"id": r.id, "name": r.name, "code": r.code, "subject_category": r.subject_category} for r in s_rows],
+        "subjects": [
+            {"id": r.id, "name": r.name, "code": r.code, "subject_category": r.subject_category} for r in s_rows
+        ],
         "grades": [{"grade_id": r.grade_id, "grade_name": r.grade_name} for r in g_rows],
         "classes": [r.class_name for r in c_rows if r.class_name],
     }

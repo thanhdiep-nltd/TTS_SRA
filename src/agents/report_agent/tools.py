@@ -639,7 +639,7 @@ async def generate_report_download_link(
             from src.models.tables import User as DBUser
 
             user_row = (
-                db.execute(select(DBUser).where(DBUser.school_id == school_id, DBUser.is_active.is_(True)))
+                db.execute(select(DBUser).where(DBUser.so_school_id == school_id, DBUser.is_active.is_(True)))
                 .scalars()
                 .first()
             )

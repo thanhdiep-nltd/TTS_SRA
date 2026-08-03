@@ -291,7 +291,8 @@ def phase_users(session):
     (1, 'grade_head_6_cp@vinschool.edu.vn', :hpwd, 'Lê Hoàng Nam (Trưởng Khối 6)', 'GRADE_HEAD_PRIMARY', true),
     (1, 'teacher_gvcn_6a1@vinschool.edu.vn', :hpwd, 'Phạm Thị Lan (GVCN 6A1)', 'HOMEROOM_TEACHER_SECONDARY', true),
     (1, 'teacher_gvbm_math_6a1@vinschool.edu.vn', :hpwd, 'Vũ Đức Thành (GVBM Toán)', 'SUBJECT_TEACHER', true),
-    (1, 'teacher_kiem_nhiem@vinschool.edu.vn', :hpwd, 'Hoàng Kim Ngân (GVCN 6A2 + GVBM Toán 6A1)', 'HOMEROOM_TEACHER_SECONDARY', true)
+    (1, 'teacher_kiem_nhiem@vinschool.edu.vn', :hpwd, 'Hoàng Kim Ngân (GVCN 6A2 + GVBM Toán 6A1)', 'HOMEROOM_TEACHER_SECONDARY', true),
+    (1, 'teacher_gvbm_math_multi@vinschool.edu.vn', :hpwd, 'Đỗ Minh Quân (GVBM Toán nhiều lớp)', 'SUBJECT_TEACHER', true)
     ON CONFLICT (email) DO NOTHING;
     """
     session.execute(text(users_sql), {"hpwd": DEFAULT_HASHED_PASSWORD})
@@ -320,11 +321,12 @@ def seed_teacher_assignments(session):
     class_rows = session.execute(text("""
         SELECT id, fullname, so_school_id
         FROM s360.dim_homeroom_class
-        WHERE fullname IN ('6A1', '6A2')
+        WHERE fullname IN ('6A1', '6A2', '7A1')
     """)).fetchall()
     class_map = {(r[1], r[2]): r[0] for r in class_rows}
     c_6a1 = class_map.get(("6A1", 1))
     c_6a2 = class_map.get(("6A2", 1))
+    c_7a1 = class_map.get(("7A1", 1))
 
     if c_6a1 is None or c_6a2 is None:
         dim_count = session.execute(text("SELECT COUNT(*) FROM s360.dim_homeroom_class")).scalar()
@@ -371,6 +373,25 @@ def seed_teacher_assignments(session):
             "role_context": "SUBJECT_TEACHER",
             "academic_year_id": 2025,
             "grade_id": None, "class_id": c_6a1, "subject_id": 106
+        },
+        # GVBM Toán nhiều lớp: 6A1, 6A2, 7A1 (test RBAC nhiều lớp)
+        {
+            "user_id": users_map.get("teacher_gvbm_math_multi@vinschool.edu.vn"),
+            "role_context": "SUBJECT_TEACHER",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_6a1, "subject_id": 106
+        },
+        {
+            "user_id": users_map.get("teacher_gvbm_math_multi@vinschool.edu.vn"),
+            "role_context": "SUBJECT_TEACHER",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_6a2, "subject_id": 106
+        },
+        {
+            "user_id": users_map.get("teacher_gvbm_math_multi@vinschool.edu.vn"),
+            "role_context": "SUBJECT_TEACHER",
+            "academic_year_id": 2025,
+            "grade_id": None, "class_id": c_7a1, "subject_id": 106
         },
     ]
 

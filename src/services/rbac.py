@@ -18,14 +18,20 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from src.models import enums
-from src.models.tables import Class, Grade, Score, Subject, TeacherAssignment, User
+from src.models.tables import Class, Grade, Score, TeacherAssignment, User
 
 FULL_ACCESS_ROLES = {enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL}
 
 
 def _active_assignments(db: Session, user_id: UUID) -> list[TeacherAssignment]:
+    # user_id có thể đến từ ContextVar (current_user_id) dạng str (vd '37') trong agent,
+    # trong khi cột user_id là BIGINT -> cast sang int để tránh lỗi "bigint = character varying".
+    try:
+        uid: int | UUID = int(user_id)
+    except (TypeError, ValueError):
+        uid = user_id
     stmt = select(TeacherAssignment).where(
-        TeacherAssignment.user_id == user_id,
+        TeacherAssignment.user_id == uid,
         TeacherAssignment.is_active.is_(True),
     )
     return list(db.execute(stmt).scalars().all())
@@ -107,41 +113,16 @@ def scope_summary_for_user(db: Session, user: User) -> str:
     - Trưởng khối → mọi lớp trong khối phụ trách.
     - GV chủ nhiệm/bộ môn → các lớp/môn được phân công cụ thể.
     - Không có phân công → không thể truy cập dữ liệu điểm.
+
+    Lưu ý: resolve tên lớp/môn/khối từ DWH (s360.dim_*) qua `get_user_assignment_constraints`
+    — KHÔNG dùng bảng OLTP (subjects/grades/classes) vì môi trường DWH-only không có các bảng đó.
     """
-    if user.role in FULL_ACCESS_ROLES:
+    from src.core.security.sql_validator import get_user_assignment_constraints
+
+    constraints = get_user_assignment_constraints(user.id, user.role)
+    if constraints.get("is_full_access", False):
         return "toàn trường (không giới hạn)"
-
-    class_ids: set[UUID] = set()
-    grade_desc: set[str] = set()
-    subject_desc: set[str] = set()
-    for a in _active_assignments(db, user.id):
-        if a.role_context == enums.RoleContext.GRADE_HEAD and a.grade_id:
-            grade = db.get(Grade, a.grade_id)
-            if grade is not None:
-                grade_desc.add(f"khối {grade.grade_number}")
-        elif a.role_context == enums.RoleContext.SUBJECT_HEAD and a.subject_id:
-            subject = db.get(Subject, a.subject_id)
-            if subject is not None:
-                subject_desc.add(f"môn {subject.name}")
-        elif a.class_id:
-            class_ids.add(a.class_id)
-            if a.subject_id:
-                subject = db.get(Subject, a.subject_id)
-                if subject is not None:
-                    subject_desc.add(f"môn {subject.name}")
-
-    parts: list[str] = []
-    if grade_desc:
-        parts.append(", ".join(sorted(grade_desc)))
-    if class_ids:
-        class_names = db.execute(select(Class.name).where(Class.id.in_(class_ids))).scalars().all()
-        parts.append("lớp " + ", ".join(sorted(class_names)))
-    if subject_desc:
-        parts.append(", ".join(sorted(subject_desc)))
-
-    if not parts:
-        return "không có phân công (không thể truy cập dữ liệu điểm)"
-    return "; ".join(parts)
+    return constraints.get("scope_summary", "không có phân công (không thể truy cập dữ liệu điểm)")
 
 
 def rbac_denied_message(scope: str) -> str:
