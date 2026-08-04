@@ -134,6 +134,17 @@ dynamic:
 - Không tái lập over-flag: CRITICAL giảm từ 23.5% → 8.9%.
 - Hồi quy: `py_compile` ✅, `tsc --noEmit` ✅, `pytest test_ews_rbac.py` 6 passed ✅.
 
+### Phương án F — Base weight theo chính sách nhà trường (đã triển khai)
+Nhà trường điều chỉnh base weight: **score 0.55, lms 0.15, attendance 0.15, behavior 0.15** (tổng = 1.0) — giảm score 0.65→0.55, tăng attendance 0.10→0.15.
+
+**Kết quả thực nghiệm (2025-HK1-Tuần8, 7151 bản ghi):**
+- CRITICAL: **139 bản ghi (1.9%)**, **81 học sinh** (COUNT DISTINCT).
+- HIGH: 3414, MODERATE: 2451, LOW: 1147.
+- **Nghỉ nhiều bật HIGH ✅**: 5 bản ghi `attendance_risk≥80` đều HIGH.
+- **behavior_risk≥80**: 28 CRITICAL + 198 HIGH (hết MODERATE) — tốt hơn.
+- **CRITICAL chỉ dành cho ≥2 yếu tố xấu ✅**: 134 bản ghi có 2 + 5 có 3; **0 bản ghi CRITICAL chỉ có 1 yếu tố xấu**.
+- **Lưu ý:** CRITICAL 1.9% thấp hơn mục tiêu 5-8% — do score base giảm nên học sinh chỉ có 1 yếu tố xấu (dù nghiêm trọng) không còn vào CRITICAL. Đây là hệ quả chính sách nhà trường; nếu muốn CRITICAL cao hơn, cần hạ HIGH (88 → ~85) hoặc tăng lại score base.
+
 ## 5. Các bước triển khai
 
 1. **Chạy truy vấn percentile** `risk_score` (p90/p95/p99) để chốt ngưỡng dữ liệu-driven.
