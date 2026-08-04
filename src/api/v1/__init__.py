@@ -5,6 +5,7 @@ from src.api.v1 import (
     analytics_v2,
     auth,
     chat,
+    ews,
     exam_papers,
     exam_validity,
     exams,
@@ -38,6 +39,7 @@ api_router.include_router(scores.router)
 api_router.include_router(analytics.router)
 api_router.include_router(reports.router)
 api_router.include_router(analytics_v2.router)
+api_router.include_router(ews.router)
 api_router.include_router(exam_validity.router)
 api_router.include_router(question_bank.router)
 api_router.include_router(exams.router)

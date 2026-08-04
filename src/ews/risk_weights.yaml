@@ -1,0 +1,63 @@
+# ============================================================================
+# Cấu hình trọng số EWS (v2_ensemble)
+#
+# - weights: trọng số GỐC (neo chính sách trường) cho từng yếu tố. Tổng = 1.0.
+# - dynamic: cơ chế trọng số động theo từng học sinh (Dynamic Adaptive Weighting).
+#   * alpha: hệ số khuếch đại softmax (càng cao → yếu tố rủi ro càng "nở" trọng số).
+#   * weight_floor: sàn trọng số tối thiểu mỗi yếu tố (tránh triệt tiêu).
+#   * worst_factor_beta: pha trộn Worst-Factor Dominance vào final score.
+# - risk_level_thresholds: ngưỡng trên final risk_score [0,100] để suy risk_level.
+#
+# Env override (đổi không cần retrain):
+#   EWS_WEIGHT_SCORE, EWS_WEIGHT_LMS, EWS_WEIGHT_ATTENDANCE, EWS_WEIGHT_BEHAVIOR
+#   EWS_ALPHA, EWS_WEIGHT_FLOOR, EWS_WORST_FACTOR_BETA
+# ============================================================================
+
+weights:
+  score: 0.55
+  lms: 0.15
+  attendance: 0.15
+  behavior: 0.15
+
+# Hiệu chỉnh baseline (offset) cho từng sub-score [0,1].
+# ĐÃ BỎ (đặt 0): từ bản retrain mới, mỗi sub-model train trên target RIÊNG của yếu tố
+# (component 0-10) nên baseline tự nhiên ~0 cho học sinh sạch — không cần trừ offset
+# hardcode nữa. Giữ cấu trúc để dễ tinh chỉnh sau nếu cần.
+calibration:
+  score: 0.0
+  lms: 0.0
+  attendance: 0.0
+  behavior: 0.0
+
+dynamic:
+  enabled: true
+  # Factor-Specific Alpha (α_k riêng từng yếu tố) — tách "độ nhạy" khỏi "chính sách".
+  # - score: base 65% đã cao, không cần khuếch đại.
+  # - attendance: base 10% thấp → α cao để học sinh nghỉ nhiều tự bật HIGH.
+  # - lms/behavior: khuếch đại vừa phải.
+  alpha:
+    score: 1.0
+    lms: 1.8
+    attendance: 2.2
+    behavior: 1.8
+  weight_floor: 0.05
+  worst_factor_beta: 0.0
+
+# Ngưỡng trên final risk_score [0,100] để suy risk_level.
+# LƯU Ý: logic phân loại dùng `if score < thr[i] -> level[i]`, nên ranh giới CRITICAL
+# thực chất = ngưỡng HIGH (thr[2]); giá trị CRITICAL chỉ cần > HIGH để hợp lệ (tăng dần).
+#
+# ĐIỀU CHỈNH CHỐNG OVER-FLAG (Phương án D + E):
+# - alpha: 2.5 (chung) -> dict theo yếu tố (Phương án E): score 1.0 / lms 1.8 /
+#   attendance 2.2 / behavior 1.8. Giảm "Alpha Polarization" ở score (base 65% đã cao),
+#   đồng thời tăng độ nhạy attendance để nghỉ nhiều tự bật HIGH.
+# - worst_factor_beta 0.20 -> 0.0: bỏ Worst-Factor Blend để hết double-counting
+#   (softmax đã dồn trọng số vào yếu tố xấu nhất, cộng thêm beta*max là tính trùng).
+# - HIGH 80 -> 88: ngưỡng cũ được hiệu chỉnh cho thang nén (max ~83); thang mới đạt
+#   ~98 nên nâng HIGH lên 88 để chỉ học sinh thực sự nguy cấp (>=2 yếu tố xấu) vào CRITICAL.
+# - LOW 17.5 -> 20.0: nới nhẹ dải LOW cho khớp phân phối mới.
+risk_level_thresholds:
+  LOW: 20.0
+  MODERATE: 52.5
+  HIGH: 88.0
+  CRITICAL: 100

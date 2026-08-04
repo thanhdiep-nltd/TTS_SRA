@@ -43,6 +43,7 @@ class AiMessageResponse(ORMBase):
     feedback_text: str | None = None
     feedback_at: datetime | None = None
     thought_trace: list | dict | None = None
+    step_trace: list | dict | None = None
     input_token_count: int | None = None
     output_token_count: int | None = None
     cost: float | None = None

@@ -224,13 +224,13 @@ class TeacherAssignment(Base):
         Index("idx_ta_year", "academic_year_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    academic_year_id = Column(UUID(as_uuid=True), ForeignKey("academic_years.id", ondelete="CASCADE"), nullable=False)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    academic_year_id = Column(BigInteger, nullable=False, server_default=text("2025"))
     role_context = Column(pg_enum(enums.RoleContext, "role_context_enum"), nullable=False)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"))
-    grade_id = Column(UUID(as_uuid=True), ForeignKey("grades.id", ondelete="CASCADE"))
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"))
+    class_id = Column(BigInteger)
+    grade_id = Column(BigInteger)
+    subject_id = Column(BigInteger)
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -727,6 +727,7 @@ class AiMessage(Base):
     feedback_text = Column(Text)
     feedback_at = Column(DateTime(timezone=True))
     thought_trace = Column(JSONB)
+    step_trace = Column(JSONB)
     input_token_count = Column(Integer)
     output_token_count = Column(Integer)
     cost = Column(Numeric(10, 6))

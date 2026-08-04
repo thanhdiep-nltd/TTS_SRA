@@ -14,6 +14,16 @@ from src.services import blueprint_recommendation, exam_validity, rbac
 from src.services.rbac import accessible_score_filter
 
 
+def _rbac_denied_or(empty_message: str, session, user_role, user_id, school_id) -> str:
+    """Khi RBAC active (user không PRINCIPAL/ADMIN) và kết quả rỗng → trả ACCESS_DENIED kèm phạm vi quyền;
+    ngược lại (full access) → trả về empty_message như cũ."""
+    if user_role not in ("PRINCIPAL", "ADMIN") and user_id:
+        user = SimpleNamespace(id=user_id, school_id=school_id, role=user_role)
+        scope = rbac.scope_summary_for_user(session, user)
+        return rbac.rbac_denied_message(scope)
+    return empty_message
+
+
 @tool
 def calculate_grade_statistics(
     class_name: str = None, grade_level: int = None, year: int = None, semester: int = None, subject: str = None
@@ -64,9 +74,27 @@ def calculate_grade_statistics(
         if subject is not None:
             stmt = stmt.where(tables.Subject.name.ilike(f"%{subject.strip()}%"))
 
-        scores = session.execute(stmt).all()
+        try:
+            scores = session.execute(stmt).all()
+        except Exception as exc:
+            # OLTP (bảng scores/classes/grades) có thể không được cung cấp trong môi trường
+            # DWH-only -> trả thông báo rõ ràng thay vì exception tràn ra ngoài khiến agent
+            # hiểu nhầm thành "từ chối phân quyền".
+            if "does not exist" in str(exc) or "undefined_table" in str(exc):
+                return (
+                    "Hệ thống chưa cấu hình dữ liệu bảng điểm vận hành (OLTP scores) nên chưa "
+                    "tính được thống kê. Vui lòng dùng công cụ tra cứu điểm của Data Service "
+                    "(get_class_grades / get_student_grades) để xem điểm chi tiết trong phạm vi phân quyền."
+                )
+            raise
         if not scores:
-            return "Không tìm thấy dữ liệu phù hợp để tính toán thống kê."
+            return _rbac_denied_or(
+                "Không tìm thấy dữ liệu phù hợp để tính toán thống kê.",
+                session,
+                user_role,
+                user_id,
+                school_id,
+            )
 
         grouped: dict[tuple, list] = {}
         for score, sub, cl, gr in scores:
@@ -162,7 +190,13 @@ def find_top_students(
 
         scores = session.execute(stmt).all()
         if not scores:
-            return "Không tìm thấy dữ liệu điểm phù hợp."
+            return _rbac_denied_or(
+                "Không tìm thấy dữ liệu điểm phù hợp.",
+                session,
+                user_role,
+                user_id,
+                school_id,
+            )
 
         student_data: dict = {}
         for score, student, sub, cl, gr in scores:
@@ -249,7 +283,13 @@ def find_struggling_students(
 
         scores = session.execute(stmt).all()
         if not scores:
-            return "Không tìm thấy dữ liệu điểm phù hợp."
+            return _rbac_denied_or(
+                "Không tìm thấy dữ liệu điểm phù hợp.",
+                session,
+                user_role,
+                user_id,
+                school_id,
+            )
 
         student_data: dict = {}
         for score, student, sub, cl, gr in scores:
@@ -327,8 +367,12 @@ def compare_classes(year: int, semester: int, subject: str, grade_level: int) ->
             stmt = stmt.where(rbac_filter)
         scores = session.execute(stmt).all()
         if not scores:
-            return (
-                f"Không tìm thấy dữ liệu điểm cho môn '{subject}' khối {grade_level} năm {year_str} học kỳ {semester}."
+            return _rbac_denied_or(
+                f"Không tìm thấy dữ liệu điểm cho môn '{subject}' khối {grade_level} năm {year_str} học kỳ {semester}.",
+                session,
+                user_role,
+                user_id,
+                school_id,
             )
 
         class_student_data: dict = {}
@@ -396,7 +440,13 @@ def get_student_academic_trend(student_id: str, subject: str = None) -> str:
 
         scores = session.execute(stmt).all()
         if not scores:
-            return f"Không tìm thấy dữ liệu điểm cho học sinh '{student_id}'."
+            return _rbac_denied_or(
+                f"Không tìm thấy dữ liệu điểm cho học sinh '{student_id}'.",
+                session,
+                user_role,
+                user_id,
+                school_id,
+            )
 
         history_data: dict = {}
         for score, sub, sem, ay, cl in scores:
@@ -508,7 +558,8 @@ def get_academic_divergence_metrics(class_name: str, year: int, semester: int, s
                     has_access = True
                     break
             if not has_access:
-                return f"Lỗi bảo mật: Bạn không có quyền truy cập dữ liệu lớp '{class_name}'."
+                user = SimpleNamespace(id=user_id, school_id=school_id, role=user_role)
+                return rbac.rbac_denied_message(rbac.scope_summary_for_user(session, user))
 
         # Fetch all approved scores for students in this class
         stmt = (
@@ -522,7 +573,13 @@ def get_academic_divergence_metrics(class_name: str, year: int, semester: int, s
         )
         scores = session.execute(stmt).all()
         if not scores:
-            return "Không có dữ liệu điểm."
+            return _rbac_denied_or(
+                "Không có dữ liệu điểm.",
+                session,
+                user_role,
+                user_id,
+                school_id,
+            )
 
         # Group by student_id -> subject_name -> danh sách Score
         student_subj_scores: dict = {}
@@ -601,7 +658,7 @@ def get_grade_inflation_report(year: int, semester: int, grade_level: int, subje
         return "Lỗi: Không xác định được trường của người dùng."
 
     if user_role not in ("PRINCIPAL", "ADMIN"):
-        return "Lỗi bảo mật: Báo cáo lạm phát điểm (GDI) chỉ dành riêng cho Ban Giám Hiệu."
+        return rbac.rbac_denied_message("báo cáo Lạm phát điểm GDI (chỉ dành cho Ban Giám Hiệu)")
 
     year_str = f"{year}-{year + 1}" if isinstance(year, int) else str(year)
 
@@ -776,7 +833,8 @@ def get_evaluation_momentum(class_name: str, year: int, semester: int, subject: 
                     has_access = True
                     break
             if not has_access:
-                return f"Lỗi bảo mật: Bạn không có quyền truy cập dữ liệu lớp '{class_name}'."
+                user = SimpleNamespace(id=user_id, school_id=school_id, role=user_role)
+                return rbac.rbac_denied_message(rbac.scope_summary_for_user(session, user))
 
         stmt = (
             select(tables.Score, tables.Student)
@@ -791,7 +849,13 @@ def get_evaluation_momentum(class_name: str, year: int, semester: int, subject: 
         )
         scores = session.execute(stmt).all()
         if not scores:
-            return "Không tìm thấy dữ liệu điểm."
+            return _rbac_denied_or(
+                "Không tìm thấy dữ liệu điểm.",
+                session,
+                user_role,
+                user_id,
+                school_id,
+            )
 
         # Group by student -> components
         students_data = {}
@@ -870,7 +934,7 @@ def get_exam_validity_report(subject: str, grade_level: int, year: int, semester
         return "Lỗi: Không xác định được trường của người dùng."
 
     if user_role not in ("PRINCIPAL", "ADMIN"):
-        return "Lỗi bảo mật: Báo cáo độ tin cậy đề thi chỉ dành riêng cho Ban Giám Hiệu."
+        return rbac.rbac_denied_message("báo cáo Độ tin cậy đề thi (chỉ dành cho Ban Giám Hiệu)")
 
     # Phân giải năm học linh hoạt (hỗ trợ cả int ví dụ: 2025, hoặc str ví dụ: "2025", "2025-2026")
     if isinstance(year, int):

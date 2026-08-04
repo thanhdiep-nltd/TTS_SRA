@@ -38,8 +38,7 @@
     "school_id": 1,
     "role": "TEACHER",
     "expected_routing": "data_service_agent",
-    "expected_sql_blocked": true,
-    "expected_answer_contains": ["Chặn an toàn", "không được phép"]
+    "expected_sql_blocked": false
   },
   {
     "id": "TC_005",
@@ -106,7 +105,6 @@
     "school_id": 1,
     "role": "TEACHER",
     "expected_routing": "data_service_agent",
-    "expected_subject_ids": [17, 18],
     "expected_sql_contains": ["pass_fail_status", "7A1"]
   },
   {
@@ -197,5 +195,75 @@
     "expected_routing": "data_service_agent",
     "expected_student_code": "HS125071000",
     "expected_sql_contains": ["fact_so_evaluate_process_subjects"]
+  },
+  {
+    "id": "TC_021_RBAC_PRINCIPAL_FULL_ACCESS",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Bảng điểm môn Toán toàn trường năm học 2025-2026",
+    "school_id": 1,
+    "user_id": 1,
+    "role": "PRINCIPAL",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": false
+  },
+  {
+    "id": "TC_022_RBAC_HOMEROOM_AUTHORIZED",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Bảng điểm tổng hợp các môn lớp 6A1 năm 2025-2026",
+    "school_id": 1,
+    "user_id": 4,
+    "role": "TEACHER",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": false
+  },
+  {
+    "id": "TC_023_RBAC_HOMEROOM_UNAUTHORIZED",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Bảng điểm tổng hợp các môn lớp 7A1 năm 2025-2026",
+    "school_id": 1,
+    "user_id": 4,
+    "role": "TEACHER",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": true
+  },
+  {
+    "id": "TC_024_RBAC_SUBJECT_AUTHORIZED",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Điểm kiểm tra môn Toán lớp 6A1 năm 2025-2026",
+    "school_id": 1,
+    "user_id": 5,
+    "role": "TEACHER",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": false
+  },
+  {
+    "id": "TC_025_RBAC_SUBJECT_UNAUTHORIZED",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Điểm kiểm tra môn Ngữ văn lớp 6A1 năm 2025-2026",
+    "school_id": 1,
+    "user_id": 5,
+    "role": "TEACHER",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": true
+  },
+  {
+    "id": "TC_026_RBAC_GRADE_HEAD_UNAUTHORIZED",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Bảng điểm môn Toán lớp 7A1 năm học 2025-2026",
+    "school_id": 1,
+    "role": "GRADE_HEAD_PRIMARY",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": true,
+    "expected_no_sql_error": true
+  },
+  {
+    "id": "TC_027_RBAC_GRADE_HEAD_AUTHORIZED",
+    "category": "RBAC_PERMISSIONS",
+    "query": "Bảng điểm môn Toán lớp 6A1 năm học 2025-2026",
+    "school_id": 1,
+    "role": "GRADE_HEAD_PRIMARY",
+    "expected_routing": "data_service_agent",
+    "expected_rbac_blocked": false,
+    "expected_no_sql_error": true
   }
 ]

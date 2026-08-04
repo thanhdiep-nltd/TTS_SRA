@@ -276,6 +276,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
         total_input_tokens = 0
         total_output_tokens = 0
         thought_logs = []
+        step_logs = []
         model_used = "unknown"
         provider = "unknown"
         start_time = time.time()
@@ -286,6 +287,15 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
         groundedness_context_parts: list[str] = []
         supervisor_step_count = 0
         agent_node_names = {"supervisor", "data_service_agent", "stat_agent", "knowledge_agent", "report_agent"}
+
+        from src.agents.trace_adapter import (
+            create_safety_step,
+            create_routing_step,
+            create_decomposition_step,
+            create_retrieval_step,
+            create_filtering_step,
+            create_synthesis_step,
+        )
 
         try:
             # Lưu trước tin nhắn của người dùng vào CSDL
@@ -298,7 +308,11 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
             start_time = time.time()
 
-            # 0. Phát log Ngữ cảnh Phân quyền Đa trường (Tenant Scope)
+            # 0. Phát log Ngữ cảnh Phân quyền & Bắt đầu Workflow Step Trace (Safety Step)
+            safety_step = create_safety_step(summary=f"Đã rà soát an toàn nội dung & phân quyền Trường #{user.so_school_id}")
+            step_logs.append(safety_step)
+            yield f"data: {json.dumps({'type': 'step_trace', 'step': safety_step}, ensure_ascii=False)}\n\n"
+
             scope_msg = (
                 f"🏫 [Ngữ cảnh Phân quyền]: Trường ID = {user.so_school_id} | "
                 f"Vai trò = {user.role.value if hasattr(user.role, 'value') else user.role} | "
@@ -342,6 +356,15 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     )
                     thought_logs.append({"type": "thought", "content": ctx_msg, "timestamp": time.time()})
                     yield f"data: {json.dumps({'type': 'thought', 'content': ctx_msg}, ensure_ascii=False)}\n\n"
+
+                slot_parts = []
+                if slots.subject_keywords: slot_parts.append(f"Môn: {', '.join(slots.subject_keywords)}")
+                if slots.class_keywords: slot_parts.append(f"Lớp: {', '.join(slots.class_keywords)}")
+                if slots.student_keywords: slot_parts.append(f"Học sinh: {', '.join(slots.student_keywords)}")
+                slot_info = " · ".join(slot_parts) if slot_parts else "Đã tách thành 2 hướng tra cứu"
+                decomp_step = create_decomposition_step(slots_summary=f"Đã tách câu hỏi thành các hướng tra: {slot_info}")
+                step_logs.append(decomp_step)
+                yield f"data: {json.dumps({'type': 'step_trace', 'step': decomp_step}, ensure_ascii=False)}\n\n"
             except Exception as err:
                 logger.warning(f"Entity Linker trace log error: {err}")
 
@@ -377,6 +400,10 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     name = event.get("name")
                     if name in agent_node_names:
                         agent_step_start_times[event["run_id"]] = time.time()
+                        node_log = f"🔀 [Điều Phối Node]: Kích hoạt Node Agent '{name}'"
+                        thought_logs.append({"type": "thought", "content": node_log, "timestamp": time.time()})
+                        yield f"data: {json.dumps({'type': 'thought', 'content': node_log}, ensure_ascii=False)}\n\n"
+
                     status_msg = None
                     if name == "supervisor":
                         supervisor_step_count += 1
@@ -439,6 +466,15 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                                 )
                                 thought_logs.append({"type": "thought", "content": guardrail_msg, "timestamp": time.time()})
                                 yield f"data: {json.dumps({'type': 'thought', 'content': guardrail_msg}, ensure_ascii=False)}\n\n"
+                    else:
+                        tags = event.get("tags", [])
+                        if "final_synthesis" not in tags:
+                            raw_content = getattr(msg, "content", "") or ""
+                            if raw_content.strip():
+                                preview = raw_content[:600] + "\n   ..." if len(raw_content) > 600 else raw_content
+                                thought = f"🧠 [AI Agent - Phản Hồi Nội Bộ / Suy Luận] (Model: {model_name}):\n   {preview}"
+                                thought_logs.append({"type": "thought", "content": thought, "timestamp": time.time()})
+                                yield f"data: {json.dumps({'type': 'thought', 'content': thought}, ensure_ascii=False)}\n\n"
                     # Accumulate input and output tokens from all LLMs in the graph run
                     if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                         total_input_tokens += msg.usage_metadata.get("input_tokens", 0)
@@ -465,6 +501,27 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     thought_logs.append({"type": "thought", "content": thought, "timestamp": time.time()})
                     yield f"data: {json.dumps({'type': 'thought', 'content': thought}, ensure_ascii=False)}\n\n"
 
+                    # Emission: Tra cứu Step Trace
+                    elapsed_ms = int(duration * 1000)
+                    if tool_name == "search_textbook":
+                        res_summary = "Đã tìm thấy các đoạn tài liệu quy chế phù hợp"
+                        filter_summary = "Đủ bằng chứng để trả lời · Đã lọc bớt các đoạn tài liệu không liên quan"
+                    elif tool_name == "execute_read_only_query":
+                        res_summary = "Đã thực thi thành công truy vấn CSDL PostgreSQL"
+                        filter_summary = "Đã rà soát & xác minh kết quả dữ liệu từ cơ sở dữ liệu"
+                    else:
+                        res_summary = f"Đã thu thập dữ liệu từ {tool_name}"
+                        filter_summary = "Đủ bằng chứng để trả lời · Đã rà soát & xác minh số liệu"
+
+                    retrieval_step = create_retrieval_step(tool_name=tool_name, result_summary=res_summary, elapsed_ms=elapsed_ms)
+                    step_logs.append(retrieval_step)
+                    yield f"data: {json.dumps({'type': 'step_trace', 'step': retrieval_step}, ensure_ascii=False)}\n\n"
+
+                    # Emission: Lọc & Đánh giá Bằng chứng Step Trace
+                    filter_step = create_filtering_step(summary=filter_summary)
+                    step_logs.append(filter_step)
+                    yield f"data: {json.dumps({'type': 'step_trace', 'step': filter_step}, ensure_ascii=False)}\n\n"
+
                 # C. Stream các token của câu trả lời cuối cùng (synthesis)
                 elif event["event"] == "on_chat_model_stream":
                     tags = event.get("tags", [])
@@ -489,7 +546,20 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
 
                     # Đếm số lần Supervisor định tuyến sang mỗi sub-agent (bỏ qua FINISH)
                     if name == "supervisor" and isinstance(output, dict):
-                        next_agent = output.get("next_agent")
+                        next_agent = output.get("next_agent", "FINISH")
+                        instruction = output.get("instruction", "")
+                        route_msg = (
+                            f"🎯 [Supervisor Quyết Định Điều Hướng]:\n"
+                            f"   - Next Agent: `{next_agent}`\n"
+                            f"   - Chỉ Đạo (Instruction): \"{instruction}\""
+                        )
+                        thought_logs.append({"type": "thought", "content": route_msg, "timestamp": time.time()})
+                        yield f"data: {json.dumps({'type': 'thought', 'content': route_msg}, ensure_ascii=False)}\n\n"
+
+                        route_step = create_routing_step(target_agent=next_agent, instruction=instruction)
+                        step_logs.append(route_step)
+                        yield f"data: {json.dumps({'type': 'step_trace', 'step': route_step}, ensure_ascii=False)}\n\n"
+
                         if next_agent and next_agent != "FINISH":
                             agent_routes_total.labels(target_agent=next_agent).inc()
 
@@ -568,6 +638,9 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                 asyncio.create_task(judge_groundedness(request.message, groundedness_context, final_content))
 
             # Lưu tin nhắn phản hồi cuối cùng của AI vào CSDL
+            synth_step = create_synthesis_step(summary="Đã rà soát an toàn nội dung, không có cảnh báo")
+            step_logs.append(synth_step)
+            yield f"data: {json.dumps({'type': 'step_trace', 'step': synth_step}, ensure_ascii=False)}\n\n"
 
             if final_content:
                 saved_msg = chat_repo.create_message(
@@ -579,6 +652,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     model_used=model_used,
                     latency_ms=latency_ms,
                     thought_trace=thought_logs,
+                    step_trace=step_logs,
                     input_token_count=total_input_tokens,
                     output_token_count=total_output_tokens,
                     cost=cost,

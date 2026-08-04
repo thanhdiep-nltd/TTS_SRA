@@ -42,6 +42,7 @@ data/
 *.sqlite3
 accounts_info.md
 temp/
+catboost_info/
 
 # Eval
 eval/eval_text_to_sql/results/
@@ -72,3 +73,10 @@ out/
 private_docs/
 # Uploaded files (đề thi)
 uploads/
+# Added by code-review-graph
+.code-review-graph/
+# code-review-graph MCP config (local, chứa đường dẫn tuyệt đối — không commit)
+.mcp.json
+.roo/
+.gemini/
+*.cbm

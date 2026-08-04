@@ -24,8 +24,14 @@ FULL_ACCESS_ROLES = {enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL}
 
 
 def _active_assignments(db: Session, user_id: UUID) -> list[TeacherAssignment]:
+    # user_id có thể đến từ ContextVar (current_user_id) dạng str (vd '37') trong agent,
+    # trong khi cột user_id là BIGINT -> cast sang int để tránh lỗi "bigint = character varying".
+    try:
+        uid: int | UUID = int(user_id)
+    except (TypeError, ValueError):
+        uid = user_id
     stmt = select(TeacherAssignment).where(
-        TeacherAssignment.user_id == user_id,
+        TeacherAssignment.user_id == uid,
         TeacherAssignment.is_active.is_(True),
     )
     return list(db.execute(stmt).scalars().all())
@@ -96,6 +102,36 @@ def accessible_class_ids(db: Session, user: User) -> list[UUID] | None:
         rows = db.execute(select(Class.id).where(Class.grade_id.in_(grade_ids))).scalars().all()
         class_ids.update(rows)
     return list(class_ids)
+
+
+def scope_summary_for_user(db: Session, user: User) -> str:
+    """Mô tả phạm vi phân quyền hiện tại của user dưới dạng chuỗi thân thiện (cho tool báo ACCESS_DENIED).
+
+    Quy ước:
+    - ADMIN/PRINCIPAL → "toàn trường (không giới hạn)".
+    - Trưởng bộ môn → môn phụ trách ở mọi lớp.
+    - Trưởng khối → mọi lớp trong khối phụ trách.
+    - GV chủ nhiệm/bộ môn → các lớp/môn được phân công cụ thể.
+    - Không có phân công → không thể truy cập dữ liệu điểm.
+
+    Lưu ý: resolve tên lớp/môn/khối từ DWH (s360.dim_*) qua `get_user_assignment_constraints`
+    — KHÔNG dùng bảng OLTP (subjects/grades/classes) vì môi trường DWH-only không có các bảng đó.
+    """
+    from src.core.security.sql_validator import get_user_assignment_constraints
+
+    constraints = get_user_assignment_constraints(user.id, user.role)
+    if constraints.get("is_full_access", False):
+        return "toàn trường (không giới hạn)"
+    return constraints.get("scope_summary", "không có phân công (không thể truy cập dữ liệu điểm)")
+
+
+def rbac_denied_message(scope: str) -> str:
+    """Tín hiệu ACCESS_DENIED chuẩn để agent DỪNG NGAY thay vì coi là "không có dữ liệu"."""
+    return (
+        "ACCESS_DENIED: Tài khoản của bạn không có quyền truy cập dữ liệu này — "
+        "dữ liệu nằm ngoài phạm vi phân quyền hiện tại. "
+        f"Phạm vi bạn được phép truy cập: {scope}."
+    )
 
 
 def can_write_score(
