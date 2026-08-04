@@ -45,9 +45,25 @@ import {
 const PAGE_SIZE = 50;
 
 const FACTOR_VI: Record<string, { label: string; icon: string; color: string }> = {
+  // Điểm số
   SLOPE_DOWN: { label: "Tụt dốc điểm", icon: "📉", color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
   LAST_SCORE_LOW: { label: "Bài thi gần nhất rớt", icon: "⚠️", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+  SCORE_VOLATILE: { label: "Điểm biến động mạnh", icon: "🎢", color: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20" },
+  MAX_DROP_HIGH: { label: "Tụt điểm lớn", icon: "📉", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
+  HIGH_WEIGHT_FAIL: { label: "Trượt bài hệ số cao", icon: "🧮", color: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20" },
+  // LMS
+  LMS_LOW_SUBMISSION: { label: "Nộp bài LMS thấp", icon: "📤", color: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20" },
+  LMS_LOW_SCORE: { label: "Điểm LMS thấp", icon: "💻", color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20" },
+  LMS_DROP: { label: "Điểm LMS suy giảm", icon: "📉", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
+  LMS_GAP: { label: "Lệch điểm LMS", icon: "⚖️", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" },
+  // Chuyên cần
   ABSENTEEISM: { label: "Vắng học nhiều", icon: "🚫", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
+  UNEXCUSED_ABSENT: { label: "Nghỉ không phép", icon: "🏃", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+  LATE_MANY: { label: "Đi muộn nhiều", icon: "⏰", color: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20" },
+  // Hạnh kiểm
+  DEMERIT_HIGH: { label: "Nhiều điểm trừ hạnh kiểm", icon: "📛", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
+  REPEAT_OFFENSE: { label: "Tái phạm nhiều lần", icon: "🔁", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20" },
+  SEVERE_SANCTION: { label: "Kỷ luật nặng", icon: "⛔", color: "bg-red-600/10 text-red-700 dark:text-red-400 border-red-600/20" },
 };
 
 // Ngày bắt đầu học kỳ (khớp backend feature_extractor.base_start):
@@ -83,6 +99,7 @@ export default function EwsWarningTab() {
   const [subjectId, setSubjectId] = useState<string>("ALL");
   const [gradeId, setGradeId] = useState<string>("ALL");
   const [className, setClassName] = useState<string>("ALL");
+  const [riskFactor, setRiskFactor] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
@@ -131,6 +148,7 @@ export default function EwsWarningTab() {
       school_year_id: String(schoolYearId),
       semester_index: String(semesterIndex),
       evaluated_at_week: String(week),
+      model_version: modelVersion,
     });
 
     api
@@ -148,7 +166,7 @@ export default function EwsWarningTab() {
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, loadingMeta]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, loadingMeta]);
 
   // 3. Fetch Predictions List when Filter/Page Changes
   useEffect(() => {
@@ -171,6 +189,7 @@ export default function EwsWarningTab() {
     if (subjectId !== "ALL") predParams.set("subject_id", subjectId);
     if (gradeId !== "ALL") predParams.set("grade_id", gradeId);
     if (className !== "ALL") predParams.set("class_name", className);
+    if (riskFactor !== "ALL") predParams.set("risk_factor", riskFactor);
     if (debouncedQuery) predParams.set("q", debouncedQuery);
 
     api
@@ -188,7 +207,7 @@ export default function EwsWarningTab() {
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, debouncedQuery, page, loadingMeta]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, debouncedQuery, page, loadingMeta]);
 
   // Debounce từ khóa tìm kiếm (300ms) → tìm kiếm server-side qua param q
   useEffect(() => {
@@ -250,7 +269,22 @@ export default function EwsWarningTab() {
             Dự báo sớm 4 mức độ rủi ro (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`) từ mô hình GBDT dựa trên 22 chỉ số tiến trình học tập, LMS và nếp sống kỷ luật.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Phiên bản Model */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-slate-300 whitespace-nowrap">Phiên bản Model</label>
+            <select
+              value={modelVersion}
+              onChange={(e) => {
+                setModelVersion(e.target.value);
+                setPage(1);
+              }}
+              className="text-xs bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 font-medium"
+            >
+              <option value="v1_single">v1 — Model đơn (hiện tại)</option>
+              <option value="v2_ensemble">v2 — Factor-Ensemble (mới)</option>
+            </select>
+          </div>
           <button
             onClick={() => {
               setLoadingOverview(true);
@@ -415,7 +449,7 @@ export default function EwsWarningTab() {
           <span>Bộ Lọc Ngữ Cảnh Dự Báo</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {/* 1. Mốc Tuần / Học Kỳ */}
           <div className="col-span-1 lg:col-span-2 space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mốc Đánh Giá (Tuần / Kỳ)</label>
@@ -458,22 +492,6 @@ export default function EwsWarningTab() {
               <option value="HIGH">🟠 HIGH (Rủi ro cao)</option>
               <option value="MODERATE">🟡 MODERATE (Trung bình)</option>
               <option value="LOW">🟢 LOW (An toàn)</option>
-            </select>
-          </div>
-
-          {/* 2b. Phiên bản Model */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Phiên bản Model</label>
-            <select
-              value={modelVersion}
-              onChange={(e) => {
-                setModelVersion(e.target.value);
-                setPage(1);
-              }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              <option value="v1_single">v1 — Model đơn (hiện tại)</option>
-              <option value="v2_ensemble">v2 — Factor-Ensemble (mới)</option>
             </select>
           </div>
 
@@ -538,7 +556,27 @@ export default function EwsWarningTab() {
             </select>
           </div>
 
-          {/* 6. Tìm kiếm Mã/Tên HS */}
+          {/* 6. Cờ Nguyên Nhân (Risk Badge) */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Cờ Nguyên Nhân</label>
+            <select
+              value={riskFactor}
+              onChange={(e) => {
+                setRiskFactor(e.target.value);
+                setPage(1);
+              }}
+              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="ALL">Tất cả cờ nguyên nhân</option>
+              {meta?.risk_factors.map((rf) => (
+                <option key={rf.code} value={rf.code}>
+                  {FACTOR_VI[rf.code]?.icon ?? "🏷️"} {rf.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 7. Tìm kiếm Mã/Tên HS */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Tìm kiếm nhanh</label>
             <div className="relative">
@@ -582,6 +620,7 @@ export default function EwsWarningTab() {
                 <th className="py-3.5 px-4">Cờ Nguyên Nhân (Risk Badges)</th>
                 <th className="py-3.5 px-4 text-right">Điểm Thi Gần Nhất</th>
                 <th className="py-3.5 px-4 text-right">ĐTB Nửa Đầu</th>
+                <th className="py-3.5 px-4 text-right">ĐTB Nửa Sau</th>
                 <th className="py-3.5 px-4 text-right">Xu Hướng (Slope)</th>
                 <th className="py-3.5 px-4 text-right">ĐTB LMS</th>
                 <th className="py-3.5 px-4 text-right">Tỷ Lệ Nộp LMS</th>
@@ -590,7 +629,7 @@ export default function EwsWarningTab() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loadingPreds ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={12} className="py-12 text-center text-slate-400">
                     <div className="flex justify-center items-center gap-2">
                       <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
                       <span>Đang tải danh sách dự báo rủi ro...</span>
@@ -692,6 +731,17 @@ export default function EwsWarningTab() {
                       {/* ĐTB sớm */}
                       <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
                         {item.weighted_early_avg !== null ? item.weighted_early_avg.toFixed(1) : "—"}
+                      </td>
+
+                      {/* ĐTB muộn (hiển thị giá trị thật; gạch ngang nếu bị impute) */}
+                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
+                        {item.weighted_late_avg_imputed || item.weighted_late_avg === null ? (
+                          <span className="text-slate-300 dark:text-slate-600" title="Chưa có điểm nửa sau kỳ thật (giá trị giả định chỉ dùng cho mô hình)">
+                            —
+                          </span>
+                        ) : (
+                          item.weighted_late_avg.toFixed(1)
+                        )}
                       </td>
 
                       {/* Slope */}

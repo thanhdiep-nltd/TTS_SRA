@@ -994,6 +994,7 @@ export interface EwsPredictionRow {
   // 1. Temporal Scores (9)
   weighted_early_avg: number | null;
   weighted_late_avg: number | null;
+  weighted_late_avg_imputed: boolean;
   score_slope: number | null;
   score_volatility: number | null;
   max_drop: number | null;
@@ -1051,11 +1052,17 @@ export interface EwsClassOption {
   class_name: string;
 }
 
+export interface EwsRiskFactorOption {
+  code: string;
+  label: string;
+}
+
 export interface EwsMeta {
   weeks: EwsWeekOption[];
   subjects: Array<{ id: number; name: string; code: string; subject_category: string | null }>;
   grades: Array<{ grade_id: number; grade_name: string }>;
   classes: EwsClassOption[];
+  risk_factors: EwsRiskFactorOption[];
 }
 
 export interface EwsPagedResult {

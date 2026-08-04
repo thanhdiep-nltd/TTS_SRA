@@ -36,9 +36,25 @@ interface Props {
 }
 
 const FACTOR_MAP: Record<string, { label: string; icon: string; desc: string }> = {
+  // Điểm số
   SLOPE_DOWN: { label: "Tụt dốc điểm số", icon: "📉", desc: "Xu hướng điểm số qua các bài thi rớt mạnh hơn -0.5 điểm/tuần" },
   LAST_SCORE_LOW: { label: "Bài thi gần nhất rớt", icon: "⚠️", desc: "Bài kiểm tra mới nhất có điểm < 5.0" },
+  SCORE_VOLATILE: { label: "Điểm số biến động mạnh", icon: "🎢", desc: "Độ lệch chuẩn điểm số vượt quá 2.0" },
+  MAX_DROP_HIGH: { label: "Tụt điểm lớn", icon: "📉", desc: "Mức tụt điểm lớn nhất giữa các bài thi > 2.0" },
+  HIGH_WEIGHT_FAIL: { label: "Trượt bài hệ số cao", icon: "🧮", desc: "Bài kiểm tra hệ số cao gần nhất có điểm < 5.0" },
+  // LMS
+  LMS_LOW_SUBMISSION: { label: "Nộp bài LMS thấp", icon: "📤", desc: "Tỷ lệ nộp bài trên LMS dưới 50%" },
+  LMS_LOW_SCORE: { label: "Điểm LMS thấp", icon: "💻", desc: "Điểm trung bình bài tập LMS < 5.0" },
+  LMS_DROP: { label: "Điểm LMS suy giảm", icon: "📉", desc: "Điểm LMS gần đây tụt hơn 1.0 so với trước" },
+  LMS_GAP: { label: "Lệch điểm LMS", icon: "⚖️", desc: "Chênh lệch điểm LMS so với điểm lớp < -2.0" },
+  // Chuyên cần
   ABSENTEEISM: { label: "Vắng học nhiều", icon: "🚫", desc: "Tỷ lệ nghỉ học vượt quá 10% số buổi học" },
+  UNEXCUSED_ABSENT: { label: "Nghỉ không phép", icon: "🏃", desc: "Tỷ lệ nghỉ không phép vượt quá 5%" },
+  LATE_MANY: { label: "Đi muộn nhiều", icon: "⏰", desc: "Tổng số lần đi muộn từ 5 lần trở lên" },
+  // Hạnh kiểm
+  DEMERIT_HIGH: { label: "Nhiều điểm trừ hạnh kiểm", icon: "📛", desc: "Tổng điểm trừ hạnh kiểm từ 5 điểm trở lên" },
+  REPEAT_OFFENSE: { label: "Tái phạm nhiều lần", icon: "🔁", desc: "Số lần tái phạm vi phạm từ 2 lần trở lên" },
+  SEVERE_SANCTION: { label: "Kỷ luật nặng", icon: "⛔", desc: "Có ít nhất 1 hình thức kỷ luật nặng" },
 };
 
 // Ngày bắt đầu học kỳ (khớp backend feature_extractor.base_start):
@@ -294,9 +310,18 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
                 <span className="text-slate-400 block">ĐTB Nửa Sau Kỳ</span>
-                <span className="text-base font-bold text-slate-900 dark:text-white">
-                  {fmtVal(item.weighted_late_avg)}
-                </span>
+                {item.weighted_late_avg_imputed || item.weighted_late_avg === null ? (
+                  <span
+                    className="text-base font-bold text-slate-300 dark:text-slate-600"
+                    title="Chưa có điểm nửa sau kỳ thật — giá trị giả định chỉ dùng cho mô hình, không phải điểm thật"
+                  >
+                    —
+                  </span>
+                ) : (
+                  <span className="text-base font-bold text-slate-900 dark:text-white">
+                    {fmtVal(item.weighted_late_avg)}
+                  </span>
+                )}
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">

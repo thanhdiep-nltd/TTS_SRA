@@ -35,7 +35,7 @@ UPSERT_SQL = """
 INSERT INTO s360.fact_student_subject_risk_predictions (
     student_code, subject_id, school_year_id, semester_index,
     evaluated_at_week, model_version, join_date, evaluated_at_date, cutoff_date,
-    weighted_early_avg, weighted_late_avg, score_slope,
+    weighted_early_avg, weighted_late_avg, weighted_late_avg_imputed, score_slope,
     score_volatility, max_drop, last_score,
     max_coefficient_so_far, high_weight_score_count, last_high_weight_score,
     lms_avg_score, lms_recent_drop, lms_submission_rate,
@@ -50,7 +50,7 @@ INSERT INTO s360.fact_student_subject_risk_predictions (
 VALUES (
     :student_code, :subject_id, :school_year_id, :semester_index,
     :evaluated_at_week, :model_version, :join_date, CURRENT_DATE, :cutoff_date,
-    :weighted_early_avg, :weighted_late_avg, :score_slope,
+    :weighted_early_avg, :weighted_late_avg, :weighted_late_avg_imputed, :score_slope,
     :score_volatility, :max_drop, :last_score,
     :max_coefficient_so_far, :high_weight_score_count, :last_high_weight_score,
     :lms_avg_score, :lms_recent_drop, :lms_submission_rate,
@@ -69,6 +69,7 @@ DO UPDATE SET
     cutoff_date = EXCLUDED.cutoff_date,
     weighted_early_avg = EXCLUDED.weighted_early_avg,
     weighted_late_avg = EXCLUDED.weighted_late_avg,
+    weighted_late_avg_imputed = EXCLUDED.weighted_late_avg_imputed,
     score_slope = EXCLUDED.score_slope,
     score_volatility = EXCLUDED.score_volatility,
     max_drop = EXCLUDED.max_drop,
@@ -106,7 +107,7 @@ DO UPDATE SET
 UPSERT_REQUIRED_COLS = [
     "student_code", "subject_id", "school_year_id", "semester_index",
     "evaluated_at_week", "model_version", "join_date", "cutoff_date",
-    "weighted_early_avg", "weighted_late_avg", "score_slope",
+    "weighted_early_avg", "weighted_late_avg", "weighted_late_avg_imputed", "score_slope",
     "score_volatility", "max_drop", "last_score",
     "max_coefficient_so_far", "high_weight_score_count", "last_high_weight_score",
     "lms_avg_score", "lms_recent_drop", "lms_submission_rate",

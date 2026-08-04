@@ -39,9 +39,20 @@ RISK_LEVELS = ["LOW", "MODERATE", "HIGH", "CRITICAL"]
 @dataclass
 class DynamicConfig:
     enabled: bool = True
-    alpha: float = 2.5
+    # alpha: dict theo từng yếu tố (Factor-Specific Alpha) — mỗi yếu tố có độ nhạy riêng.
+    # Backward-compat: nếu là số → dùng chung cho mọi yếu tố (xem alpha_vector()).
+    alpha: dict = field(default_factory=lambda: {
+        "score": 1.0, "lms": 1.8, "attendance": 2.2, "behavior": 1.8,
+    })
     weight_floor: float = 0.05
-    worst_factor_beta: float = 0.20
+    worst_factor_beta: float = 0.0
+
+    def alpha_vector(self, keys: list[str]) -> np.ndarray:
+        """Alpha theo từng yếu tố (theo thứ tự `keys`). Fallback alpha chung nếu thiếu."""
+        if isinstance(self.alpha, dict):
+            return np.array([self.alpha.get(k, 1.0) for k in keys], dtype=np.float64)
+        # Backward-compat: alpha là số → dùng chung mọi yếu tố
+        return np.full(len(keys), float(self.alpha), dtype=np.float64)
 
 
 @dataclass
@@ -49,10 +60,15 @@ class RiskConfig:
     weights: dict = field(default_factory=dict)          # {factor: float} tổng = 1.0
     dynamic: DynamicConfig = field(default_factory=DynamicConfig)
     thresholds: dict = field(default_factory=dict)       # {level: float} ngưỡng trên [0,100]
+    calibration: dict = field(default_factory=dict)      # {factor: float} offset baseline [0,1]
 
     def base_weight_vector(self) -> np.ndarray:
         """Trọng số gốc theo FACTOR_KEYS."""
         return np.array([self.weights[k] for k in FACTOR_KEYS], dtype=np.float64)
+
+    def calibration_vector(self) -> np.ndarray:
+        """Offset hiệu chỉnh baseline theo FACTOR_KEYS (mặc định 0 nếu thiếu)."""
+        return np.array([self.calibration.get(k, 0.0) for k in FACTOR_KEYS], dtype=np.float64)
 
     def threshold_vector(self) -> np.ndarray:
         """Ngưỡng theo RISK_LEVELS (tăng dần)."""
@@ -85,9 +101,24 @@ def _apply_env_overrides(raw: dict) -> dict:
             weights[k] = _env_float(env_name, weights.get(k, 0.0))
 
     dyn = dict(raw.get("dynamic", {}))
-    dyn["alpha"] = _env_float("EWS_ALPHA", dyn.get("alpha", 2.5))
+    # Chuẩn hóa alpha: số → dict chung mọi yếu tố; dict → giữ nguyên.
+    alpha_raw = dyn.get("alpha", 1.0)
+    if isinstance(alpha_raw, dict):
+        alpha = dict(alpha_raw)
+    else:
+        alpha = {k: float(alpha_raw) for k in FACTOR_KEYS}
+    # Env override chung (ghi đè mọi yếu tố)
+    if os.environ.get("EWS_ALPHA"):
+        common = _env_float("EWS_ALPHA", 1.0)
+        alpha = {k: common for k in FACTOR_KEYS}
+    # Env override riêng từng yếu tố (EWS_ALPHA_SCORE, EWS_ALPHA_LMS, ...)
+    for k in FACTOR_KEYS:
+        env_name = f"EWS_ALPHA_{k.upper()}"
+        if os.environ.get(env_name):
+            alpha[k] = _env_float(env_name, alpha.get(k, 1.0))
+    dyn["alpha"] = alpha
     dyn["weight_floor"] = _env_float("EWS_WEIGHT_FLOOR", dyn.get("weight_floor", 0.05))
-    dyn["worst_factor_beta"] = _env_float("EWS_WORST_FACTOR_BETA", dyn.get("worst_factor_beta", 0.20))
+    dyn["worst_factor_beta"] = _env_float("EWS_WORST_FACTOR_BETA", dyn.get("worst_factor_beta", 0.0))
 
     raw["weights"] = weights
     raw["dynamic"] = dyn
@@ -126,18 +157,22 @@ def load_risk_config() -> RiskConfig:
         weights=raw.get("weights", {}),
         dynamic=dyn,
         thresholds=raw.get("risk_level_thresholds", {}),
+        calibration=raw.get("calibration", {}),
     )
     logger.info(
-        "RiskConfig loaded: weights=%s alpha=%.2f floor=%.2f beta=%.2f",
-        cfg.weights, dyn.alpha, dyn.weight_floor, dyn.worst_factor_beta,
+        "RiskConfig loaded: weights=%s calibration=%s alpha=%s floor=%.2f beta=%.2f",
+        cfg.weights, cfg.calibration, dyn.alpha, dyn.weight_floor, dyn.worst_factor_beta,
     )
     return cfg
 
 
-def _softmax_weights(base: np.ndarray, sub_scores: np.ndarray, alpha: float, floor: float) -> np.ndarray:
-    """Dynamic Softmax Attention: w_k = base_k * e^(alpha*S_k) / sum(...), rồi áp sàn."""
+def _softmax_weights(base: np.ndarray, sub_scores: np.ndarray, alpha_vec: np.ndarray, floor: float) -> np.ndarray:
+    """Dynamic Softmax Attention: w_k = base_k * e^(alpha_k*S_k) / sum(...), rồi áp sàn.
+
+    alpha_vec: mảng alpha theo từng yếu tố (Factor-Specific Alpha).
+    """
     s = np.clip(sub_scores, 0.0, 1.0)
-    logits = base * np.exp(alpha * s)
+    logits = base * np.exp(alpha_vec * s)
     w = logits / logits.sum()
     if floor > 0:
         n = len(w)
@@ -177,7 +212,7 @@ def combine_risk_scores(
             "final_risk_score": 50.0,
             "final_risk_level": RISK_LEVELS[1],  # MODERATE
             "weights": {k: 0.0 for k in FACTOR_KEYS},
-            "alpha": cfg.dynamic.alpha if cfg.dynamic.enabled else 0.0,
+            "alpha": cfg.dynamic.alpha if cfg.dynamic.enabled else {},
             "beta": 0.0,
         }
 
@@ -185,10 +220,14 @@ def combine_risk_scores(
     base = np.array([cfg.weights[k] for k in keys], dtype=np.float64)
     base = base / base.sum()
     s100 = np.array([sub_scores[k] for k in keys], dtype=np.float64)  # 0-100
+    # Hiệu chỉnh baseline: trừ offset "sạch" để học sinh sạch về ~0 (LOW)
+    calib = np.array([cfg.calibration.get(k, 0.0) for k in keys], dtype=np.float64) * 100.0
+    s100 = np.clip(s100 - calib, 0.0, 100.0)
     s01 = s100 / 100.0
 
     if cfg.dynamic.enabled:
-        w = _softmax_weights(base, s01, cfg.dynamic.alpha, cfg.dynamic.weight_floor)
+        alpha_vec = cfg.dynamic.alpha_vector(keys)
+        w = _softmax_weights(base, s01, alpha_vec, cfg.dynamic.weight_floor)
         softmax_avg = float((w * s100).sum())
         beta = cfg.dynamic.worst_factor_beta
         worst = float(s100.max())
@@ -219,6 +258,6 @@ def combine_risk_scores(
         "final_risk_score": final_score,
         "final_risk_level": level,
         "weights": weights_full,
-        "alpha": cfg.dynamic.alpha if cfg.dynamic.enabled else 0.0,
+        "alpha": cfg.dynamic.alpha if cfg.dynamic.enabled else {},
         "beta": beta,
     }

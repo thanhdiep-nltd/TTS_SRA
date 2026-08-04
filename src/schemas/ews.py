@@ -48,6 +48,10 @@ class EwsPredictionRow(BaseModel):
     # 1. Temporal Scores (9)
     weighted_early_avg: Optional[float] = None
     weighted_late_avg: Optional[float] = None
+    weighted_late_avg_imputed: Optional[bool] = Field(
+        default=False,
+        description="True nếu ĐTB Nửa Sau Kỳ bị impute (= ĐTB Nửa Đầu Kỳ) vì chưa có điểm thật — UI nên hiển thị '—'",
+    )
     score_slope: Optional[float] = None
     score_volatility: Optional[float] = None
     max_drop: Optional[float] = None
@@ -103,12 +107,19 @@ class EwsClassOption(BaseModel):
     class_name: str = Field(..., description="Tên lớp (vd: 6A1, 10A2)")
 
 
+class EwsRiskFactorOption(BaseModel):
+    """Một tùy chọn cờ nguyên nhân (Risk Badge) cho bộ lọc."""
+    code: str = Field(..., description="Mã cờ (vd: SLOPE_DOWN, ABSENTEEISM)")
+    label: str = Field(..., description="Nhãn tiếng Việt")
+
+
 class EwsMeta(BaseModel):
     """Dữ liệu metadata đổ dropdown bộ lọc."""
     weeks: List[EwsWeekOption] = Field(default_factory=list)
     subjects: List[Dict[str, Any]] = Field(default_factory=list)
     grades: List[Dict[str, Any]] = Field(default_factory=list)
     classes: List[EwsClassOption] = Field(default_factory=list)
+    risk_factors: List[EwsRiskFactorOption] = Field(default_factory=list)
 
 
 class EwsPagedResult(BaseModel):

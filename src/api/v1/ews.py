@@ -23,12 +23,61 @@ from src.schemas.ews import (
     EwsRawDetail,
     EwsRawLmsItem,
     EwsRawScore,
+    EwsRiskFactorOption,
     EwsWeekOption,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ews", tags=["Early Warning System"])
+
+
+# Bản đồ Cờ Nguyên Nhân (Risk Badges) → điều kiện SQL.
+# Dùng chung cho cả việc sinh mảng risk_factors (SELECT) và bộ lọc risk_factor (WHERE).
+RISK_FACTOR_CONDITIONS: dict[str, str] = {
+    # --- Điểm số ---
+    "SLOPE_DOWN": "rp.score_slope IS NOT NULL AND rp.score_slope < -0.5",
+    "LAST_SCORE_LOW": "rp.last_score IS NOT NULL AND rp.last_score < 5.0",
+    "SCORE_VOLATILE": "rp.score_volatility IS NOT NULL AND rp.score_volatility > 2.0",
+    "MAX_DROP_HIGH": "rp.max_drop IS NOT NULL AND rp.max_drop > 2.0",
+    "HIGH_WEIGHT_FAIL": "rp.last_high_weight_score IS NOT NULL AND rp.last_high_weight_score < 5.0",
+    # --- LMS ---
+    "LMS_LOW_SUBMISSION": "rp.lms_submission_rate IS NOT NULL AND rp.lms_submission_rate < 0.5",
+    "LMS_LOW_SCORE": "rp.lms_avg_score IS NOT NULL AND rp.lms_avg_score < 5.0",
+    "LMS_DROP": "rp.lms_recent_drop IS NOT NULL AND rp.lms_recent_drop > 1.0",
+    "LMS_GAP": "rp.lms_gradebook_gap IS NOT NULL AND rp.lms_gradebook_gap < -2.0",
+    # --- Chuyên cần ---
+    "ABSENTEEISM": "rp.daily_absence_rate IS NOT NULL AND rp.daily_absence_rate > 0.1",
+    "UNEXCUSED_ABSENT": "rp.unexcused_absent_rate IS NOT NULL AND rp.unexcused_absent_rate > 0.05",
+    "LATE_MANY": "rp.total_late_count IS NOT NULL AND rp.total_late_count >= 5",
+    # --- Hạnh kiểm ---
+    "DEMERIT_HIGH": "rp.total_demerit_points IS NOT NULL AND rp.total_demerit_points >= 5",
+    "REPEAT_OFFENSE": "rp.repeat_offense_count IS NOT NULL AND rp.repeat_offense_count >= 2",
+    "SEVERE_SANCTION": "rp.severe_sanction_count IS NOT NULL AND rp.severe_sanction_count >= 1",
+}
+
+# Nhãn tiếng Việt cho từng cờ nguyên nhân (dùng cho bộ lọc + hiển thị badge).
+_RISK_FACTOR_LABELS: dict[str, str] = {
+    # --- Điểm số ---
+    "SLOPE_DOWN": "Điểm số suy giảm",
+    "LAST_SCORE_LOW": "Điểm gần nhất thấp",
+    "SCORE_VOLATILE": "Điểm số biến động mạnh",
+    "MAX_DROP_HIGH": "Tụt điểm lớn",
+    "HIGH_WEIGHT_FAIL": "Trượt bài hệ số cao",
+    # --- LMS ---
+    "LMS_LOW_SUBMISSION": "Nộp bài LMS thấp",
+    "LMS_LOW_SCORE": "Điểm LMS thấp",
+    "LMS_DROP": "Điểm LMS suy giảm",
+    "LMS_GAP": "Lệch điểm LMS",
+    # --- Chuyên cần ---
+    "ABSENTEEISM": "Nghỉ học nhiều",
+    "UNEXCUSED_ABSENT": "Nghỉ không phép",
+    "LATE_MANY": "Đi muộn nhiều",
+    # --- Hạnh kiểm ---
+    "DEMERIT_HIGH": "Nhiều điểm trừ hạnh kiểm",
+    "REPEAT_OFFENSE": "Tái phạm nhiều lần",
+    "SEVERE_SANCTION": "Kỷ luật nặng",
+}
 
 
 def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
@@ -170,6 +219,10 @@ def get_ews_meta(
         subjects=subjects,
         grades=grades,
         classes=classes,
+        risk_factors=[
+            EwsRiskFactorOption(code=k, label=_RISK_FACTOR_LABELS.get(k, k))
+            for k in RISK_FACTOR_CONDITIONS
+        ],
     )
 
 
@@ -178,6 +231,7 @@ def get_ews_overview(
     school_year_id: int = Query(2025, description="Năm học (VD: 2025)"),
     semester_index: int = Query(1, description="Học kỳ (1 hoặc 2)"),
     evaluated_at_week: int = Query(8, description="Tuần đánh giá"),
+    model_version: str = Query("v1_single", description="Phiên bản model (v1_single / v2_ensemble)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -185,7 +239,7 @@ def get_ews_overview(
     Endpoint 2: Lấy dữ liệu KPI tổng quan phân hệ EWS (Tổng số dự báo, số lượng theo 4 mức, top môn rủi ro).
     """
     rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
-    base_params = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week, **rbac_params}
+    base_params = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week, "mv": model_version, **rbac_params}
 
     summary_sql = text(f"""
         SELECT
@@ -203,6 +257,7 @@ def get_ews_overview(
         WHERE rp.school_year_id = :sy
           AND rp.semester_index = :sem
           AND rp.evaluated_at_week = :wk
+          AND rp.model_version = :mv
           AND {rbac_where};
     """)
     row = db.execute(summary_sql, base_params).fetchone()
@@ -235,6 +290,7 @@ def get_ews_overview(
         WHERE rp.school_year_id = :sy
           AND rp.semester_index = :sem
           AND rp.evaluated_at_week = :wk
+          AND rp.model_version = :mv
           AND {rbac_where}
         GROUP BY sub.name
         ORDER BY avg_risk DESC LIMIT 10;
@@ -275,6 +331,7 @@ def get_ews_predictions(
     class_name: str | None = Query(None, description="Tên lớp"),
     q: str | None = Query(None, description="Tìm kiếm theo mã/tên học sinh hoặc tên môn học (ILIKE)"),
     min_risk_score: float | None = Query(None, description="Lọc risk_score tối thiểu"),
+    risk_factor: str | None = Query(None, description="Lọc theo cờ nguyên nhân (SLOPE_DOWN, ABSENTEEISM, LMS_LOW_SUBMISSION, ...)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = None,
@@ -282,7 +339,7 @@ def get_ews_predictions(
 ):
     """
     Endpoint 3: Lấy danh sách bản ghi dự báo rủi ro chi tiết (có phân trang Server-side + filters).
-    Tự động tính mảng cờ rủi ro `risk_factors` (SLOPE_DOWN, LAST_SCORE_LOW, ABSENTEEISM).
+    Tự động tính mảng cờ rủi ro `risk_factors` (SLOPE_DOWN, LAST_SCORE_LOW, ABSENTEEISM, ...).
     """
     where_clauses = [
         "rp.school_year_id = :sy",
@@ -317,6 +374,10 @@ def get_ews_predictions(
     if min_risk_score is not None:
         where_clauses.append("rp.risk_score >= :min_risk_score")
         params["min_risk_score"] = min_risk_score
+    if risk_factor:
+        cond = RISK_FACTOR_CONDITIONS.get(risk_factor)
+        if cond:
+            where_clauses.append(cond)
 
     base_where = "WHERE " + " AND ".join(where_clauses)
 
@@ -359,7 +420,8 @@ def get_ews_predictions(
                rp.score_risk, rp.lms_risk, rp.attendance_risk, rp.behavior_risk,
                rp.weight_score, rp.weight_lms, rp.weight_attendance, rp.weight_behavior,
                -- Temporal
-               rp.weighted_early_avg, rp.weighted_late_avg, rp.score_slope, rp.score_volatility,
+               rp.weighted_early_avg, rp.weighted_late_avg, rp.weighted_late_avg_imputed,
+               rp.score_slope, rp.score_volatility,
                rp.max_drop, rp.last_score, rp.max_coefficient_so_far, rp.high_weight_score_count,
                rp.last_high_weight_score,
                -- LMS
@@ -371,9 +433,25 @@ def get_ews_predictions(
                -- Behavior
                rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count,
                ARRAY_REMOVE(ARRAY[
+                   -- Điểm số
                    CASE WHEN rp.score_slope IS NOT NULL AND rp.score_slope < -0.5 THEN 'SLOPE_DOWN' END,
                    CASE WHEN rp.last_score IS NOT NULL AND rp.last_score < 5.0 THEN 'LAST_SCORE_LOW' END,
-                   CASE WHEN rp.daily_absence_rate IS NOT NULL AND rp.daily_absence_rate > 0.1 THEN 'ABSENTEEISM' END
+                   CASE WHEN rp.score_volatility IS NOT NULL AND rp.score_volatility > 2.0 THEN 'SCORE_VOLATILE' END,
+                   CASE WHEN rp.max_drop IS NOT NULL AND rp.max_drop > 2.0 THEN 'MAX_DROP_HIGH' END,
+                   CASE WHEN rp.last_high_weight_score IS NOT NULL AND rp.last_high_weight_score < 5.0 THEN 'HIGH_WEIGHT_FAIL' END,
+                   -- LMS
+                   CASE WHEN rp.lms_submission_rate IS NOT NULL AND rp.lms_submission_rate < 0.5 THEN 'LMS_LOW_SUBMISSION' END,
+                   CASE WHEN rp.lms_avg_score IS NOT NULL AND rp.lms_avg_score < 5.0 THEN 'LMS_LOW_SCORE' END,
+                   CASE WHEN rp.lms_recent_drop IS NOT NULL AND rp.lms_recent_drop > 1.0 THEN 'LMS_DROP' END,
+                   CASE WHEN rp.lms_gradebook_gap IS NOT NULL AND rp.lms_gradebook_gap < -2.0 THEN 'LMS_GAP' END,
+                   -- Chuyên cần
+                   CASE WHEN rp.daily_absence_rate IS NOT NULL AND rp.daily_absence_rate > 0.1 THEN 'ABSENTEEISM' END,
+                   CASE WHEN rp.unexcused_absent_rate IS NOT NULL AND rp.unexcused_absent_rate > 0.05 THEN 'UNEXCUSED_ABSENT' END,
+                   CASE WHEN rp.total_late_count IS NOT NULL AND rp.total_late_count >= 5 THEN 'LATE_MANY' END,
+                   -- Hạnh kiểm
+                   CASE WHEN rp.total_demerit_points IS NOT NULL AND rp.total_demerit_points >= 5 THEN 'DEMERIT_HIGH' END,
+                   CASE WHEN rp.repeat_offense_count IS NOT NULL AND rp.repeat_offense_count >= 2 THEN 'REPEAT_OFFENSE' END,
+                   CASE WHEN rp.severe_sanction_count IS NOT NULL AND rp.severe_sanction_count >= 1 THEN 'SEVERE_SANCTION' END
                ], NULL) AS risk_factors
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN hcs ON rp.student_code = hcs.student_code
@@ -426,6 +504,7 @@ def get_ews_predictions(
                 # Temporal
                 weighted_early_avg=_flt(r.weighted_early_avg),
                 weighted_late_avg=_flt(r.weighted_late_avg),
+                weighted_late_avg_imputed=bool(r.weighted_late_avg_imputed) if r.weighted_late_avg_imputed is not None else False,
                 score_slope=_flt(r.score_slope),
                 score_volatility=_flt(r.score_volatility),
                 max_drop=_flt(r.max_drop),
@@ -727,4 +806,7 @@ def get_ews_filters(
         ],
         "grades": [{"grade_id": r.grade_id, "grade_name": r.grade_name} for r in g_rows],
         "classes": [r.class_name for r in c_rows if r.class_name],
+        "risk_factors": [
+            {"code": k, "label": _RISK_FACTOR_LABELS.get(k, k)} for k in RISK_FACTOR_CONDITIONS
+        ],
     }

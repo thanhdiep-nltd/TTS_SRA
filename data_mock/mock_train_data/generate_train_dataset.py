@@ -397,7 +397,9 @@ def generate_attendance_data(
     persona_idx = students["persona_idx"]
 
     # Base absence rate from latent variable
-    absence_rate = np.clip(0.10 - 0.04 * attend, 0.01, 0.60)
+    # Tăng dải tỷ lệ nghỉ để có đủ học sinh rủi ro chuyên cần (trước đây attendance_component
+    # ~99.8% LOW → không train được sub-model riêng). Cần absence > 0.5 để có HIGH/CRITICAL.
+    absence_rate = np.clip(0.15 - 0.06 * attend, 0.01, 0.80)
 
     # Persona modifier
     for p_idx, p_name in enumerate(PERSONAS):
@@ -406,7 +408,7 @@ def generate_attendance_data(
         if n_mask == 0:
             continue
         if p_name == "Academic_At_Risk":
-            absence_rate[mask] = np.clip(absence_rate[mask] + 0.15, 0.05, 0.70)
+            absence_rate[mask] = np.clip(absence_rate[mask] + 0.35, 0.05, 0.85)
         elif p_name == "High_Achiever":
             absence_rate[mask] = np.clip(absence_rate[mask] - 0.05, 0.01, 0.30)
 
@@ -465,22 +467,24 @@ def generate_behavior_data(
 
     # Base demerit từ latent variable
     # conduct ∈ [-2, 2], conduct cao → ít vi phạm
-    base_demerit = np.clip(2.0 - conduct, 0.0, 5.0)
+    # Tăng dải điểm trừ kỷ luật để có đủ học sinh rủi ro hạnh kiểm (trước đây quá sạch,
+    # behavior_component ~100% LOW → không train được sub-model riêng).
+    base_demerit = np.clip(3.0 - conduct * 1.2, 0.0, 7.0)
 
-    # Persona modifier
+    # Persona modifier (khuếch đại mạnh hơn để tạo dải rủi ro rộng)
     for p_idx, p_name in enumerate(PERSONAS):
         mask = persona_idx == p_idx
         n_mask = mask.sum()
         if n_mask == 0:
             continue
         if p_name == "Academic_At_Risk":
-            base_demerit[mask] *= RNG.uniform(1.5, 3.0, size=n_mask)
+            base_demerit[mask] *= RNG.uniform(2.0, 4.0, size=n_mask)
         elif p_name == "High_Achiever":
-            base_demerit[mask] *= RNG.uniform(0.0, 0.3, size=n_mask)
+            base_demerit[mask] *= RNG.uniform(0.0, 0.2, size=n_mask)
         elif p_name == "Diligent_Average":
-            base_demerit[mask] *= RNG.uniform(0.0, 0.8, size=n_mask)
+            base_demerit[mask] *= RNG.uniform(0.0, 0.6, size=n_mask)
         else:
-            base_demerit[mask] *= RNG.uniform(0.3, 1.5, size=n_mask)
+            base_demerit[mask] *= RNG.uniform(0.5, 2.0, size=n_mask)
 
     # Poisson-distributed counts
     total_demerit_points = np.round(base_demerit, 2)
@@ -543,12 +547,17 @@ def compute_ground_truth(
 
     # --- Attendance Component (10%) ---
     # daily_absence_rate: (N,) → (N, 1) broadcast
+    # Hệ số 2.5 (trước 1.0) để nhạy hơn: nghỉ 15% → 6.25 (MODERATE), 25% → 3.75 (HIGH),
+    # 35% → 1.25 (CRITICAL). Trước đây hệ số 1.0 khiến sub-model attendance gắn LOW cho
+    # mọi học sinh (chỉ HIGH khi nghỉ >50%) — không phân biệt được học sinh nghỉ nhiều.
     absence_rate = attendance_data["daily_absence_rate"][:, np.newaxis]  # (N, 1)
-    attend_component = 10.0 * (1.0 - absence_rate)  # (N, N_SUBJECTS), broadcast
+    attend_component = np.clip(10.0 * (1.0 - absence_rate * 2.5), 0.0, 10.0)  # (N, N_SUBJECTS), broadcast
 
     # --- Behavior Component (10%) ---
+    # Hệ số 1.0 (trước 0.3) để dải điểm trừ kỷ luật tạo đủ biến thiên rủi ro:
+    # demerit 3.5 → 6.5 (MODERATE), 5 → 5.0 (HIGH), 6.5 → 3.5 (CRITICAL).
     demerit = behavior_data["total_demerit_points"][:, np.newaxis]  # (N, 1)
-    behave_component = np.clip(10.0 - demerit * 0.3, 0.0, 10.0)  # (N, N_SUBJECTS)
+    behave_component = np.clip(10.0 - demerit * 1.0, 0.0, 10.0)  # (N, N_SUBJECTS)
 
     # --- Công thức tổng hợp ---
     latent_final_grade = (
@@ -580,6 +589,12 @@ def compute_ground_truth(
         "actual_final_grade": actual_final_grade,
         "actual_risk_level": actual_risk_level,
         "is_at_risk": is_at_risk,
+        # Component riêng từng yếu tố (0-10) — dùng làm target riêng cho từng sub-model
+        # trong factor-ensemble, thay vì dùng chung actual_risk_level (rủi ro TỔNG).
+        "score_component": score_component,
+        "lms_component": lms_component,
+        "attendance_component": attend_component,
+        "behavior_component": behave_component,
     }
 
 
@@ -966,11 +981,17 @@ def generate_training_dataset(n_students: int = 1028) -> pd.DataFrame:
             )
 
             # Gắn ground truth vào DataFrame
+            # Lưu ý: attendance_component & behavior_component là (N, 1) — không đổi theo môn,
+            # nên dùng [:, 0] và gán cho mọi subject (broadcast).
             for s_idx in range(N_SUBJECTS):
                 mask = df_ck["subject_id"] == SUBJECT_IDS[s_idx]
                 df_ck.loc[mask, "actual_final_grade"] = gt["actual_final_grade"][:, s_idx]
                 df_ck.loc[mask, "actual_risk_level"] = gt["actual_risk_level"][:, s_idx]
                 df_ck.loc[mask, "is_at_risk"] = gt["is_at_risk"][:, s_idx]
+                df_ck.loc[mask, "score_component"] = gt["score_component"][:, s_idx]
+                df_ck.loc[mask, "lms_component"] = gt["lms_component"][:, s_idx]
+                df_ck.loc[mask, "attendance_component"] = gt["attendance_component"][:, 0]
+                df_ck.loc[mask, "behavior_component"] = gt["behavior_component"][:, 0]
 
             # Thêm noise
             df_ck = add_noise_to_features(df_ck)
@@ -992,6 +1013,7 @@ def generate_training_dataset(n_students: int = 1028) -> pd.DataFrame:
         "lms_avg_score", "lms_recent_drop", "lms_submission_rate", "lms_recent_submission_rate", "lms_gradebook_gap",
         "daily_absence_rate", "unexcused_absent_rate", "excused_absent_days", "total_late_count",
         "total_demerit_points", "repeat_offense_count", "severe_sanction_count",
+        "score_component", "lms_component", "attendance_component", "behavior_component",
         "actual_final_grade", "actual_risk_level", "is_at_risk",
     ]
     final_df = final_df[column_order]

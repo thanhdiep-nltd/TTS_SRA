@@ -345,7 +345,8 @@ def run_ensemble_inference(
       - weight_score, weight_lms, weight_attendance, weight_behavior (trọng số động đã dùng)
       - risk_score (final), risk_level (final), risk_probability
     """
-    from src.ews.risk_config import FACTOR_KEYS, combine_risk_scores
+    from src.ews.risk_config import FACTOR_KEYS, combine_risk_scores, load_risk_config
+    cfg = load_risk_config()
 
     meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
     feature_cols = [c for c in X.columns if c not in meta_cols]
@@ -384,7 +385,10 @@ def run_ensemble_inference(
         final_levels.append(comb["final_risk_level"])
         for f in FACTOR_KEYS:
             weight_cols[f].append(comb["weights"][f])
-            risk_cols[f].append(float(sub_scores[f][i]) if f in available else None)
+            # Lưu sub-score ĐÃ HIỆU CHỈNH baseline (khớp với final risk) để UI nhất quán
+            calib = cfg.calibration.get(f, 0.0) * 100.0
+            calibrated = max(0.0, float(sub_scores[f][i]) - calib)
+            risk_cols[f].append(calibrated if f in available else None)
 
     result["risk_score"] = np.array(final_scores)
     result["risk_level"] = np.array(final_levels)

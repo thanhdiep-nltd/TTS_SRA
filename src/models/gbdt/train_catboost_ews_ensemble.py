@@ -4,7 +4,10 @@
 train_catboost_ews_ensemble.py — Huấn luyện 4 sub-model EWS (factor-ensemble).
 
 Mỗi sub-model học trên context chung (subject_id, subject_category, grade_level)
-+ feature của riêng nhóm yếu tố đó, cùng target `actual_risk_level`.
++ feature của riêng nhóm yếu tố đó, cùng target RIÊNG của yếu tố đó (từ component
+0-10 trong CSV: score_component / lms_component / attendance_component / behavior_component),
+map sang risk level bằng ngưỡng 6.5/5.0/3.5. KHÔNG dùng chung actual_risk_level (rủi ro
+TỔNG) nữa — tránh baseline cao khiến học sinh sạch bị gắn cờ oan.
 
 Nhóm yếu tố:
   - score      : 9 Temporal features
@@ -67,8 +70,30 @@ FACTOR_GROUPS: Dict[str, List[str]] = {
     ],
 }
 
+# Cột component (0-10) riêng từng yếu tố — dùng làm target RIÊNG cho từng sub-model.
+# Trước đây cả 4 sub-model cùng dự đoán actual_risk_level (rủi ro TỔNG) nên bị baseline
+# cao (học sinh sạch vẫn ra ~28-44). Dùng component riêng → học sinh sạch (component=10)
+# tự nhiên ra LOW, không cần calibration hardcode.
+FACTOR_COMPONENT_COL: Dict[str, str] = {
+    "score": "score_component",
+    "lms": "lms_component",
+    "attendance": "attendance_component",
+    "behavior": "behavior_component",
+}
+
 TARGET_COL = "actual_risk_level"
 GROUP_COL = "student_code"
+
+
+def component_to_risk_level(component: float) -> str:
+    """Map component (0-10, cao = khỏe) sang risk level bằng cùng ngưỡng RISK_THRESHOLDS."""
+    if component >= 6.5:
+        return "LOW"
+    if component >= 5.0:
+        return "MODERATE"
+    if component >= 3.5:
+        return "HIGH"
+    return "CRITICAL"
 
 
 def ensure_saved_dir():
@@ -90,10 +115,13 @@ def load_data(path: Path = DATA_PATH) -> pd.DataFrame:
 def preprocess(df: pd.DataFrame, factor: str) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
     feats = CAT_FEATURES + FACTOR_GROUPS[factor]
     X = df[feats].copy()
-    y = df[TARGET_COL].map(RISK_LEVEL_MAP)
+    # Target RIÊNG theo yếu tố: map component (0-10) của yếu tố đó sang risk level.
+    # Không dùng actual_risk_level (rủi ro TỔNG) nữa → bỏ baseline cao.
+    comp_col = FACTOR_COMPONENT_COL[factor]
+    y = df[comp_col].apply(component_to_risk_level).map(RISK_LEVEL_MAP)
     groups = df[GROUP_COL]
     if y.isna().any():
-        raise ValueError(f"Unknown risk levels: {df.loc[y.isna(), TARGET_COL].unique()}")
+        raise ValueError(f"Unknown risk levels from {comp_col}: {df.loc[y.isna(), comp_col].unique()}")
     for col in CAT_FEATURES:
         X[col] = X[col].astype(str)
     return X, y, groups

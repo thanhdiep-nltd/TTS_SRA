@@ -515,6 +515,22 @@ def extract_live_features(
         if c in df.columns:
             df[c] = df[c].fillna(0)
 
+    # 3b. SMART TEMPORAL IMPUTATION (đồng bộ với training generator — tránh train/serve skew)
+    # Training generator (compute_features_at_checkpoint) đã impute:
+    #   • weighted_late_avg = weighted_early_avg khi chưa có điểm nửa sau kỳ (giả định phong độ duy trì)
+    #   • score_slope = 0.0 khi chưa đủ 2 đầu điểm (chưa có xu hướng)
+    # Nhưng serve-side trước đây để NULL → CatBoost coi nhánh NaN là "chưa hoàn thành/rủi ro",
+    # gây False Alarm: học sinh ĐTB 8.5 vẫn bị score_risk ~66%. Impute cùng quy tắc để khớp training.
+    if "weighted_late_avg" in df.columns and "weighted_early_avg" in df.columns:
+        # Đánh dấu những dòng bị impute (chưa có điểm nửa sau kỳ thật) để UI hiển thị "—"
+        # thay vì giá trị giả định (tránh gây hiểu lầm). Giá trị impute vẫn dùng cho model.
+        df["weighted_late_avg_imputed"] = df["weighted_late_avg"].isna() & df["weighted_early_avg"].notna()
+        df["weighted_late_avg"] = df["weighted_late_avg"].fillna(df["weighted_early_avg"])
+    else:
+        df["weighted_late_avg_imputed"] = False
+    if "score_slope" in df.columns:
+        df["score_slope"] = df["score_slope"].fillna(0.0)
+
     # 4. Context columns
     df["evaluated_at_week"] = evaluated_at_week
     df["semester_index"] = semester_index
@@ -530,8 +546,11 @@ def extract_live_features(
     #  nên mọi cột numeric & derived đều đã là float64 tại thời điểm này.)
 
     # Reorder columns chuẩn: student_code, evaluated_at_week, semester_index, join_date + 24 features
-    final_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS
+    # + weighted_late_avg_imputed (cờ đánh dấu giá trị ĐTB Nửa Sau Kỳ bị impute — chỉ để persist/UI,
+    # KHÔNG phải feature của model).
+    final_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS + ["weighted_late_avg_imputed"]
     df = df[final_cols].copy()
+    df["weighted_late_avg_imputed"] = df["weighted_late_avg_imputed"].astype(bool)
 
     logger.info(f"Feature extraction complete: {df.shape[0]:,} rows, {len(EWS_FEATURE_COLS)} features")
     return df

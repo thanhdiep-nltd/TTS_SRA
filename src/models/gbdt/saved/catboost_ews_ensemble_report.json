@@ -1,22 +1,22 @@
 {
   "score": {
     "factor": "score",
-    "accuracy": 0.8476,
-    "f1_macro": 0.7947
+    "accuracy": 0.8774,
+    "f1_macro": 0.8576
   },
   "lms": {
     "factor": "lms",
-    "accuracy": 0.8372,
-    "f1_macro": 0.7947
+    "accuracy": 0.8326,
+    "f1_macro": 0.6672
   },
   "attendance": {
     "factor": "attendance",
-    "accuracy": 0.387,
-    "f1_macro": 0.3458
+    "accuracy": 0.8296,
+    "f1_macro": 0.7157
   },
   "behavior": {
     "factor": "behavior",
-    "accuracy": 0.4699,
-    "f1_macro": 0.3707
+    "accuracy": 0.9962,
+    "f1_macro": 0.9735
   }
 }
