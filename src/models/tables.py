@@ -185,7 +185,7 @@ class Subject(Base):
     assessment_type = Column(
         pg_enum(enums.AssessmentType, "assessment_type_enum"), nullable=False, server_default=text("'SCORED'")
     )
-    subject_head_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    subject_head_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -291,7 +291,7 @@ class ExamPaper(Base):
         Index("idx_exam_type", "score_type"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False)
     semester_id = Column(UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="RESTRICT"), nullable=False)
@@ -312,7 +312,7 @@ class ExamPaper(Base):
     ai_analysis = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     # NOTE: tên cột là "metadata"; thuộc tính ORM đổi thành "meta" vì "metadata" bị Declarative chiếm dụng.
     meta = Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    uploaded_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     # Tam giác hóa độ khó (TEVI): CDI tính từ exam_competencies (Bloom), NULL = chưa phân tích nội dung.
     content_difficulty = Column(Numeric(4, 3))
     content_analyzed_at = Column(DateTime(timezone=True))
@@ -331,10 +331,10 @@ class CurriculumUnit(Base):
         Index("idx_curri_parent", "parent_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
-    parent_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="CASCADE"))
+    parent_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"))
     code = Column(String(50), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
@@ -354,8 +354,8 @@ class ExamCompetency(Base):
         Index("idx_examcomp_unit", "unit_id"),
     )
 
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), primary_key=True)
-    unit_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="CASCADE"), primary_key=True)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
     weight = Column(Numeric(4, 3), nullable=False, server_default=text("0"))
     bloom_level = Column(SmallInteger)
 
@@ -381,7 +381,7 @@ class QuestionItem(Base):
     school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
-    unit_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="RESTRICT"), nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), nullable=False)
     bloom_level = Column(SmallInteger, nullable=False)
     question_type = Column(pg_enum(enums.QuestionType, "question_type_enum"), nullable=False)
     stem = Column(Text, nullable=False)  # đề bài (Markdown/LaTeX)
@@ -399,8 +399,8 @@ class QuestionItem(Base):
     p_value = Column(Numeric(4, 3))  # facility 0..1 (tỉ lệ làm đúng)
     discrimination = Column(Numeric(4, 3))
     exposure_at = Column(DateTime(timezone=True))  # lần cuối xuất hiện trong đề (chống lộ)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    reviewed_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     reviewed_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
@@ -419,7 +419,7 @@ class Misconception(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
     school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"))
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
-    unit_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"), nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
     description = Column(Text, nullable=False)  # mô tả lỗi sai, vd "cộng tử với tử, mẫu với mẫu"
     example_wrong = Column(Text)  # ví dụ bài làm sai điển hình
@@ -449,7 +449,7 @@ class ExamBlueprint(Base):
     cells = Column(JSONB, nullable=False)
     # Suy ra từ cells (question_type dùng) mỗi lần create/update — không nhận trực tiếp từ client.
     exam_format = Column(pg_enum(enums.ExamFormat, "exam_format_enum"))
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
@@ -471,8 +471,8 @@ class GeneratedExam(Base):
         pg_enum(enums.GenExamStatus, "gen_exam_status_enum"), nullable=False, server_default=text("'DRAFT'")
     )
     # Bản ghi đề chính thức sinh ra khi FINALIZE (nối vào luồng chấm hiện có).
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="SET NULL"))
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="SET NULL"))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
@@ -529,11 +529,11 @@ class Score(Base):
     score_category = Column(pg_enum(enums.ScoreCategory, "score_category_enum"), nullable=False)
     column_index = Column(SmallInteger, nullable=False)
     value = Column(Numeric(4, 2), nullable=False)
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="SET NULL"))
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="SET NULL"))
     status = Column(pg_enum(enums.ScoreStatus, "score_status_enum"), nullable=False, server_default=text("'DRAFT'"))
     note = Column(Text)
-    entered_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    entered_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     approved_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
@@ -576,8 +576,8 @@ class ExamColumnMapping(Base):
     column_index = Column(SmallInteger, nullable=False)
     class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"))
     grade_id = Column(UUID(as_uuid=True), ForeignKey("grades.id", ondelete="CASCADE"))
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
-    mapped_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
+    mapped_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -604,7 +604,7 @@ class SubjectEvaluation(Base):
     semester_id = Column(UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="CASCADE"), nullable=False)
     result = Column(pg_enum(enums.PassFail, "pass_fail_enum"))  # cho môn REMARK
     comment = Column(Text)  # đánh giá học tập (môn SCORED)
-    evaluated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    evaluated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -628,7 +628,7 @@ class StudentTermReport(Base):
     conduct = Column(pg_enum(enums.Conduct, "conduct_enum"))  # hạnh kiểm
     general_comment = Column(Text)  # đánh giá chung của chủ nhiệm
     absent_days = Column(Integer, server_default=text("0"), default=0)  # số ngày nghỉ
-    evaluated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    evaluated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -651,7 +651,7 @@ class AuditLog(Base):
     table_name = Column(String(100), nullable=False)
     record_id = Column(UUID(as_uuid=True), nullable=False)
     action = Column(String(10), nullable=False)
-    changed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    changed_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     old_values = Column(JSONB)
     new_values = Column(JSONB)
     ip_address = Column(INET)

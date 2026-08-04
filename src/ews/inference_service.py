@@ -29,8 +29,15 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # ============================================================================
 
-MODEL_PATH = Path("src/models/gbdt/saved/catboost_ews_model.cbm")
-SHAP_PATH = Path("src/models/gbdt/saved/shap_feature_importance.json")
+# Đường dẫn TUYỆT ĐỐI dựa trên vị trí file này (không phụ thuộc CWD của process).
+# Trước đây dùng đường dẫn tương đối "src/models/gbdt/saved/..." — nếu server chạy
+# với working directory khác project root (vd. uvicorn --reload từ nơi khác) thì
+# load_ensemble() sẽ FileNotFoundError -> API /ews/golden-set trả 500.
+_SRC_DIR = Path(__file__).resolve().parent.parent  # .../src
+_SAVED_DIR = _SRC_DIR / "models" / "gbdt" / "saved"
+
+MODEL_PATH = _SAVED_DIR / "catboost_ews_model.cbm"
+SHAP_PATH = _SAVED_DIR / "shap_feature_importance.json"
 CAT_FEATURES = ["subject_id", "subject_category", "grade_level"]  # same as training
 
 # Nhóm feature theo 4 yếu tố quyết định (khớp FEATURE_COLS trong training).
@@ -309,10 +316,10 @@ ENSEMBLE_FACTOR_GROUPS = {
 }
 
 ENSEMBLE_MODEL_PATHS = {
-    "score": Path("src/models/gbdt/saved/catboost_ews_score.cbm"),
-    "lms": Path("src/models/gbdt/saved/catboost_ews_lms.cbm"),
-    "attendance": Path("src/models/gbdt/saved/catboost_ews_attendance.cbm"),
-    "behavior": Path("src/models/gbdt/saved/catboost_ews_behavior.cbm"),
+    "score": _SAVED_DIR / "catboost_ews_score.cbm",
+    "lms": _SAVED_DIR / "catboost_ews_lms.cbm",
+    "attendance": _SAVED_DIR / "catboost_ews_attendance.cbm",
+    "behavior": _SAVED_DIR / "catboost_ews_behavior.cbm",
 }
 
 

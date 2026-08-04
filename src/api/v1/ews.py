@@ -4,6 +4,7 @@ src/api/v1/ews.py — FastAPI Router cho Early Warning System (EWS) Dashboard AP
 
 import logging
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -13,6 +14,7 @@ from src.api.deps import CurrentUser, get_db
 from src.core.security.sql_validator import get_user_assignment_constraints
 from src.schemas.ews import (
     EwsClassOption,
+    EwsGoldenSetResult,
     EwsLevelCount,
     EwsMeta,
     EwsOverview,
@@ -810,3 +812,26 @@ def get_ews_filters(
             {"code": k, "label": _RISK_FACTOR_LABELS.get(k, k)} for k in RISK_FACTOR_CONDITIONS
         ],
     }
+
+
+@lru_cache(maxsize=1)
+def _cached_golden_set() -> dict:
+    """Chạy golden set 1 lần rồi cache (load model + inference ~vài giây)."""
+    from src.ews.golden_set import run_golden_set
+    return run_golden_set()
+
+
+@router.get("/golden-set", response_model=EwsGoldenSetResult)
+def get_ews_golden_set(
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint 5: Kết quả Golden Set — kiểm tra độ chính xác mô hình EWS v2_ensemble
+    trên 8 tình huống đa dạng (học giỏi + nghỉ nhiều, học kém, đa yếu tố xấu, ...).
+    Dùng để demo độ hiệu quả của mô hình.
+    """
+    return _cached_golden_set()
+
+
+

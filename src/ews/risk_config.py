@@ -204,8 +204,11 @@ def combine_risk_scores(
     """
     cfg = cfg or load_risk_config()
 
-    # Chỉ dùng các yếu tố có dữ liệu
-    keys = [k for k in FACTOR_KEYS if k in (available or FACTOR_KEYS)]
+    # Chỉ dùng các yếu tố có dữ liệu.
+    # LƯU Ý: dùng `available if available is not None else FACTOR_KEYS` thay vì
+    # `available or FACTOR_KEYS` — vì available=[] (rỗng, không yếu tố nào có dữ liệu)
+    # là hợp lệ và phải giữ rỗng để trả về MODERATE trung tính, không fallback về cả 4.
+    keys = [k for k in FACTOR_KEYS if k in (available if available is not None else FACTOR_KEYS)]
     if not keys:
         # Không có yếu tố nào có dữ liệu → trả về mức trung tính (50) để không phạt
         return {

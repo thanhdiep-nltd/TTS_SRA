@@ -183,3 +183,30 @@ class EwsRawDetail(BaseModel):
     lms_submitted: int = 0
     attendance: List[EwsRawAttendanceItem] = Field(default_factory=list)
     behavior: List[EwsRawBehaviorItem] = Field(default_factory=list)
+
+
+class EwsGoldenSetCase(BaseModel):
+    """Một case trong golden set: tình huống + dự đoán + kỳ vọng."""
+    id: str
+    description: str
+    predicted: str
+    expected: str
+    passed: bool
+    risk_score: float
+    score_risk: Optional[float] = None
+    lms_risk: Optional[float] = None
+    attendance_risk: Optional[float] = None
+    behavior_risk: Optional[float] = None
+    weight_attendance: Optional[float] = None
+    weight_behavior: Optional[float] = None
+    # Bộ 24 thông số đầu vào (đã sanitize NaN -> None) để UI hiển thị chi tiết.
+    # Giá trị có thể là số (numeric feature) hoặc string (categorical: subject_id, ...).
+    features: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EwsGoldenSetResult(BaseModel):
+    """Kết quả chạy golden set: accuracy + danh sách case."""
+    total: int
+    passed: int
+    accuracy: float
+    cases: List[EwsGoldenSetCase] = Field(default_factory=list)

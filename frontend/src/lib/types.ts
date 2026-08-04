@@ -1039,6 +1039,29 @@ export interface EwsOverview {
   top_risk_subjects: Array<{ subject_name: string; cnt: number; avg_risk: number }>;
 }
 
+export interface EwsGoldenSetCase {
+  id: string;
+  description: string;
+  predicted: EwsRiskLevel;
+  expected: EwsRiskLevel;
+  passed: boolean;
+  risk_score: number;
+  score_risk: number | null;
+  lms_risk: number | null;
+  attendance_risk: number | null;
+  behavior_risk: number | null;
+  weight_attendance: number | null;
+  weight_behavior: number | null;
+  features: Record<string, number | string | null>;
+}
+
+export interface EwsGoldenSetResult {
+  total: number;
+  passed: number;
+  accuracy: number;
+  cases: EwsGoldenSetCase[];
+}
+
 export interface EwsWeekOption {
   school_year_id: number;
   semester_index: number;
