@@ -167,7 +167,7 @@ def generate_students(
             attend[mask] = np.clip(RNG.normal(-0.5, 0.6, size=n_mask), -2.0, 2.0)
 
     # Sinh student codes
-    codes, grades = _generate_student_codes(n_students)
+    codes, grades, schools = _generate_student_codes(n_students)
 
     # M2: tuần nhập học (global week 1..36, 1 = đầu HK1, 19 = đầu HK2).
     #   - 88%: có mặt từ đầu HK1 (join_week = 1)
@@ -185,6 +185,7 @@ def generate_students(
     return {
         "codes": codes,
         "grades": grades,
+        "schools": schools,
         "persona_idx": persona_idx,
         "profile_idx": profile_idx,
         "c_math": c_math,
@@ -196,7 +197,7 @@ def generate_students(
     }
 
 
-def _generate_student_codes(n_students: int) -> NDArray[np.str_]:
+def _generate_student_codes(n_students: int) -> tuple[NDArray[np.str_], NDArray[np.int32], NDArray[np.int32]]:
     """
     Sinh mã học sinh format HS{school}{grade}{idx:04d}
     Phân bố: 50% school 1, 50% school 2, grade 6-11.
@@ -209,7 +210,7 @@ def _generate_student_codes(n_students: int) -> NDArray[np.str_]:
     codes = np.array([
         f"HS{s}{g}{i:04d}" for s, g, i in zip(schools, grades, indices)
     ], dtype=str)
-    return codes, grades
+    return codes, grades, schools
 
 
 # ============================================================================
@@ -818,6 +819,7 @@ def compute_features_at_checkpoint(
         for s_idx in range(NS):
             row = {
                 "student_code": students["codes"][i],
+                "so_school_id": int(students["schools"][i]),
                 "subject_id": SUBJECT_IDS[s_idx],
                 "school_year_id": 2025,
                 "semester_index": semester_idx,
@@ -1006,7 +1008,7 @@ def generate_training_dataset(n_students: int = 1028) -> pd.DataFrame:
 
     # Sắp xếp cột theo schema
     column_order = [
-        "student_code", "subject_id", "school_year_id", "semester_index", "evaluated_at_week",
+        "student_code", "so_school_id", "subject_id", "school_year_id", "semester_index", "evaluated_at_week",
         "subject_category", "grade_level",
         "weighted_early_avg", "weighted_late_avg", "score_slope", "score_volatility", "max_drop",
         "last_score", "max_coefficient_so_far", "high_weight_score_count", "last_high_weight_score",
@@ -1038,6 +1040,24 @@ def export_to_csv(df: pd.DataFrame, path: str = CSV_PATH):
     print(f"   [OK] Saved! File size: {file_size:.1f} MB")
 
 
+# Các cột tồn tại trong bảng s360.train_student_subject_risk_dataset (schema).
+# DataFrame có thể chứa thêm cột phụ (subject_category, grade_level, *_component)
+# chỉ dùng cho CSV/EDA — phải lọc bỏ trước khi insert vào DB.
+_SCHEMA_COLS = [
+    "student_code", "so_school_id", "subject_id", "school_year_id",
+    "semester_index", "evaluated_at_week",
+    "weighted_early_avg", "weighted_late_avg", "score_slope", "score_volatility",
+    "max_drop", "last_score", "max_coefficient_so_far", "high_weight_score_count",
+    "last_high_weight_score",
+    "lms_avg_score", "lms_recent_drop", "lms_submission_rate",
+    "lms_recent_submission_rate", "lms_gradebook_gap",
+    "daily_absence_rate", "unexcused_absent_rate", "excused_absent_days",
+    "total_late_count",
+    "total_demerit_points", "repeat_offense_count", "severe_sanction_count",
+    "actual_final_grade", "actual_risk_level", "is_at_risk",
+]
+
+
 def export_to_db(df: pd.DataFrame, connection_string: Optional[str] = None):
     """
     Export DataFrame to s360.train_student_subject_risk_dataset.
@@ -1048,23 +1068,29 @@ def export_to_db(df: pd.DataFrame, connection_string: Optional[str] = None):
         return
 
     try:
-        from sqlalchemy import create_engine, text
+        from sqlalchemy import create_engine
         engine = create_engine(connection_string)
 
-        # Batch insert với chunk size 10,000
+        # Chỉ giữ các cột có trong schema (bỏ cột phụ chỉ dùng cho CSV/EDA)
+        missing = [c for c in _SCHEMA_COLS if c not in df.columns]
+        if missing:
+            print(f"   [WARN] Thiếu cột so với schema (bỏ qua): {missing}")
+        export_df = df[[c for c in _SCHEMA_COLS if c in df.columns]].copy()
+
+        # Batch insert với chunk size 10,000 — dùng executemany (mặc định) thay vì
+        # method="multi" để tránh tạo INSERT khổng lồ gây timeout.
         chunk_size = 10000
-        n_chunks = (len(df) + chunk_size - 1) // chunk_size
+        n_chunks = (len(export_df) + chunk_size - 1) // chunk_size
 
         print(f"\n[DB] Exporting to DB ({n_chunks} chunks of {chunk_size})...")
-        for i in range(0, len(df), chunk_size):
-            chunk = df.iloc[i:i + chunk_size]
+        for i in range(0, len(export_df), chunk_size):
+            chunk = export_df.iloc[i:i + chunk_size]
             chunk.to_sql(
                 "train_student_subject_risk_dataset",
                 con=engine,
                 schema="s360",
                 if_exists="append",
                 index=False,
-                method="multi",
             )
             print(f"       Chunk {i // chunk_size + 1}/{n_chunks}: {len(chunk)} rows")
 

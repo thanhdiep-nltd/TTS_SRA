@@ -85,7 +85,9 @@ _RISK_FACTOR_LABELS: dict[str, str] = {
 def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
     """Trả (where_sql, params) giới hạn dữ liệu EWS theo phân quyền user.
 
-    Luôn giới hạn theo ``so_school_id`` của user (chống rò rỉ giữa trường).
+    Luôn giới hạn theo ``so_school_id`` của user (chống rò rỉ giữa trường) — lọc
+    TRỰC TIẾP trên ``rp.so_school_id`` (cột đã được thêm vào bảng dự báo, Multi-Tenant
+    Isolation) thay vì chỉ dựa vào JOIN ``hcs``.
     Nếu user không full-access (ADMIN/PRINCIPAL), thêm giới hạn theo khối/lớp/môn
     từ ``teacher_assignments`` — cùng logic với chatbot (get_user_assignment_constraints).
 
@@ -94,7 +96,7 @@ def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
     """
     constraints = get_user_assignment_constraints(user.id, user.role)
     params: dict = {"school_id": user.so_school_id}
-    clauses = ["hcs.so_school_id = :school_id"]
+    clauses = ["rp.so_school_id = :school_id"]
 
     if not constraints.get("is_full_access", False):
         grade_ids = constraints.get("grade_ids") or []
@@ -149,10 +151,11 @@ def get_ews_meta(
                rp.semester_index, rp.evaluated_at_week
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN s360.dim_school_year sy ON rp.school_year_id = sy.id
+        WHERE rp.so_school_id = :school_id
         GROUP BY rp.school_year_id, sy.fullname, rp.semester_index, rp.evaluated_at_week
         ORDER BY rp.school_year_id DESC, rp.semester_index DESC, rp.evaluated_at_week DESC;
     """)
-    weeks_rows = db.execute(weeks_sql).fetchall()
+    weeks_rows = db.execute(weeks_sql, {"school_id": current_user.so_school_id}).fetchall()
     weeks = [
         EwsWeekOption(
             school_year_id=row.school_year_id,
@@ -256,6 +259,7 @@ def get_ews_overview(
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_homeroom_class_student hcs
              ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+             AND hcs.so_school_id = rp.so_school_id
         WHERE rp.school_year_id = :sy
           AND rp.semester_index = :sem
           AND rp.evaluated_at_week = :wk
@@ -289,6 +293,7 @@ def get_ews_overview(
         JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         JOIN s360.dim_homeroom_class_student hcs
              ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+             AND hcs.so_school_id = rp.so_school_id
         WHERE rp.school_year_id = :sy
           AND rp.semester_index = :sem
           AND rp.evaluated_at_week = :wk
@@ -394,7 +399,7 @@ def get_ews_predictions(
         )
         SELECT COUNT(*) AS total_cnt
         FROM s360.fact_student_subject_risk_predictions rp
-        LEFT JOIN hcs ON rp.student_code = hcs.student_code
+        LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         {base_where};
     """)
@@ -456,7 +461,7 @@ def get_ews_predictions(
                    CASE WHEN rp.severe_sanction_count IS NOT NULL AND rp.severe_sanction_count >= 1 THEN 'SEVERE_SANCTION' END
                ], NULL) AS risk_factors
         FROM s360.fact_student_subject_risk_predictions rp
-        LEFT JOIN hcs ON rp.student_code = hcs.student_code
+        LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         {base_where}
         ORDER BY rp.risk_score DESC
@@ -584,6 +589,13 @@ def get_ews_raw(
     join_date = sg.join_date or base_start
 
     # 1b. Kiểm tra phân quyền: học sinh này có nằm trong phạm vi user không?
+    #     Luôn chặn truy cập học sinh thuộc trường KHÁC (kể cả user full-access ADMIN/PRINCIPAL).
+    if so_school_id != current_user.so_school_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Bạn không có quyền truy cập dữ liệu EWS của học sinh thuộc trường khác.",
+        )
+
     constraints = get_user_assignment_constraints(current_user.id, current_user.role)
     if not constraints.get("is_full_access", False):
         grade_ids = constraints.get("grade_ids") or []
@@ -776,6 +788,7 @@ def get_ews_filters(
         JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         JOIN s360.dim_homeroom_class_student hcs
              ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+             AND hcs.so_school_id = rp.so_school_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
           AND {rbac_where}
         ORDER BY sub.name;
@@ -785,7 +798,7 @@ def get_ews_filters(
     grades_sql = text(f"""
         SELECT DISTINCT hcs.grade_id, hcs.grade_name
         FROM s360.fact_student_subject_risk_predictions rp
-        JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+        JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id AND hcs.so_school_id = rp.so_school_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
           AND {rbac_where}
         ORDER BY hcs.grade_id;
@@ -795,7 +808,7 @@ def get_ews_filters(
     classes_sql = text(f"""
         SELECT DISTINCT hcs.class_name
         FROM s360.fact_student_subject_risk_predictions rp
-        JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+        JOIN s360.dim_homeroom_class_student hcs ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id AND hcs.so_school_id = rp.so_school_id
         WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk
           AND {rbac_where}
         ORDER BY hcs.class_name;

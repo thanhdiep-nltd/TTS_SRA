@@ -250,8 +250,8 @@ def run_inference(
         - shap_drivers (JSON string, optional)
     """
     # Xác định feature columns — CHỈ loại metadata; KHÔNG loại subject_id (nó là feature của model)
-    # join_date là metadata (chỉ để persist/hiển thị, KHÔNG đưa vào model)
-    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
+    # join_date & so_school_id là metadata (chỉ để persist/hiển thị/tenant isolation, KHÔNG đưa vào model)
+    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date", "so_school_id"]
     feature_cols = [c for c in X.columns if c not in meta_cols]
 
     # Step 1: Predict probabilities
@@ -275,7 +275,7 @@ def run_inference(
     # Gộp kết quả: metadata + toàn bộ feature cols (đủ bind params cho UPSERT) + risk outputs
     result_cols = ["student_code", "evaluated_at_week"] + (
         ["join_date"] if "join_date" in X.columns else []
-    ) + feature_cols
+    ) + (["so_school_id"] if "so_school_id" in X.columns else []) + feature_cols
     result = X[result_cols].copy()
     result["risk_score"] = risk_scores
     result["risk_level"] = risk_levels

@@ -374,6 +374,7 @@ behavior_features AS MATERIALIZED (
 )
 SELECT
     tf.student_code,
+    sg.so_school_id,
     tf.subject_id,
     COALESCE(si.subject_category, 'MATH_SCIENCE') AS subject_category,
     COALESCE(sg.grade_level, 7) AS grade_level,
@@ -480,6 +481,7 @@ def extract_live_features(
     _NON_NUMERIC_COLS = {
         "student_code", "subject_id", "subject_category",
         "grade_level", "semester_index", "evaluated_at_week", "join_date",
+        "so_school_id",
     }
     for _c in df.columns:
         if _c not in _NON_NUMERIC_COLS:
@@ -548,9 +550,11 @@ def extract_live_features(
     # Reorder columns chuẩn: student_code, evaluated_at_week, semester_index, join_date + 24 features
     # + weighted_late_avg_imputed (cờ đánh dấu giá trị ĐTB Nửa Sau Kỳ bị impute — chỉ để persist/UI,
     # KHÔNG phải feature của model).
-    final_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS + ["weighted_late_avg_imputed"]
+    final_cols = ["student_code", "so_school_id", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS + ["weighted_late_avg_imputed"]
     df = df[final_cols].copy()
     df["weighted_late_avg_imputed"] = df["weighted_late_avg_imputed"].astype(bool)
+    # so_school_id giữ nguyên kiểu int (không phải feature của model, chỉ để persist/tenant isolation)
+    df["so_school_id"] = df["so_school_id"].astype(int)
 
     logger.info(f"Feature extraction complete: {df.shape[0]:,} rows, {len(EWS_FEATURE_COLS)} features")
     return df

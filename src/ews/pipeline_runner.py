@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 UPSERT_SQL = """
 INSERT INTO s360.fact_student_subject_risk_predictions (
-    student_code, subject_id, school_year_id, semester_index,
+    student_code, so_school_id, subject_id, school_year_id, semester_index,
     evaluated_at_week, model_version, join_date, evaluated_at_date, cutoff_date,
     weighted_early_avg, weighted_late_avg, weighted_late_avg_imputed, score_slope,
     score_volatility, max_drop, last_score,
@@ -48,7 +48,7 @@ INSERT INTO s360.fact_student_subject_risk_predictions (
     risk_score, risk_level, risk_probability
 )
 VALUES (
-    :student_code, :subject_id, :school_year_id, :semester_index,
+    :student_code, :so_school_id, :subject_id, :school_year_id, :semester_index,
     :evaluated_at_week, :model_version, :join_date, CURRENT_DATE, :cutoff_date,
     :weighted_early_avg, :weighted_late_avg, :weighted_late_avg_imputed, :score_slope,
     :score_volatility, :max_drop, :last_score,
@@ -62,8 +62,9 @@ VALUES (
     :weight_score, :weight_lms, :weight_attendance, :weight_behavior,
     :risk_score, :risk_level, :risk_probability
 )
-ON CONFLICT (student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
+ON CONFLICT (so_school_id, student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
 DO UPDATE SET
+    so_school_id = EXCLUDED.so_school_id,
     join_date = EXCLUDED.join_date,
     evaluated_at_date = CURRENT_DATE,
     cutoff_date = EXCLUDED.cutoff_date,
@@ -105,7 +106,7 @@ DO UPDATE SET
 # Các cột bắt buộc phải có trong DataFrame trước khi persist (khớp với UPSERT_SQL).
 # Nguồn: feature_extractor sinh 24 features; inference_service giữ chúng trong result.
 UPSERT_REQUIRED_COLS = [
-    "student_code", "subject_id", "school_year_id", "semester_index",
+    "student_code", "so_school_id", "subject_id", "school_year_id", "semester_index",
     "evaluated_at_week", "model_version", "join_date", "cutoff_date",
     "weighted_early_avg", "weighted_late_avg", "weighted_late_avg_imputed", "score_slope",
     "score_volatility", "max_drop", "last_score",

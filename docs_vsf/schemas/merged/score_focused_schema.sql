@@ -167,6 +167,32 @@ CREATE TABLE public.refresh_tokens (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 3. Phân công Giáo viên (RBAC scope cho chatbot & EWS — get_user_assignment_constraints)
+CREATE TABLE public.teacher_assignments (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id          BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    academic_year_id BIGINT NOT NULL DEFAULT 2025,
+    role_context     public.role_context_enum NOT NULL,
+    class_id         BIGINT,
+    grade_id         BIGINT,
+    subject_id       BIGINT,
+    is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT assignment_consistency CHECK (
+        (role_context = 'HOMEROOM_PRIMARY'   AND class_id IS NOT NULL AND subject_id IS NULL     AND grade_id IS NULL) OR
+        (role_context = 'GRADE_HEAD'         AND grade_id IS NOT NULL AND class_id IS NULL       AND subject_id IS NULL) OR
+        (role_context = 'SUBJECT_TEACHER'    AND class_id IS NOT NULL AND subject_id IS NOT NULL AND grade_id IS NULL) OR
+        (role_context = 'HOMEROOM_SECONDARY' AND class_id IS NOT NULL AND subject_id IS NULL     AND grade_id IS NULL) OR
+        (role_context = 'SUBJECT_HEAD'       AND subject_id IS NOT NULL AND class_id IS NULL     AND grade_id IS NULL)
+    ),
+    CONSTRAINT uq_teacher_assignment UNIQUE NULLS NOT DISTINCT (user_id, role_context, class_id, grade_id, subject_id, academic_year_id)
+);
+CREATE INDEX idx_ta_user    ON public.teacher_assignments(user_id);
+CREATE INDEX idx_ta_class   ON public.teacher_assignments(class_id);
+CREATE INDEX idx_ta_grade   ON public.teacher_assignments(grade_id);
+CREATE INDEX idx_ta_subject ON public.teacher_assignments(subject_id);
+CREATE INDEX idx_ta_year    ON public.teacher_assignments(academic_year_id);
+
 -- 3. Bài kiểm tra / Đề thi Upload & Metadata AI (ĐIỂM BÀI THI CHI TIẾT)
 CREATE TABLE public.exam_papers (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -295,6 +321,7 @@ CREATE TABLE public.ai_messages (
     feedback_text   TEXT,
     feedback_at     TIMESTAMPTZ,
     thought_trace   JSONB,
+    step_trace      JSONB,
     input_token_count INTEGER,
     output_token_count INTEGER,
     cost            NUMERIC(10, 6),
@@ -971,6 +998,7 @@ CREATE INDEX IF NOT EXISTS idx_meta_school ON s360.metadata_index(so_school_id, 
 CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     id                      BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     student_code            VARCHAR(50) NOT NULL,
+    so_school_id            INTEGER NOT NULL,                     -- Trường sở hữu dự báo (Multi-Tenant Isolation)
     subject_id              INTEGER NOT NULL REFERENCES s360.dim_subject(id),
     school_year_id          INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
     semester_index          INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
@@ -986,6 +1014,7 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     -- === TEMPORAL SCORES (coefficient-weighted avg + OLS slope) — 9 Features ===
     weighted_early_avg      DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa đầu
     weighted_late_avg       DECIMAL(10,2),  -- Σ(score×coeff)/Σ(coeff) nửa sau
+    weighted_late_avg_imputed BOOLEAN DEFAULT FALSE,  -- Cờ: ĐTB nửa sau kỳ bị impute (chưa có điểm thật)
     score_slope             DECIMAL(10,4),  -- OLS slope (KHÔNG weight)
     score_volatility        DECIMAL(10,4),  -- raw std dev (KHÔNG weight)
     max_drop                DECIMAL(10,2),  -- raw max(LAG-score) (KHÔNG weight)
@@ -1028,8 +1057,11 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
     created_at              TIMESTAMPTZ DEFAULT NOW(),
 
-    CONSTRAINT uq_fssrp_checkpoint UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
+    CONSTRAINT uq_fssrp_checkpoint UNIQUE (so_school_id, student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
 );
+
+CREATE INDEX IF NOT EXISTS idx_fssrp_school
+    ON s360.fact_student_subject_risk_predictions(so_school_id);
 
 -- M2-PIVOT: migration cho DB đã tồn tại — thêm cột join_date (idempotent)
 ALTER TABLE s360.fact_student_subject_risk_predictions
@@ -1057,11 +1089,12 @@ UPDATE s360.fact_student_subject_risk_predictions
     WHERE model_version IS NULL;
 
 -- M2-ENSEMBLE: sửa UNIQUE constraint để cho phép 2 phiên bản song song (idempotent)
+-- M3-MULTI-TENANT: bao gồm so_school_id để phân tách dữ liệu giữa các trường
 ALTER TABLE s360.fact_student_subject_risk_predictions
     DROP CONSTRAINT IF EXISTS uq_fssrp_checkpoint;
 ALTER TABLE s360.fact_student_subject_risk_predictions
     ADD CONSTRAINT uq_fssrp_checkpoint
-        UNIQUE (student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version);
+        UNIQUE (so_school_id, student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version);
 
 CREATE INDEX IF NOT EXISTS idx_fssrp_v3_student_subject
     ON s360.fact_student_subject_risk_predictions(student_code, subject_id);
@@ -1076,6 +1109,7 @@ COMMENT ON TABLE s360.fact_student_subject_risk_predictions IS 'Bảng lưu kế
 CREATE TABLE IF NOT EXISTS s360.train_student_subject_risk_dataset (
     id                      BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     student_code            VARCHAR(50) NOT NULL,
+    so_school_id            INTEGER NOT NULL,                     -- Trường sở hữu dữ liệu train (Multi-Tenant Isolation)
     subject_id              INTEGER NOT NULL REFERENCES s360.dim_subject(id),
     school_year_id          INTEGER NOT NULL REFERENCES s360.dim_school_year(id),
     semester_index          INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
@@ -1120,6 +1154,9 @@ CREATE TABLE IF NOT EXISTS s360.train_student_subject_risk_dataset (
 
 CREATE INDEX IF NOT EXISTS idx_tssrd_student_subject
     ON s360.train_student_subject_risk_dataset(student_code, subject_id);
+
+CREATE INDEX IF NOT EXISTS idx_tssrd_school
+    ON s360.train_student_subject_risk_dataset(so_school_id);
 
 CREATE INDEX IF NOT EXISTS idx_tssrd_risk_label
     ON s360.train_student_subject_risk_dataset(actual_risk_level);
