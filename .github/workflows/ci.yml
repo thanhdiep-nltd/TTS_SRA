@@ -9,7 +9,7 @@ on:
 jobs:
   backend-ci:
     name: Backend CI (Linter & Tests)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -39,7 +39,7 @@ jobs:
 
   frontend-ci:
     name: Frontend CI (Linter & Build)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     defaults:
       run:
