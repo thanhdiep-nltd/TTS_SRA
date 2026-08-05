@@ -33,15 +33,22 @@ SCORE_MID = dict(weighted_early_avg=6.0, weighted_late_avg=5.5, score_slope=-0.1
 
 LMS_GOOD = dict(lms_avg_score=9.0, lms_recent_drop=0.0, lms_submission_rate=1.0,
                 lms_recent_submission_rate=1.0, lms_gradebook_gap=0.0)
+LMS_MID = dict(lms_avg_score=6.0, lms_recent_drop=0.5, lms_submission_rate=0.7,
+               lms_recent_submission_rate=0.6, lms_gradebook_gap=0.5)
 LMS_BAD = dict(lms_avg_score=4.0, lms_recent_drop=2.0, lms_submission_rate=0.3,
                lms_recent_submission_rate=0.2, lms_gradebook_gap=1.5)
 
 ATT_GOOD = dict(daily_absence_rate=0.0, unexcused_absent_rate=0.0,
                 excused_absent_days=0, total_late_count=0)
+ATT_MILD = dict(daily_absence_rate=0.1, unexcused_absent_rate=0.05,
+                excused_absent_days=2, total_late_count=1)
+ATT_MID = dict(daily_absence_rate=0.25, unexcused_absent_rate=0.15,
+               excused_absent_days=4, total_late_count=2)
 ATT_BAD = dict(daily_absence_rate=0.8, unexcused_absent_rate=0.7,
                excused_absent_days=10, total_late_count=5)
 
 BEH_GOOD = dict(total_demerit_points=0, repeat_offense_count=0, severe_sanction_count=0)
+BEH_MID = dict(total_demerit_points=5, repeat_offense_count=1, severe_sanction_count=0)
 BEH_BAD = dict(total_demerit_points=15, repeat_offense_count=5, severe_sanction_count=2)
 
 # Context (categorical) — dùng chung
@@ -61,18 +68,44 @@ CASES = [
                                             **{k: np.nan for k in LMS_GOOD},
                                             **{k: np.nan for k in ATT_GOOD},
                                             **{k: np.nan for k in BEH_GOOD}}, "MODERATE"),
+    # ===== CÁC TRƯỜNG HỢP BỔ SUNG (mở rộng phủ tổ hợp yếu tố) =====
+    ("GS-09", "Học kém + bỏ bài LMS", {**CTX, **SCORE_BAD, **LMS_BAD, **ATT_GOOD, **BEH_GOOD}, "HIGH"),
+    ("GS-10", "Học trung bình + nghỉ nhiều", {**CTX, **SCORE_MID, **LMS_GOOD, **ATT_BAD, **BEH_GOOD}, "HIGH"),
+    ("GS-11", "Học trung bình + hành vi xấu", {**CTX, **SCORE_MID, **LMS_GOOD, **ATT_GOOD, **BEH_BAD}, "HIGH"),
+    ("GS-12", "Học kém + hành vi xấu", {**CTX, **SCORE_BAD, **LMS_GOOD, **ATT_GOOD, **BEH_BAD}, "CRITICAL"),
+    ("GS-13", "Học giỏi + bỏ bài LMS", {**CTX, **SCORE_GOOD, **LMS_BAD, **ATT_GOOD, **BEH_GOOD}, "MODERATE"),
+    ("GS-14", "Học kém + nghỉ nhiều", {**CTX, **SCORE_BAD, **LMS_GOOD, **ATT_BAD, **BEH_GOOD}, "CRITICAL"),
+    ("GS-15", "Học trung bình + mọi thứ trung bình", {**CTX, **SCORE_MID, **LMS_MID, **ATT_MID, **BEH_MID}, "MODERATE"),
+    ("GS-16", "Học giỏi + nghỉ nhẹ", {**CTX, **SCORE_GOOD, **LMS_GOOD, **ATT_MILD, **BEH_GOOD}, "LOW"),
 ]
 
 
-def run_golden_set() -> dict:
-    """Chạy golden set, trả về dict kết quả (cases + accuracy) cho API/CLI."""
+def run_golden_set(school_id: int | None = None) -> dict:
+    """Chạy golden set, trả về dict kết quả (cases + accuracy) cho API/CLI.
+
+    Args:
+        school_id: Nếu cho, dùng config hiệu lực đã merge (baseline YAML + override
+            DB của trường) để test các thông số BGH tinh chỉnh. Nếu None, dùng
+            baseline YAML thuần (hành vi mặc định trước đây).
+    """
     rows = []
     for cid, desc, feats, _exp in CASES:
         rows.append({"student_code": cid, "evaluated_at_week": 8, **feats})
     X = pd.DataFrame(rows)
 
     models = load_ensemble()
-    result = run_ensemble_inference(models, X, return_shap=False)
+
+    # Config hiệu lực: baseline YAML hoặc đã merge theo override của trường.
+    # Import lazy để script/CLI không cần DB khi school_id=None (offline).
+    cfg = None
+    if school_id is not None:
+        from src.db.session import SessionLocal
+        from src.ews.ews_config_service import get_effective_config
+
+        with SessionLocal() as db:
+            cfg = get_effective_config(db, school_id)
+
+    result = run_ensemble_inference(models, X, return_shap=False, cfg=cfg)
 
     cases = []
     n_pass = 0

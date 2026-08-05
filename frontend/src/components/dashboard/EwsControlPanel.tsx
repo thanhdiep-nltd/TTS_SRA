@@ -378,6 +378,41 @@ export default function EwsControlPanel() {
     </label>
   );
 
+  // Thanh kéo 1 nút cho tham số đơn (weight_floor, worst_factor_beta) — giá trị nằm trong khoảng gợi ý.
+  const sliderInput = (
+    key: keyof EwsWeightConfig,
+    label: string,
+    opts: { min: number; max: number; step?: number; hint?: string; info?: string; defaultValue?: number },
+  ) => {
+    const val = weights[key] != null ? Number(weights[key]) : (opts.defaultValue ?? opts.min);
+    return (
+      <label className="block">
+        <span className="flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+          {label}
+          {opts.info && <InfoTip text={opts.info} />}
+        </span>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            type="range"
+            min={opts.min}
+            max={opts.max}
+            step={opts.step ?? 0.01}
+            value={val}
+            onChange={(e) => setWeight(key, e.target.value)}
+            className="w-full accent-brand-600"
+          />
+          <span className="w-12 text-right text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {val.toFixed(2)}
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-400">
+          {opts.hint}
+          {opts.defaultValue != null && ` · mặc định ${opts.defaultValue}`}
+        </span>
+      </label>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* ===== DỰ ĐOÁN THEO TUẦN ===== */}
@@ -581,16 +616,18 @@ export default function EwsControlPanel() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
-              {numInput("weight_floor", "weight_floor", "0.01", {
+              {sliderInput("weight_floor", "weight_floor", {
                 min: 0,
-                max: 0.5,
+                max: 0.2,
+                step: 0.01,
                 hint: "gợi ý 0–0.2",
                 defaultValue: config?.baseline.weight_floor,
                 info: "Sàn trọng số tối thiểu mỗi yếu tố, tránh bị triệt tiêu hoàn toàn.",
               })}
-              {numInput("worst_factor_beta", "worst_factor_beta", "0.01", {
+              {sliderInput("worst_factor_beta", "worst_factor_beta", {
                 min: 0,
                 max: 1,
+                step: 0.01,
                 hint: "gợi ý 0–1",
                 defaultValue: config?.baseline.worst_factor_beta,
                 info: "Pha trộn Worst-Factor Dominance vào final score. 0 = tắt.",
@@ -618,16 +655,23 @@ export default function EwsControlPanel() {
               format={(v) => v.toFixed(0)}
             />
             <div className="grid grid-cols-2 gap-2 text-[11px]">
-              {LEVEL_LABELS.map((lv) => (
-                <div key={lv} className="flex items-center justify-between rounded bg-slate-50 dark:bg-slate-800/60 px-2 py-1">
-                  <span className="text-slate-500 dark:text-slate-400">{lv}</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">
-                    {lv === "CRITICAL" ? "≥ " : ""}
-                    {dispT(lv).toFixed(0)}
-                    <span className="ml-1 font-normal text-slate-400">(mặc định {baseT(lv).toFixed(0)})</span>
-                  </span>
-                </div>
-              ))}
+              {LEVEL_LABELS.map((lv, idx) => {
+                // Khoảng của từng mức: LOW [0, low), MODERATE [low, moderate),
+                // HIGH [moderate, high), CRITICAL [high, 100].
+                const lo = idx === 0 ? 0 : thrBoundaries[idx - 1];
+                const hi = idx === LEVEL_LABELS.length - 1 ? 100 : thrBoundaries[idx];
+                const loBase = idx === 0 ? 0 : baseT(LEVEL_LABELS[idx - 1]);
+                const hiBase = idx === LEVEL_LABELS.length - 1 ? 100 : baseT(LEVEL_LABELS[idx]);
+                return (
+                  <div key={lv} className="flex items-center justify-between rounded bg-slate-50 dark:bg-slate-800/60 px-2 py-1">
+                    <span className="text-slate-500 dark:text-slate-400">{lv}</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                      {lo.toFixed(0)} → {hi.toFixed(0)}
+                      <span className="ml-1 font-normal text-slate-400">(mặc định {loBase.toFixed(0)} → {hiBase.toFixed(0)})</span>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             <div className={`text-xs font-medium ${thrValid ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
               {thrValid ? "Ngưỡng tăng dần ✓" : "Ngưỡng phải tăng dần (LOW < MODERATE < HIGH < CRITICAL)"}
@@ -668,9 +712,9 @@ export default function EwsControlPanel() {
           >
             <RotateCcw className="w-4 h-4" /> Khôi phục mặc định
           </button>
-          {config?.override && (
+          {isDirty && (
             <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" /> Đang override
+              <AlertTriangle className="w-3 h-3" /> Có thay đổi chưa lưu
             </span>
           )}
         </div>

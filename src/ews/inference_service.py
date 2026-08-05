@@ -397,7 +397,7 @@ def run_ensemble_inference(
             and not X.iloc[i][factor_feat_cols[f]].isna().all()
         ]
         row = {f: float(sub_scores[f][i]) for f in FACTOR_KEYS}
-        comb = combine_risk_scores(row, available=available)
+        comb = combine_risk_scores(row, available=available, cfg=cfg)
         final_scores.append(comb["final_risk_score"])
         final_levels.append(comb["final_risk_level"])
         for f in FACTOR_KEYS:

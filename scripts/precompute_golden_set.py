@@ -12,9 +12,14 @@ Dùng khi:
 
 Chạy:
     .venv\\Scripts\\python.exe scripts\\precompute_golden_set.py
+    .venv\\Scripts\\python.exe scripts\\precompute_golden_set.py --school-id 1
+
+  --school-id: nếu cho, dùng config hiệu lực đã merge (baseline YAML + override DB
+    của trường) để test các thông số BGH tinh chỉnh. Nếu bỏ qua, dùng baseline YAML.
 """
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import sys
@@ -52,13 +57,29 @@ def _find_bad_float(obj, path: str = "") -> list[str]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Sinh file cache Golden Set cho EWS.")
+    parser.add_argument(
+        "--school-id",
+        type=int,
+        default=None,
+        help="ID trường cần test (dùng config hiệu lực đã merge override). "
+             "Bỏ qua = baseline YAML thuần.",
+    )
+    args = parser.parse_args()
+
+    if args.school_id is not None:
+        print(f">>> Dùng config HIỆU LỰC của trường school_id={args.school_id} (baseline + override).")
+    else:
+        print(">>> Không truyền --school-id -> dùng baseline YAML thuần.")
+
     print(">>> Calling run_golden_set() ...")
-    res = run_golden_set()
+    res = run_golden_set(school_id=args.school_id)
     print(f">>> run_golden_set() OK. total={res.get('total')} passed={res.get('passed')}")
 
     # Gắn metadata (non-breaking) để dashboard hiển thị phiên bản model & thời điểm sinh cache.
     res["model_version"] = "v2_ensemble"
     res["generated_at"] = datetime.now(timezone.utc).isoformat()
+    res["school_id"] = args.school_id
 
     # 1) Validate JSON serializable (giống FastAPI: allow_nan=False).
     try:

@@ -218,6 +218,9 @@ class EwsGoldenSetResult(BaseModel):
     # và thời điểm sinh file cache tĩnh.
     model_version: Optional[str] = None
     generated_at: Optional[datetime] = None
+    # school_id: trường được test (None = baseline YAML thuần). Chỉ dùng cho
+    # file cache sinh ad-hoc khi BGH test thông số override; không ảnh hưởng API.
+    school_id: Optional[int] = None
 
 
 class EwsRiskBreakdownItem(BaseModel):
