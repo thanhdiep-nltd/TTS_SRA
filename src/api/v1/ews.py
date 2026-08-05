@@ -2,9 +2,10 @@
 src/api/v1/ews.py — FastAPI Router cho Early Warning System (EWS) Dashboard APIs
 """
 
+import json
 import logging
 from datetime import date, datetime, timedelta
-from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -827,11 +828,29 @@ def get_ews_filters(
     }
 
 
-@lru_cache(maxsize=1)
-def _cached_golden_set() -> dict:
-    """Chạy golden set 1 lần rồi cache (load model + inference ~vài giây)."""
-    from src.ews.golden_set import run_golden_set
-    return run_golden_set()
+# Đường dẫn file cache tĩnh — đặt cạnh golden_set.py (src/ews/golden_set_data.json).
+# Dùng đường dẫn TUYỆT ĐỐI theo module để không phụ thuộc CWD của process.
+# File này nằm tại src/api/v1/ews.py -> lên 3 cấp để tới src/, rồi vào ews/.
+_GOLDEN_SET_CACHE_PATH = Path(__file__).resolve().parent.parent.parent / "ews" / "golden_set_data.json"
+
+
+def _load_golden_set_json() -> dict:
+    """Đọc kết quả golden set từ file cache tĩnh (không chạy inference ML).
+
+    File được sinh bởi scripts/precompute_golden_set.py sau mỗi lần retrain model.
+    Nếu file thiếu -> HTTPException 503 kèm hướng dẫn tái sinh (thay vì 500 mơ hồ).
+    """
+    if not _GOLDEN_SET_CACHE_PATH.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Golden set cache file not found. "
+                "Chạy `scripts/precompute_golden_set.py` để tái sinh "
+                "src/ews/golden_set_data.json rồi commit vào git."
+            ),
+        )
+    with open(_GOLDEN_SET_CACHE_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 @router.get("/golden-set", response_model=EwsGoldenSetResult)
@@ -843,8 +862,11 @@ def get_ews_golden_set(
     Endpoint 5: Kết quả Golden Set — kiểm tra độ chính xác mô hình EWS v2_ensemble
     trên 8 tình huống đa dạng (học giỏi + nghỉ nhiều, học kém, đa yếu tố xấu, ...).
     Dùng để demo độ hiệu quả của mô hình.
+
+    Dữ liệu đọc từ file cache tĩnh (src/ews/golden_set_data.json) — không chạy
+    inference ML tại runtime nên phản hồi < 1ms và không phụ thuộc model/catboost.
     """
-    return _cached_golden_set()
+    return _load_golden_set_json()
 
 
 

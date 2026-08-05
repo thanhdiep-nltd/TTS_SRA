@@ -3,7 +3,7 @@
 src/schemas/ews.py — Pydantic Schemas cho Early Warning System (EWS) Dashboard APIs
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -210,3 +210,7 @@ class EwsGoldenSetResult(BaseModel):
     passed: int
     accuracy: float
     cases: List[EwsGoldenSetCase] = Field(default_factory=list)
+    # Metadata (Optional, non-breaking) — để dashboard hiển thị phiên bản model
+    # và thời điểm sinh file cache tĩnh.
+    model_version: Optional[str] = None
+    generated_at: Optional[datetime] = None

@@ -63,3 +63,25 @@ Tạo một **golden set** (tập case test có ground truth) để:
 - behavior_risk=99.3 (rất xấu), weight_behavior=0.495, nhưng final=52.3 (MODERATE) — vì α_behavior=1.8 < α_attendance=2.2 nên weight_behavior không đủ đẩy qua HIGH=88.
 - **Nếu chính sách "hành vi xấu đơn lẻ → HIGH"**: tăng α_behavior (1.8 → 2.2).
 - **Nếu chính sách "chỉ đa yếu tố mới HIGH"**: MODERATE là đúng, cập nhật kỳ vọng GS-03 = MODERATE.
+
+## 7. Static JSON Cache (API không chạy inference ML tại runtime)
+
+Endpoint `GET /ews/golden-set` **không còn chạy inference ML** mỗi lần khởi động.
+Thay vào đó, nó đọc kết quả từ file cache tĩnh `src/ews/golden_set_data.json`
+(đã được sinh sẵn và commit vào git) → phản hồi < 1ms, không phụ thuộc model `.cbm`/catboost.
+
+### Quy trình tái sinh sau khi retrain model
+1. Retrain model mới (sinh các file `.cbm` trong `src/models/gbdt/saved/`).
+2. Chạy script sinh cache:
+   ```bash
+   .venv\Scripts\python.exe scripts\precompute_golden_set.py
+   ```
+   Script này: gọi `run_golden_set()` → validate JSON (`allow_nan=False`) → validate schema
+   `EwsGoldenSetResult` → ghi đè `src/ews/golden_set_data.json` (kèm `model_version`, `generated_at`).
+3. Commit file `src/ews/golden_set_data.json` mới vào git để runtime dùng.
+
+### Hành vi khi file cache thiếu
+- Endpoint trả `HTTP 503` kèm hướng dẫn chạy `scripts/precompute_golden_set.py`
+  (thay vì `500` mơ hồ do thiếu model/NaN).
+- `run_golden_set()` + CLI `scripts/ews_golden_set.py` vẫn là **nguồn sự thật** để
+  kiểm chứng model và tái sinh cache.

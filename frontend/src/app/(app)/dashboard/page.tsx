@@ -29,11 +29,11 @@ import type {
 type TabKey = "overview" | "drilldown" | "trend" | "warning" | "ews" | "validity" | "edm";
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
+  { key: "ews", label: "Cảnh báo EWS", icon: ShieldAlert },
   { key: "overview", label: "Tổng quan", icon: LayoutGrid },
   { key: "drilldown", label: "Phân tích chuyên môn", icon: BarChart3 },
   { key: "trend", label: "Xu hướng & Tiến bộ", icon: LineIcon },
   { key: "warning", label: "Cảnh báo sớm", icon: ShieldAlert },
-  { key: "ews", label: "Cảnh báo EWS", icon: ShieldAlert },
   { key: "validity", label: "Tin cậy điểm số", icon: ShieldCheck },
   { key: "edm", label: "Phân Tích Chuyên Sâu EDM", icon: Layers },
 ];
@@ -131,7 +131,7 @@ function InfoTooltip({ content }: { content: React.ReactNode }) {
 export default function DashboardV2Page() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const [tab, setTab] = useState<TabKey>("overview");
+  const [tab, setTab] = useState<TabKey>("ews");
 
   const [semesters, setSemesters] = useState<SemesterOption[]>([]);
   const [semesterId, setSemesterId] = useState<string>("");
@@ -366,7 +366,7 @@ export default function DashboardV2Page() {
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand-600 text-white">BETA</span>
           </div>
           <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Tổng quan → Phân tích → Xu hướng → Cảnh báo. {exec && `${exec.semester_name} · ${exec.academic_year}`}
+            Cảnh báo EWS → Tổng quan → Phân tích → Xu hướng. {exec && `${exec.semester_name} · ${exec.academic_year}`}
           </p>
         </div>
         <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl shadow-sm">
