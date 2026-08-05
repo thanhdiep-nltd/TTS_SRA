@@ -1145,3 +1145,50 @@ export interface EwsRawDetail {
   attendance: EwsRawAttendanceItem[];
   behavior: EwsRawBehaviorItem[];
 }
+
+export interface EwsRiskBreakdownItem {
+  id?: string | number | null;
+  name: string;
+  total_cnt: number;
+  low_cnt: number;
+  moderate_cnt: number;
+  high_cnt: number;
+  critical_cnt: number;
+  low_pct: number;
+  moderate_pct: number;
+  high_pct: number;
+  critical_pct: number;
+  ch_pct: number;
+}
+
+export interface EwsStudentRiskDetailItem {
+  student_code: string;
+  student_name: string;
+  week_label: string;
+  risk_level: EwsRiskLevel;
+  risk_score: number;
+}
+
+export interface EwsSubjectDrilldownResponse {
+  level: "group" | "subject" | "class" | "student";
+  breadcrumb: string[];
+  items: EwsRiskBreakdownItem[];
+  student_items: EwsStudentRiskDetailItem[];
+  summary?: EwsRiskBreakdownItem | null;
+}
+
+export interface EwsTopClassRiskItem {
+  rank: number;
+  class_name: string;
+  total_cnt: number;
+  low_cnt: number;
+  moderate_cnt: number;
+  high_cnt: number;
+  critical_cnt: number;
+  low_pct: number;
+  moderate_pct: number;
+  high_pct: number;
+  critical_pct: number;
+  ch_pct: number;
+}
+

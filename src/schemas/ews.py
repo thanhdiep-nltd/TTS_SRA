@@ -214,3 +214,54 @@ class EwsGoldenSetResult(BaseModel):
     # và thời điểm sinh file cache tĩnh.
     model_version: Optional[str] = None
     generated_at: Optional[datetime] = None
+
+
+class EwsRiskBreakdownItem(BaseModel):
+    """Mô tả phân bố rủi ro của 1 đơn vị (nhóm môn, môn học, hoặc lớp học)."""
+    id: Optional[Any] = None
+    name: str
+    total_cnt: int = 0
+    low_cnt: int = 0
+    moderate_cnt: int = 0
+    high_cnt: int = 0
+    critical_cnt: int = 0
+    low_pct: float = 0.0
+    moderate_pct: float = 0.0
+    high_pct: float = 0.0
+    critical_pct: float = 0.0
+    ch_pct: float = 0.0
+
+
+class EwsStudentRiskDetailItem(BaseModel):
+    """Bản ghi rủi ro từng học sinh khi drill-down tới level student."""
+    student_code: str
+    student_name: str
+    week_label: str
+    risk_level: str
+    risk_score: float
+
+
+class EwsSubjectDrilldownResponse(BaseModel):
+    """Kết quả trả về cho API drill-down rủi ro theo môn học."""
+    level: str  # 'group' | 'subject' | 'class' | 'student'
+    breadcrumb: List[str] = Field(default_factory=list)
+    items: List[EwsRiskBreakdownItem] = Field(default_factory=list)
+    student_items: List[EwsStudentRiskDetailItem] = Field(default_factory=list)
+    summary: Optional[EwsRiskBreakdownItem] = None
+
+
+class EwsTopClassRiskItem(BaseModel):
+    """Bản ghi thống kê trong Top 5 lớp rủi ro cao nhất."""
+    rank: int
+    class_name: str
+    total_cnt: int = 0
+    low_cnt: int = 0
+    moderate_cnt: int = 0
+    high_cnt: int = 0
+    critical_cnt: int = 0
+    low_pct: float = 0.0
+    moderate_pct: float = 0.0
+    high_pct: float = 0.0
+    critical_pct: float = 0.0
+    ch_pct: float = 0.0
+

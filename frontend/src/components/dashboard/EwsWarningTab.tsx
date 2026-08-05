@@ -32,6 +32,8 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { LoadingState } from "@/components/Loading";
 import EwsDetailDrawer from "@/components/dashboard/EwsDetailDrawer";
+import EwsSubjectRiskDrilldownCard from "@/components/dashboard/EwsSubjectRiskDrilldownCard";
+import EwsTopRiskClassesCard from "@/components/dashboard/EwsTopRiskClassesCard";
 import {
   EWS_RISK_COLORS,
   EWS_RISK_LABELS,
@@ -45,7 +47,7 @@ import {
   type EwsRiskLevel,
 } from "@/lib/types";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
 const FACTOR_VI: Record<string, { label: string; icon: string; color: string }> = {
   // Điểm số
@@ -503,6 +505,22 @@ export default function EwsWarningTab() {
         </div>
       </div>
 
+      {/* NEW EWS CHARTS: SUBJECT DRILLDOWN & TOP RISK CLASSES */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <EwsSubjectRiskDrilldownCard
+          schoolYearId={schoolYearId}
+          semesterIndex={semesterIndex}
+          week={week}
+          modelVersion={modelVersion}
+        />
+        <EwsTopRiskClassesCard
+          schoolYearId={schoolYearId}
+          semesterIndex={semesterIndex}
+          week={week}
+          modelVersion={modelVersion}
+        />
+      </div>
+
       {/* FILTER BAR SECTION */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -809,13 +827,12 @@ export default function EwsWarningTab() {
                       <td className="py-3 px-4 text-right">
                         {item.score_slope !== null ? (
                           <span
-                            className={`font-semibold ${
-                              item.score_slope < 0
+                            className={`font-semibold ${item.score_slope < 0
                                 ? "text-rose-500"
                                 : item.score_slope > 0
-                                ? "text-emerald-500"
-                                : "text-slate-400"
-                            }`}
+                                  ? "text-emerald-500"
+                                  : "text-slate-400"
+                              }`}
                           >
                             {item.score_slope > 0 ? `+${item.score_slope.toFixed(2)}` : item.score_slope.toFixed(2)}
                           </span>
@@ -892,13 +909,12 @@ export default function EwsWarningTab() {
                 {goldenSet.passed}/{goldenSet.total} case đúng
               </span>
               <span
-                className={`px-3 py-1 rounded-lg font-bold ${
-                  goldenSet.accuracy >= 0.8
+                className={`px-3 py-1 rounded-lg font-bold ${goldenSet.accuracy >= 0.8
                     ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     : goldenSet.accuracy >= 0.6
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                    : "bg-red-500/10 text-red-600 dark:text-red-400"
-                }`}
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      : "bg-red-500/10 text-red-600 dark:text-red-400"
+                  }`}
               >
                 Độ chính xác: {(goldenSet.accuracy * 100).toFixed(1)}%
               </span>
@@ -1005,11 +1021,10 @@ export default function EwsWarningTab() {
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{selectedGoldenCase.id}</span>
                   <span
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
-                      selectedGoldenCase.passed
+                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${selectedGoldenCase.passed
                         ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                         : "bg-red-500/10 text-red-600 dark:text-red-400"
-                    }`}
+                      }`}
                   >
                     {selectedGoldenCase.passed ? "✓ PASS" : "✗ FAIL"}
                   </span>
@@ -1075,15 +1090,14 @@ export default function EwsWarningTab() {
                         <p className="text-slate-400 font-medium text-[11px]">{f.label}</p>
                         <div className="flex items-baseline gap-1 mt-0.5">
                           <span
-                            className={`text-base font-bold ${
-                              v === null
+                            className={`text-base font-bold ${v === null
                                 ? "text-slate-400"
                                 : isHigh
-                                ? "text-red-500"
-                                : isMod
-                                ? "text-amber-500"
-                                : "text-emerald-600 dark:text-emerald-400"
-                            }`}
+                                  ? "text-red-500"
+                                  : isMod
+                                    ? "text-amber-500"
+                                    : "text-emerald-600 dark:text-emerald-400"
+                              }`}
                           >
                             {v !== null ? v.toFixed(1) : "—"}
                           </span>

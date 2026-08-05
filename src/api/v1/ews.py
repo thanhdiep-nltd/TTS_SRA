@@ -6,6 +6,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -26,7 +27,11 @@ from src.schemas.ews import (
     EwsRawDetail,
     EwsRawLmsItem,
     EwsRawScore,
+    EwsRiskBreakdownItem,
     EwsRiskFactorOption,
+    EwsStudentRiskDetailItem,
+    EwsSubjectDrilldownResponse,
+    EwsTopClassRiskItem,
     EwsWeekOption,
 )
 
@@ -867,6 +872,327 @@ def get_ews_golden_set(
     inference ML tại runtime nên phản hồi < 1ms và không phụ thuộc model/catboost.
     """
     return _load_golden_set_json()
+
+
+def _calc_breakdown_item(
+    name: str, total_cnt: int, low_cnt: int, mod_cnt: int, high_cnt: int, crit_cnt: int, item_id: Any = None
+) -> EwsRiskBreakdownItem:
+    t = total_cnt or 0
+    if t == 0:
+        return EwsRiskBreakdownItem(
+            id=item_id, name=name, total_cnt=0, low_cnt=0, moderate_cnt=0, high_cnt=0, critical_cnt=0,
+            low_pct=0.0, moderate_pct=0.0, high_pct=0.0, critical_pct=0.0, ch_pct=0.0
+        )
+    l_pct = round((low_cnt / t) * 100, 1)
+    m_pct = round((mod_cnt / t) * 100, 1)
+    h_pct = round((high_cnt / t) * 100, 1)
+    c_pct = round((crit_cnt / t) * 100, 1)
+    ch_pct = round(((high_cnt + crit_cnt) / t) * 100, 1)
+    return EwsRiskBreakdownItem(
+        id=item_id, name=name, total_cnt=t, low_cnt=low_cnt, moderate_cnt=mod_cnt, high_cnt=high_cnt, critical_cnt=crit_cnt,
+        low_pct=l_pct, moderate_pct=m_pct, high_pct=h_pct, critical_pct=c_pct, ch_pct=ch_pct
+    )
+
+
+@router.get("/subject-drilldown", response_model=EwsSubjectDrilldownResponse)
+def get_ews_subject_drilldown(
+    school_year_id: int = Query(2025),
+    semester_index: int = Query(1),
+    evaluated_at_week: int = Query(8),
+    model_version: str = Query("v1_single"),
+    level: str = Query("group", description="group | subject | class | student"),
+    subject_category: str | None = Query(None),
+    subject_id: int | None = Query(None),
+    class_name: str | None = Query(None),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint 6: Drill-down rủi ro theo môn học 4 cấp (Power BI style):
+    Nhóm môn -> Môn -> Lớp -> Học sinh.
+    """
+    rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
+    base_params = {
+        "sy": school_year_id,
+        "sem": semester_index,
+        "wk": evaluated_at_week,
+        "mv": model_version,
+        **rbac_params,
+    }
+
+    breadcrumb = ["Subject Group"]
+
+    if level == "group":
+        sql = text(f"""
+            SELECT
+                COALESCE(sub.subject_category, 'Khác') AS grp_name,
+                COUNT(*) AS total_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'LOW') AS low_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'MODERATE') AS moderate_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
+            FROM s360.fact_student_subject_risk_predictions rp
+            JOIN s360.dim_homeroom_class_student hcs
+                 ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+                 AND hcs.so_school_id = rp.so_school_id
+            LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+            WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+              AND {rbac_where}
+            GROUP BY COALESCE(sub.subject_category, 'Khác')
+            ORDER BY COUNT(*) FILTER (WHERE rp.risk_level IN ('HIGH', 'CRITICAL')) DESC, COUNT(*) DESC;
+        """)
+        rows = db.execute(sql, base_params).fetchall()
+        items = [
+            _calc_breakdown_item(
+                name=r.grp_name,
+                total_cnt=r.total_cnt,
+                low_cnt=r.low_cnt,
+                mod_cnt=r.moderate_cnt,
+                high_cnt=r.high_cnt,
+                crit_cnt=r.critical_cnt,
+                item_id=r.grp_name,
+            )
+            for r in rows
+        ]
+        return EwsSubjectDrilldownResponse(level="group", breadcrumb=breadcrumb, items=items)
+
+    elif level == "subject":
+        sc_param = subject_category if subject_category and subject_category != "ALL" else None
+        params = {**base_params}
+        where_sc = ""
+        if sc_param:
+            where_sc = "AND COALESCE(sub.subject_category, 'Khác') = :sc"
+            params["sc"] = sc_param
+            breadcrumb.append(sc_param)
+
+        sql = text(f"""
+            SELECT
+                sub.id AS sid,
+                sub.name AS sname,
+                COUNT(*) AS total_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'LOW') AS low_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'MODERATE') AS moderate_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
+            FROM s360.fact_student_subject_risk_predictions rp
+            JOIN s360.dim_homeroom_class_student hcs
+                 ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+                 AND hcs.so_school_id = rp.so_school_id
+            JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+            WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+              AND {rbac_where} {where_sc}
+            GROUP BY sub.id, sub.name
+            ORDER BY COUNT(*) FILTER (WHERE rp.risk_level IN ('HIGH', 'CRITICAL')) DESC, COUNT(*) DESC;
+        """)
+        rows = db.execute(sql, params).fetchall()
+        items = [
+            _calc_breakdown_item(
+                name=r.sname,
+                total_cnt=r.total_cnt,
+                low_cnt=r.low_cnt,
+                mod_cnt=r.moderate_cnt,
+                high_cnt=r.high_cnt,
+                crit_cnt=r.critical_cnt,
+                item_id=r.sid,
+            )
+            for r in rows
+        ]
+        return EwsSubjectDrilldownResponse(level="subject", breadcrumb=breadcrumb, items=items)
+
+    elif level == "class":
+        if subject_category:
+            breadcrumb.append(subject_category)
+        params = {**base_params}
+        where_sub = ""
+        if subject_id is not None:
+            where_sub = "AND rp.subject_id = :sid"
+            params["sid"] = subject_id
+            sname_row = db.execute(text("SELECT name FROM s360.dim_subject WHERE id = :sid"), {"sid": subject_id}).fetchone()
+            if sname_row:
+                breadcrumb.append(sname_row.name)
+
+        sql = text(f"""
+            SELECT
+                hcs.class_name AS cname,
+                COUNT(*) AS total_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'LOW') AS low_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'MODERATE') AS moderate_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
+            FROM s360.fact_student_subject_risk_predictions rp
+            JOIN s360.dim_homeroom_class_student hcs
+                 ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+                 AND hcs.so_school_id = rp.so_school_id
+            JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+            WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+              AND {rbac_where} {where_sub}
+            GROUP BY hcs.class_name
+            ORDER BY COUNT(*) FILTER (WHERE rp.risk_level IN ('HIGH', 'CRITICAL')) DESC, COUNT(*) DESC;
+        """)
+        rows = db.execute(sql, params).fetchall()
+        items = [
+            _calc_breakdown_item(
+                name=r.cname,
+                total_cnt=r.total_cnt,
+                low_cnt=r.low_cnt,
+                mod_cnt=r.moderate_cnt,
+                high_cnt=r.high_cnt,
+                crit_cnt=r.critical_cnt,
+                item_id=r.cname,
+            )
+            for r in rows
+        ]
+        return EwsSubjectDrilldownResponse(level="class", breadcrumb=breadcrumb, items=items)
+
+    else:  # level == "student"
+        if subject_category:
+            breadcrumb.append(subject_category)
+        params = {**base_params}
+        where_conds = []
+        if subject_id is not None:
+            where_conds.append("rp.subject_id = :sid")
+            params["sid"] = subject_id
+            sname_row = db.execute(text("SELECT name FROM s360.dim_subject WHERE id = :sid"), {"sid": subject_id}).fetchone()
+            if sname_row:
+                breadcrumb.append(sname_row.name)
+
+        if class_name:
+            where_conds.append("hcs.class_name = :cname")
+            params["cname"] = class_name
+            breadcrumb.append(class_name)
+
+        extra_where = ("AND " + " AND ".join(where_conds)) if where_conds else ""
+
+        sum_sql = text(f"""
+            SELECT
+                COUNT(*) AS total_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'LOW') AS low_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'MODERATE') AS moderate_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
+                COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
+            FROM s360.fact_student_subject_risk_predictions rp
+            JOIN s360.dim_homeroom_class_student hcs
+                 ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+                 AND hcs.so_school_id = rp.so_school_id
+            WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+              AND {rbac_where} {extra_where};
+        """)
+        sum_row = db.execute(sum_sql, params).fetchone()
+        summary = _calc_breakdown_item(
+            name=class_name or "Tổng quan",
+            total_cnt=sum_row.total_cnt if sum_row else 0,
+            low_cnt=sum_row.low_cnt if sum_row else 0,
+            mod_cnt=sum_row.moderate_cnt if sum_row else 0,
+            high_cnt=sum_row.high_cnt if sum_row else 0,
+            crit_cnt=sum_row.critical_cnt if sum_row else 0,
+        ) if sum_row else None
+
+        st_sql = text(f"""
+            SELECT
+                rp.student_code,
+                COALESCE(hcs.student_name, rp.student_code) AS student_name,
+                rp.evaluated_at_week,
+                rp.risk_level,
+                rp.risk_score
+            FROM s360.fact_student_subject_risk_predictions rp
+            JOIN s360.dim_homeroom_class_student hcs
+                 ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+                 AND hcs.so_school_id = rp.so_school_id
+            WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+              AND {rbac_where} {extra_where}
+            ORDER BY rp.risk_score DESC, hcs.student_name;
+        """)
+        st_rows = db.execute(st_sql, params).fetchall()
+        student_items = [
+            EwsStudentRiskDetailItem(
+                student_code=r.student_code,
+                student_name=r.student_name,
+                week_label=f"Tuần {r.evaluated_at_week}",
+                risk_level=r.risk_level,
+                risk_score=round(float(r.risk_score), 0),
+            )
+            for r in st_rows
+        ]
+        return EwsSubjectDrilldownResponse(
+            level="student",
+            breadcrumb=breadcrumb,
+            items=[],
+            student_items=student_items,
+            summary=summary,
+        )
+
+
+@router.get("/top-risk-classes", response_model=List[EwsTopClassRiskItem])
+def get_ews_top_risk_classes(
+    school_year_id: int = Query(2025),
+    semester_index: int = Query(1),
+    evaluated_at_week: int = Query(8),
+    model_version: str = Query("v1_single"),
+    limit: int = Query(5),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Endpoint 7: Top 5 lớp rủi ro cao nhất (xếp theo Critical -> High -> % (Critical + High)).
+    """
+    rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
+    base_params = {
+        "sy": school_year_id,
+        "sem": semester_index,
+        "wk": evaluated_at_week,
+        "mv": model_version,
+        "limit": limit,
+        **rbac_params,
+    }
+
+    sql = text(f"""
+        SELECT
+            hcs.class_name,
+            COUNT(*) AS total_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'LOW') AS low_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'MODERATE') AS moderate_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
+        FROM s360.fact_student_subject_risk_predictions rp
+        JOIN s360.dim_homeroom_class_student hcs
+             ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+             AND hcs.so_school_id = rp.so_school_id
+        WHERE rp.school_year_id = :sy AND rp.semester_index = :sem AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+          AND {rbac_where}
+          AND hcs.class_name IS NOT NULL
+        GROUP BY hcs.class_name
+        ORDER BY critical_cnt DESC, high_cnt DESC, (COUNT(*) FILTER (WHERE rp.risk_level IN ('HIGH', 'CRITICAL'))::numeric / NULLIF(COUNT(*), 0)) DESC
+        LIMIT :limit;
+    """)
+    rows = db.execute(sql, base_params).fetchall()
+    result = []
+    for idx, r in enumerate(rows):
+        item = _calc_breakdown_item(
+            name=r.class_name,
+            total_cnt=r.total_cnt,
+            low_cnt=r.low_cnt,
+            mod_cnt=r.moderate_cnt,
+            high_cnt=r.high_cnt,
+            crit_cnt=r.critical_cnt,
+        )
+        result.append(
+            EwsTopClassRiskItem(
+                rank=idx + 1,
+                class_name=r.class_name,
+                total_cnt=item.total_cnt,
+                low_cnt=item.low_cnt,
+                moderate_cnt=item.moderate_cnt,
+                high_cnt=item.high_cnt,
+                critical_cnt=item.critical_cnt,
+                low_pct=item.low_pct,
+                moderate_pct=item.moderate_pct,
+                high_pct=item.high_pct,
+                critical_pct=item.critical_pct,
+                ch_pct=item.ch_pct,
+            )
+        )
+    return result
+
 
 
 
