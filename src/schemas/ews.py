@@ -90,6 +90,10 @@ class EwsOverview(BaseModel):
     avg_risk_score: Optional[float] = None
     levels: List[EwsLevelCount] = Field(default_factory=list)
     top_risk_subjects: List[Dict[str, Any]] = Field(default_factory=list)
+    top_risk_factors: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Tần suất các yếu tố (cờ nguyên nhân) khiến học sinh rơi vào rủi ro — dùng cho chart tròn",
+    )
 
 
 class EwsWeekOption(BaseModel):

@@ -565,7 +565,7 @@ export interface ExamContentAnalysis {
 export interface ExamPaperDetail extends ExamPaper {
   content_difficulty: number | null;
   content_analyzed_at: string | null;
-  ai_analysis: { content_analysis?: ExamContentAnalysis; [k: string]: unknown };
+  ai_analysis: { content_analysis?: ExamContentAnalysis;[k: string]: unknown };
 }
 
 export interface SchoolValidityOverview {
@@ -1036,7 +1036,21 @@ export interface EwsOverview {
   at_risk_count: number;
   avg_risk_score: number | null;
   levels: EwsLevelCount[];
-  top_risk_subjects: Array<{ subject_name: string; cnt: number; avg_risk: number }>;
+  top_risk_subjects: Array<{
+    subject_name: string;
+    cnt: number;
+    avg_risk: number;
+    low_cnt: number;
+    moderate_cnt: number;
+    high_cnt: number;
+    critical_cnt: number;
+    low_pct: number;
+    moderate_pct: number;
+    high_pct: number;
+    critical_pct: number;
+    ch_pct: number;
+  }>;
+  top_risk_factors: Array<{ code: string; label: string; cnt: number }>;
 }
 
 export interface EwsGoldenSetCase {

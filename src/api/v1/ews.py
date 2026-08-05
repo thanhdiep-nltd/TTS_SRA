@@ -290,11 +290,19 @@ def get_ews_overview(
                 EwsLevelCount(level="CRITICAL", count=0),
             ],
             top_risk_subjects=[],
+            top_risk_factors=[],
         )
 
-    # Top 10 môn học nguy cơ nhất
+    # Top 10 môn học nguy cơ nhất (kèm phân bố theo 4 mức rủi ro để vẽ thanh ngang chia phần trăm)
     top_sub_sql = text(f"""
-        SELECT sub.name AS subject_name, COUNT(*) AS cnt, ROUND(AVG(rp.risk_score)::numeric, 2) AS avg_risk
+        SELECT
+            sub.name AS subject_name,
+            COUNT(*) AS cnt,
+            ROUND(AVG(rp.risk_score)::numeric, 2) AS avg_risk,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'LOW') AS low_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'MODERATE') AS moderate_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'HIGH') AS high_cnt,
+            COUNT(*) FILTER (WHERE rp.risk_level = 'CRITICAL') AS critical_cnt
         FROM s360.fact_student_subject_risk_predictions rp
         JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         JOIN s360.dim_homeroom_class_student hcs
@@ -309,10 +317,67 @@ def get_ews_overview(
         ORDER BY avg_risk DESC LIMIT 10;
     """)
     top_sub_rows = db.execute(top_sub_sql, base_params).fetchall()
-    top_risk_subjects = [
-        {"subject_name": r.subject_name, "cnt": r.cnt, "avg_risk": float(r.avg_risk) if r.avg_risk else 0.0}
-        for r in top_sub_rows
-    ]
+    top_risk_subjects = []
+    for r in top_sub_rows:
+        item = _calc_breakdown_item(
+            name=r.subject_name,
+            total_cnt=r.cnt,
+            low_cnt=r.low_cnt,
+            mod_cnt=r.moderate_cnt,
+            high_cnt=r.high_cnt,
+            crit_cnt=r.critical_cnt,
+        )
+        top_risk_subjects.append({
+            "subject_name": r.subject_name,
+            "cnt": r.cnt,
+            "avg_risk": float(r.avg_risk) if r.avg_risk else 0.0,
+            "low_cnt": item.low_cnt,
+            "moderate_cnt": item.moderate_cnt,
+            "high_cnt": item.high_cnt,
+            "critical_cnt": item.critical_cnt,
+            "low_pct": item.low_pct,
+            "moderate_pct": item.moderate_pct,
+            "high_pct": item.high_pct,
+            "critical_pct": item.critical_pct,
+            "ch_pct": item.ch_pct,
+        })
+
+    # Tần suất các yếu tố (cờ nguyên nhân) khiến học sinh rơi vào rủi ro HIGH/CRITICAL — dùng cho chart tròn.
+    # Đếm trên toàn bộ bản ghi HIGH + CRITICAL (học sinh đang bị risk), mỗi bản ghi có thể có nhiều cờ.
+    factor_cases = []
+    for code, cond in RISK_FACTOR_CONDITIONS.items():
+        factor_cases.append(f"SUM(CASE WHEN {cond} THEN 1 ELSE 0 END) AS \"{code}\"")
+    factor_select = ", ".join(factor_cases)
+
+    top_factor_sql = text(f"""
+        SELECT {factor_select}
+        FROM s360.fact_student_subject_risk_predictions rp
+        JOIN s360.dim_homeroom_class_student hcs
+             ON rp.student_code = hcs.student_code AND rp.school_year_id = hcs.school_year_id
+             AND hcs.so_school_id = rp.so_school_id
+        WHERE rp.school_year_id = :sy
+          AND rp.semester_index = :sem
+          AND rp.evaluated_at_week = :wk
+          AND rp.model_version = :mv
+          AND rp.risk_level IN ('HIGH', 'CRITICAL')
+          AND {rbac_where};
+    """)
+    factor_row = db.execute(top_factor_sql, base_params).fetchone()
+    top_risk_factors = []
+    if factor_row:
+        for code, cond in RISK_FACTOR_CONDITIONS.items():
+            cnt = getattr(factor_row, code, None) or 0
+            if cnt > 0:
+                top_risk_factors.append({
+                    "code": code,
+                    "label": _RISK_FACTOR_LABELS.get(code, code),
+                    "cnt": int(cnt),
+                })
+        top_risk_factors.sort(key=lambda x: x["cnt"], reverse=True)
+        # Trả về TẤT CẢ cờ có cnt > 0 (không giới hạn top 8) để đảm bảo đủ 4 nhóm
+        # yếu tố (Điểm số, LMS, Chuyên cần, Hạnh kiểm) đều xuất hiện trên chart tròn.
+        # Trước đây giới hạn top 8 khiến các cờ Hạnh kiểm (DEMERIT_HIGH, REPEAT_OFFENSE,
+        # SEVERE_SANCTION) có thể bị cắt khỏi danh sách → nhóm "Hạnh kiểm" biến mất.
 
     return EwsOverview(
         school_year_id=school_year_id,
@@ -329,6 +394,7 @@ def get_ews_overview(
             EwsLevelCount(level="CRITICAL", count=row.critical_cnt),
         ],
         top_risk_subjects=top_risk_subjects,
+        top_risk_factors=top_risk_factors,
     )
 
 
