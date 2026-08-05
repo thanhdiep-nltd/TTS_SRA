@@ -2,6 +2,7 @@ import asyncio
 import subprocess
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +61,31 @@ async def lifespan(app: FastAPI):
             process_next_vms_task()
         except Exception as e:
             print(f"Startup Self-Healing Error: {e}")
+
+        # Startup Self-Healing cho hàng chờ dự đoán EWS (BGH control panel)
+        try:
+            from src.ews.job_worker import process_next_ews_job
+            from src.db.session import SessionLocal
+            from src.models.tables import EwsPipelineJob
+
+            db = SessionLocal()
+            stuck = (
+                db.query(EwsPipelineJob)
+                .filter(EwsPipelineJob.status == "processing")
+                .all()
+            )
+            if stuck:
+                print(f"Startup Self-Healing: Đánh dấu {len(stuck)} EWS job kẹt thành 'failed'...")
+                for job in stuck:
+                    job.status = "failed"
+                    job.error_message = "Bị gián đoạn do hệ thống khởi động lại. Vui lòng thử lại."
+                    job.finished_at = datetime.utcnow()
+                db.commit()
+            db.close()
+            # Khởi chạy hàng chờ EWS để xử lý job pending (nếu có)
+            process_next_ews_job()
+        except Exception as e:
+            print(f"Startup EWS Self-Healing Error: {e}")
 
     # Snapshot job cho trend chart "Tình trạng hệ thống AI" (ẩn khi chạy test)
 

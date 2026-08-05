@@ -1206,3 +1206,72 @@ export interface EwsTopClassRiskItem {
   ch_pct: number;
 }
 
+// ============================================================================
+// EWS CONTROL PANEL (BGH) — dự đoán theo tuần + tinh chỉnh trọng số
+// ============================================================================
+
+export interface EwsPredictRequest {
+  school_year_id: number;
+  semester_index: number;
+  evaluated_at_week: number;
+  model_version: string;
+}
+
+export interface EwsJob {
+  id: number;
+  so_school_id: number;
+  requested_by: number;
+  school_year_id: number;
+  semester_index: number;
+  evaluated_at_week: number;
+  cutoff_date: string | null;
+  model_version: string;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  progress: number;
+  rows_processed: number | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface EwsWeightConfig {
+  weight_score?: number | null;
+  weight_lms?: number | null;
+  weight_attendance?: number | null;
+  weight_behavior?: number | null;
+  alpha_score?: number | null;
+  alpha_lms?: number | null;
+  alpha_attendance?: number | null;
+  alpha_behavior?: number | null;
+  weight_floor?: number | null;
+  worst_factor_beta?: number | null;
+  threshold_low?: number | null;
+  threshold_moderate?: number | null;
+  threshold_high?: number | null;
+  threshold_critical?: number | null;
+}
+
+export interface EwsEffectiveConfig {
+  baseline: {
+    weights: Record<string, number>;
+    alpha: Record<string, number>;
+    weight_floor: number;
+    worst_factor_beta: number;
+    thresholds: Record<string, number>;
+  };
+  override: EwsWeightConfig | null;
+  effective: {
+    weights: Record<string, number>;
+    alpha: Record<string, number>;
+    weight_floor: number;
+    worst_factor_beta: number;
+    thresholds: Record<string, number>;
+  };
+}
+
+export interface EwsValidWeeks {
+  semester_1: number[];
+  semester_2: number[];
+}
+

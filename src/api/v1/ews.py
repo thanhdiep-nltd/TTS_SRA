@@ -8,19 +8,28 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.api.deps import CurrentUser, get_db
+from src.api.deps import CurrentUser, get_db, require_roles
 from src.core.security.sql_validator import get_user_assignment_constraints
+from src.ews import ews_config_service
+from src.ews.ews_config_service import EwsConfigValidationError
+from src.ews.job_worker import process_next_ews_job
+from src.ews.risk_config import load_risk_config
+from src.models import enums
+from src.models.tables import EwsPipelineJob, User
 from src.schemas.ews import (
     EwsClassOption,
+    EwsEffectiveConfig,
     EwsGoldenSetResult,
+    EwsJobRead,
     EwsLevelCount,
     EwsMeta,
     EwsOverview,
     EwsPagedResult,
+    EwsPredictRequest,
     EwsPredictionRow,
     EwsRawAttendanceItem,
     EwsRawBehaviorItem,
@@ -32,7 +41,9 @@ from src.schemas.ews import (
     EwsStudentRiskDetailItem,
     EwsSubjectDrilldownResponse,
     EwsTopClassRiskItem,
+    EwsValidWeeks,
     EwsWeekOption,
+    EwsWeightConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -1260,5 +1271,193 @@ def get_ews_top_risk_classes(
     return result
 
 
+# ============================================================================
+# EWS CONTROL PANEL (BGH) — dự đoán theo tuần + tinh chỉnh trọng số
+# ============================================================================
+
+# Các tuần checkpoint chuẩn (khớp scripts/run_ews_pipeline.py)
+_VALID_WEEKS = {1: [5, 8, 11, 14, 16], 2: [23, 26, 29, 32, 34]}
+_DEFAULT_SCHOOL_START = {1: date(2025, 9, 1), 2: date(2026, 1, 15)}
+
+# Chỉ ADMIN/PRINCIPAL (BGH) được dùng control panel
+_control_roles = require_roles(enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL)
 
 
+def _estimate_cutoff_date(semester: int, week: int) -> date:
+    start = _DEFAULT_SCHOOL_START[semester]
+    return start + timedelta(weeks=week - 1)
+
+
+def _job_to_read(job: EwsPipelineJob) -> EwsJobRead:
+    return EwsJobRead(
+        id=job.id,
+        so_school_id=job.so_school_id,
+        requested_by=job.requested_by,
+        school_year_id=job.school_year_id,
+        semester_index=job.semester_index,
+        evaluated_at_week=job.evaluated_at_week,
+        cutoff_date=job.cutoff_date,
+        model_version=job.model_version,
+        status=job.status,
+        progress=job.progress,
+        rows_processed=job.rows_processed,
+        error_message=job.error_message,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        created_at=job.created_at,
+    )
+
+
+@router.get("/valid-weeks", response_model=EwsValidWeeks)
+def get_ews_valid_weeks(
+    current_user: User = Depends(_control_roles),
+):
+    """Các tuần checkpoint hợp lệ để dự đoán theo học kỳ."""
+    return EwsValidWeeks(semester_1=_VALID_WEEKS[1], semester_2=_VALID_WEEKS[2])
+
+
+@router.post("/predict", response_model=EwsJobRead, status_code=202)
+def trigger_ews_predict(
+    payload: EwsPredictRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Tạo job dự đoán EWS theo tuần (async). BGH có thể rời đi; khi xong sẽ có thông báo."""
+    if payload.semester_index not in (1, 2):
+        raise HTTPException(status_code=422, detail="semester_index phải là 1 hoặc 2")
+    if payload.evaluated_at_week not in _VALID_WEEKS[payload.semester_index]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tuần {payload.evaluated_at_week} không phải checkpoint chuẩn của học kỳ "
+                   f"{payload.semester_index}. Hợp lệ: {_VALID_WEEKS[payload.semester_index]}",
+        )
+    if payload.model_version not in ("v1_single", "v2_ensemble"):
+        raise HTTPException(status_code=422, detail="model_version phải là 'v1_single' hoặc 'v2_ensemble'")
+
+    cutoff = _estimate_cutoff_date(payload.semester_index, payload.evaluated_at_week)
+    job = EwsPipelineJob(
+        so_school_id=current_user.so_school_id,
+        requested_by=current_user.id,
+        school_year_id=payload.school_year_id,
+        semester_index=payload.semester_index,
+        evaluated_at_week=payload.evaluated_at_week,
+        cutoff_date=cutoff,
+        model_version=payload.model_version,
+        status="pending",
+        progress=0,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    background_tasks.add_task(process_next_ews_job)
+    logger.info("EWS predict job %s created by user %d (school %d)", job.id, current_user.id, current_user.so_school_id)
+    return _job_to_read(job)
+
+
+@router.get("/jobs", response_model=List[EwsJobRead])
+def list_ews_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Danh sách job dự đoán EWS của trường hiện tại (mới nhất trước)."""
+    jobs = (
+        db.query(EwsPipelineJob)
+        .filter(EwsPipelineJob.so_school_id == current_user.so_school_id)
+        .order_by(EwsPipelineJob.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_job_to_read(j) for j in jobs]
+
+
+@router.get("/jobs/{job_id}", response_model=EwsJobRead)
+def get_ews_job(
+    job_id: int,
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Chi tiết một job dự đoán EWS (dùng để polling tiến trình)."""
+    job = db.get(EwsPipelineJob, job_id)
+    if job is None or job.so_school_id != current_user.so_school_id:
+        raise HTTPException(status_code=404, detail="Không tìm thấy job")
+    return _job_to_read(job)
+
+
+@router.get("/weights", response_model=EwsEffectiveConfig)
+def get_ews_weights(
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Config hiệu lực: baseline (YAML) + override (DB) + effective (đã merge) cho trường."""
+    base = load_risk_config()
+    ov = ews_config_service.get_override(db, current_user.so_school_id)
+    eff = ews_config_service.get_effective_config(db, current_user.so_school_id)
+
+    override_payload = None
+    if ov is not None:
+        override_payload = EwsWeightConfig(
+            weight_score=ov.weight_score,
+            weight_lms=ov.weight_lms,
+            weight_attendance=ov.weight_attendance,
+            weight_behavior=ov.weight_behavior,
+            alpha_score=ov.alpha_score,
+            alpha_lms=ov.alpha_lms,
+            alpha_attendance=ov.alpha_attendance,
+            alpha_behavior=ov.alpha_behavior,
+            weight_floor=ov.weight_floor,
+            worst_factor_beta=ov.worst_factor_beta,
+            threshold_low=ov.threshold_low,
+            threshold_moderate=ov.threshold_moderate,
+            threshold_high=ov.threshold_high,
+            threshold_critical=ov.threshold_critical,
+        )
+
+    return EwsEffectiveConfig(
+        baseline={
+            "weights": base.weights,
+            "alpha": base.dynamic.alpha,
+            "weight_floor": base.dynamic.weight_floor,
+            "worst_factor_beta": base.dynamic.worst_factor_beta,
+            "thresholds": base.thresholds,
+        },
+        override=override_payload,
+        effective={
+            "weights": eff.weights,
+            "alpha": eff.dynamic.alpha,
+            "weight_floor": eff.dynamic.weight_floor,
+            "worst_factor_beta": eff.dynamic.worst_factor_beta,
+            "thresholds": eff.thresholds,
+        },
+    )
+
+
+@router.put("/weights", response_model=EwsEffectiveConfig)
+def put_ews_weights(
+    payload: EwsWeightConfig,
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Lưu override trọng số EWS cho trường hiện tại (BGH tinh chỉnh)."""
+    data = payload.model_dump(exclude_none=True)
+    if not data:
+        raise HTTPException(status_code=422, detail="Không có chỉ số nào để lưu")
+    try:
+        ews_config_service.apply_override(
+            db, current_user.so_school_id, data, updated_by=current_user.id
+        )
+    except EwsConfigValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return get_ews_weights(current_user=current_user, db=db)
+
+
+@router.delete("/weights", response_model=EwsEffectiveConfig)
+def delete_ews_weights(
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Xóa override trọng số EWS cho trường (khôi phục baseline YAML)."""
+    ews_config_service.clear_override(db, current_user.so_school_id)
+    return get_ews_weights(current_user=current_user, db=db)

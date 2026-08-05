@@ -269,3 +269,66 @@ class EwsTopClassRiskItem(BaseModel):
     critical_pct: float = 0.0
     ch_pct: float = 0.0
 
+
+# ============================================================================
+# EWS CONTROL PANEL (BGH) — dự đoán theo tuần + tinh chỉnh trọng số
+# ============================================================================
+
+
+class EwsPredictRequest(BaseModel):
+    """Yêu cầu chạy dự đoán EWS theo tuần (BGH)."""
+    school_year_id: int = Field(..., description="Năm học (VD: 2025)")
+    semester_index: int = Field(..., ge=1, le=2, description="Học kỳ (1 hoặc 2)")
+    evaluated_at_week: int = Field(..., description="Tuần đánh giá")
+    model_version: str = Field("v2_ensemble", description="'v1_single' hoặc 'v2_ensemble'")
+
+
+class EwsJobRead(BaseModel):
+    """Bản ghi job dự đoán EWS."""
+    id: int
+    so_school_id: int
+    requested_by: int
+    school_year_id: int
+    semester_index: int
+    evaluated_at_week: int
+    cutoff_date: Optional[date] = None
+    model_version: str
+    status: str
+    progress: int = 0
+    rows_processed: Optional[int] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class EwsWeightConfig(BaseModel):
+    """Override trọng số EWS theo trường (BGH tinh chỉnh). Mọi field đều optional."""
+    weight_score: Optional[float] = None
+    weight_lms: Optional[float] = None
+    weight_attendance: Optional[float] = None
+    weight_behavior: Optional[float] = None
+    alpha_score: Optional[float] = None
+    alpha_lms: Optional[float] = None
+    alpha_attendance: Optional[float] = None
+    alpha_behavior: Optional[float] = None
+    weight_floor: Optional[float] = None
+    worst_factor_beta: Optional[float] = None
+    threshold_low: Optional[float] = None
+    threshold_moderate: Optional[float] = None
+    threshold_high: Optional[float] = None
+    threshold_critical: Optional[float] = None
+
+
+class EwsEffectiveConfig(BaseModel):
+    """Config hiệu lực: baseline (YAML) + override (DB) + effective (đã merge)."""
+    baseline: Dict[str, Any]
+    override: Optional[EwsWeightConfig] = None
+    effective: Dict[str, Any]
+
+
+class EwsValidWeeks(BaseModel):
+    """Các tuần hợp lệ để dự đoán theo học kỳ."""
+    semester_1: List[int]
+    semester_2: List[int]
+

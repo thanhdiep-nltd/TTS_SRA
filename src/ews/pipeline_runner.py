@@ -24,6 +24,7 @@ from src.ews.inference_service import (
     run_ensemble_inference,
     run_inference,
 )
+from src.ews.risk_config import RiskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,8 @@ def run_pipeline(
     cutoff_date: date,
     skip_shap: bool = False,
     model_version: str = "v1_single",
+    so_school_id: int | None = None,
+    cfg: RiskConfig | None = None,
 ) -> pd.DataFrame:
     """
     Pipeline tích hợp EWS hoàn chỉnh.
@@ -162,6 +165,8 @@ def run_pipeline(
         cutoff_date: Ngày cutoff để lấy dữ liệu
         skip_shap: Nếu True, bỏ qua SHAP TreeExplainer để tăng tốc
         model_version: 'v1_single' (model đơn) hoặc 'v2_ensemble' (factor-ensemble)
+        so_school_id: Nếu cho, chỉ chạy cho trường này (BGH control panel).
+        cfg: RiskConfig hiệu lực (đã merge theo trường). Chỉ dùng cho v2_ensemble.
 
     Returns:
         DataFrame kết quả đã persist vào DB
@@ -180,6 +185,7 @@ def run_pipeline(
         semester_index=semester_index,
         evaluated_at_week=evaluated_at_week,
         cutoff_date=cutoff_date,
+        so_school_id=so_school_id,
     )
     logger.info("[Step 1/3] Done: %d rows x %d cols", len(X), len(X.columns))
 
@@ -187,7 +193,7 @@ def run_pipeline(
     logger.info("[Step 2/3] Running inference (model=%s, skip_shap=%s)...", model_version, skip_shap)
     if model_version == "v2_ensemble":
         models = load_ensemble()
-        result = run_ensemble_inference(models, X, return_shap=False)
+        result = run_ensemble_inference(models, X, return_shap=False, cfg=cfg)
     else:
         model = load_model()
         result = run_inference(model, X, return_shap=not skip_shap)

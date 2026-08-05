@@ -1105,6 +1105,65 @@ CREATE INDEX IF NOT EXISTS idx_fssrp_v3_risk
 COMMENT ON TABLE s360.fact_student_subject_risk_predictions IS 'Bảng lưu kết quả dự báo rủi ro học tập chi tiết theo môn học do EWS Model xuất ra';
 
 
+-- =====================================================================
+-- EWS CONTROL PANEL (BGH) — quản lý job dự đoán + override trọng số
+-- Chèn tay theo yêu cầu BGH (không chạy lại apply_merged_schema.py)
+-- =====================================================================
+
+-- 1) Bảng job dự đoán theo yêu cầu của BGH (hàng đợi DB-backed FIFO)
+CREATE TABLE IF NOT EXISTS public.ews_pipeline_jobs (
+    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    so_school_id      INTEGER NOT NULL,
+    requested_by      BIGINT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    school_year_id    INTEGER NOT NULL,
+    semester_index    INTEGER NOT NULL CHECK (semester_index IN (1, 2)),
+    evaluated_at_week INTEGER NOT NULL,
+    cutoff_date       DATE,
+    model_version     VARCHAR(20) NOT NULL DEFAULT 'v2_ensemble',
+    status            VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+    progress          INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+    rows_processed    INTEGER,
+    error_message     TEXT,
+    started_at        TIMESTAMPTZ,
+    finished_at       TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ews_jobs_school_created
+    ON public.ews_pipeline_jobs(so_school_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ews_jobs_status
+    ON public.ews_pipeline_jobs(status);
+
+COMMENT ON TABLE public.ews_pipeline_jobs IS
+    'Lịch chạy dự đoán EWS do BGH yêu cầu, theo từng trường (so_school_id).';
+
+-- 2) Bảng override trọng số EWS theo trường (BGH tinh chỉnh)
+CREATE TABLE IF NOT EXISTS public.ews_weight_overrides (
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    so_school_id       INTEGER NOT NULL UNIQUE,
+    weight_score       DOUBLE PRECISION,
+    weight_lms         DOUBLE PRECISION,
+    weight_attendance  DOUBLE PRECISION,
+    weight_behavior    DOUBLE PRECISION,
+    alpha_score        DOUBLE PRECISION,
+    alpha_lms          DOUBLE PRECISION,
+    alpha_attendance   DOUBLE PRECISION,
+    alpha_behavior     DOUBLE PRECISION,
+    weight_floor       DOUBLE PRECISION,
+    worst_factor_beta  DOUBLE PRECISION,
+    threshold_low      DOUBLE PRECISION,
+    threshold_moderate DOUBLE PRECISION,
+    threshold_high     DOUBLE PRECISION,
+    threshold_critical DOUBLE PRECISION,
+    updated_by         BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.ews_weight_overrides IS
+    'Override trọng số/phân loại rủi ro EWS theo từng trường; NULL = dùng baseline YAML.';
+
+
 -- 2. Bảng lưu Dữ liệu Train Mô hình (Training Dataset Store & Mock Data Ground Truth)
 CREATE TABLE IF NOT EXISTS s360.train_student_subject_risk_dataset (
     id                      BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,

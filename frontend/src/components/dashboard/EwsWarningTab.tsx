@@ -85,9 +85,12 @@ const fmtDate = (d: string | null): string => {
 interface EwsWarningTabProps {
   modelVersion: string;
   refreshKey: number;
+  schoolYearId: number;
+  semesterIndex: number;
+  week: number;
 }
 
-export default function EwsWarningTab({ modelVersion, refreshKey }: EwsWarningTabProps) {
+export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, semesterIndex, week }: EwsWarningTabProps) {
   const [meta, setMeta] = useState<EwsMeta | null>(null);
   const [overview, setOverview] = useState<EwsOverview | null>(null);
   const [predictions, setPredictions] = useState<EwsPagedResult | null>(null);
@@ -99,9 +102,6 @@ export default function EwsWarningTab({ modelVersion, refreshKey }: EwsWarningTa
   const [error, setError] = useState<string | null>(null);
 
   // Filter States
-  const [schoolYearId, setSchoolYearId] = useState<number>(2025);
-  const [semesterIndex, setSemesterIndex] = useState<number>(1);
-  const [week, setWeek] = useState<number>(8);
   const [riskLevel, setRiskLevel] = useState<string>("ALL");
   const [subjectId, setSubjectId] = useState<string>("ALL");
   const [gradeId, setGradeId] = useState<string>("ALL");
@@ -122,12 +122,6 @@ export default function EwsWarningTab({ modelVersion, refreshKey }: EwsWarningTa
       .then((res) => {
         if (!isMounted) return;
         setMeta(res);
-        if (res.weeks && res.weeks.length > 0) {
-          const first = res.weeks[0];
-          setSchoolYearId(first.school_year_id);
-          setSemesterIndex(first.semester_index);
-          setWeek(first.evaluated_at_week);
-        }
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -245,6 +239,14 @@ export default function EwsWarningTab({ modelVersion, refreshKey }: EwsWarningTa
       isMounted = false;
     };
   }, [schoolYearId, semesterIndex, week, loadingMeta]);
+
+  // Khi đổi Mốc Đánh Giá (từ header) → reset bộ lọc phụ thuộc (Môn/Khối/Lớp) + về trang 1
+  useEffect(() => {
+    setSubjectId("ALL");
+    setGradeId("ALL");
+    setClassName("ALL");
+    setPage(1);
+  }, [schoolYearId, semesterIndex, week]);
 
   // Tùy chọn Lớp được lọc theo Khối đang chọn (Khối → Lớp liên kết đúng)
   const classOptions = useMemo(() => {
@@ -401,33 +403,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey }: EwsWarningTa
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          {/* 1. Mốc Tuần / Học Kỳ */}
-          <div className="col-span-1 lg:col-span-2 space-y-1">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mốc Đánh Giá (Tuần / Kỳ)</label>
-            <select
-              value={`${schoolYearId}-${semesterIndex}-${week}`}
-              onChange={(e) => {
-                const [sy, sem, wk] = e.target.value.split("-").map(Number);
-                setSchoolYearId(sy);
-                setSemesterIndex(sem);
-                setWeek(wk);
-                // Danh sách Môn/Khối/Lớp thay đổi theo mốc → reset bộ lọc phụ thuộc
-                setSubjectId("ALL");
-                setGradeId("ALL");
-                setClassName("ALL");
-                setPage(1);
-              }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              {meta?.weeks.map((w, idx) => (
-                <option key={idx} value={`${w.school_year_id}-${w.semester_index}-${w.evaluated_at_week}`}>
-                  {w.school_year_name || `Năm ${w.school_year_id}`} - Học kỳ {w.semester_index} (Mốc Tuần {w.evaluated_at_week})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 2. Mức Rủi Ro */}
+          {/* 1. Mức Rủi Ro */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mức Rủi Ro</label>
             <select

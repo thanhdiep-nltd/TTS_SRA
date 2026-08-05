@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -876,3 +877,64 @@ class MetadataIndex(Base):
     exact_id = Column(BigInteger, nullable=False)
     extra_metadata = Column(JSONB)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+# ============================================================
+# EWS CONTROL PANEL (BGH) — job dự đoán + override trọng số
+# ============================================================
+
+
+class EwsPipelineJob(Base):
+    """Lịch chạy dự đoán EWS do BGH yêu cầu, theo từng trường (so_school_id)."""
+
+    __tablename__ = "ews_pipeline_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')",
+            name="ews_job_status_valid",
+        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="ews_job_progress_valid"),
+        Index("idx_ews_jobs_school_created", "so_school_id", "created_at"),
+        Index("idx_ews_jobs_status", "status"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    requested_by = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    school_year_id = Column(Integer, nullable=False)
+    semester_index = Column(Integer, nullable=False)
+    evaluated_at_week = Column(Integer, nullable=False)
+    cutoff_date = Column(Date)
+    model_version = Column(String(20), nullable=False, server_default=text("'v2_ensemble'"))
+    status = Column(String(20), nullable=False, server_default=text("'pending'"))
+    progress = Column(Integer, nullable=False, server_default=text("0"))
+    rows_processed = Column(Integer)
+    error_message = Column(Text)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class EwsWeightOverride(Base):
+    """Override trọng số/phân loại rủi ro EWS theo từng trường; NULL = dùng baseline YAML."""
+
+    __tablename__ = "ews_weight_overrides"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False, unique=True)
+    weight_score = Column(Float)
+    weight_lms = Column(Float)
+    weight_attendance = Column(Float)
+    weight_behavior = Column(Float)
+    alpha_score = Column(Float)
+    alpha_lms = Column(Float)
+    alpha_attendance = Column(Float)
+    alpha_behavior = Column(Float)
+    weight_floor = Column(Float)
+    worst_factor_beta = Column(Float)
+    threshold_low = Column(Float)
+    threshold_moderate = Column(Float)
+    threshold_high = Column(Float)
+    threshold_critical = Column(Float)
+    updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)

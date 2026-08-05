@@ -79,6 +79,7 @@ WITH student_grades AS MATERIALIZED (
         join_date AS join_date_raw
     FROM s360.dim_homeroom_class_student
     WHERE school_year_id = :school_year_id
+      AND (:so_school_id IS NULL OR so_school_id = :so_school_id)
 ),
 subject_info AS (
     -- Lấy thông tin subject & subject_category
@@ -405,7 +406,11 @@ LEFT JOIN subject_info si ON tf.subject_id = si.subject_id
 LEFT JOIN student_grades sg ON tf.student_code = sg.student_code
 LEFT JOIN lms_features lf ON tf.student_code = lf.student_code AND tf.subject_id = lf.subject_id
 LEFT JOIN attendance_features af ON tf.student_code = af.student_code
-LEFT JOIN behavior_features bf ON tf.student_code = bf.student_code;
+LEFT JOIN behavior_features bf ON tf.student_code = bf.student_code
+-- GUARD DỮ LIỆU MỒ CÔI: học sinh có điểm (temporal_features) nhưng KHÔNG có bản ghi
+-- homeroom/khối/trường trong dim_homeroom_class_student → sg.so_school_id = NULL.
+-- Không thể gán trường nào để persist/tenant isolation → loại bỏ (tránh lỗi astype(int) trên NaN).
+WHERE sg.so_school_id IS NOT NULL;
 """
 
 
@@ -415,6 +420,7 @@ def extract_live_features(
     semester_index: int,
     evaluated_at_week: int,
     cutoff_date: Optional[Union[date, str]] = None,
+    so_school_id: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Trích xuất DataFrame 24 Features (X) cho tất cả cặp (student_code, subject_id) tại mốc tuần.
@@ -425,6 +431,8 @@ def extract_live_features(
         semester_index: Học kỳ (1 hoặc 2)
         evaluated_at_week: Tuần học đang đánh giá (vd: 8)
         cutoff_date: Ngày cutoff (date hoặc 'YYYY-MM-DD'). Nếu None, tự động tính từ tuần.
+        so_school_id: Nếu cho, chỉ trích xuất học sinh của trường này (BGH control panel).
+            None = toàn bộ trường (hành vi cũ).
 
     Returns:
         pd.DataFrame chứa 24 features + student_code
@@ -442,6 +450,7 @@ def extract_live_features(
         "semester_index": semester_index,
         "cutoff_date": cutoff_date,
         "semester_start": base_start,
+        "so_school_id": so_school_id,
     }
 
     # Engine chung (src/db/session.py) set statement_timeout=3000ms cho MỌI kết nối. Query
@@ -553,7 +562,9 @@ def extract_live_features(
     final_cols = ["student_code", "so_school_id", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS + ["weighted_late_avg_imputed"]
     df = df[final_cols].copy()
     df["weighted_late_avg_imputed"] = df["weighted_late_avg_imputed"].astype(bool)
-    # so_school_id giữ nguyên kiểu int (không phải feature của model, chỉ để persist/tenant isolation)
+    # so_school_id giữ nguyên kiểu int (không phải feature của model, chỉ để persist/tenant isolation).
+    # Học sinh mồ côi (có điểm nhưng thiếu bản ghi trường/khối) đã bị loại ở SQL (WHERE sg.so_school_id
+    # IS NOT NULL) nên cột này không còn NULL → ép int an toàn.
     df["so_school_id"] = df["so_school_id"].astype(int)
 
     logger.info(f"Feature extraction complete: {df.shape[0]:,} rows, {len(EWS_FEATURE_COLS)} features")

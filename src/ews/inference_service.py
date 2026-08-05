@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 import shap
 
+from src.ews.risk_config import RiskConfig
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -341,10 +343,18 @@ def run_ensemble_inference(
     models: dict,
     X: pd.DataFrame,
     return_shap: bool = False,
+    cfg: RiskConfig | None = None,
 ) -> pd.DataFrame:
     """
     Inference factor-ensemble: mỗi sub-model xuất risk_score riêng, rồi kết hợp
     bằng trọng số động (risk_config.combine_risk_scores).
+
+    Args:
+        models: dict {factor: CatBoostClassifier}
+        X: DataFrame features
+        return_shap: giữ API cũ (ensemble không dùng SHAP)
+        cfg: RiskConfig hiệu lực (mặc định load_risk_config()). Cho phép truyền
+            config đã merge theo trường (BGH override) mà không đụng cache toàn cục.
 
     Output DataFrame gồm:
       - metadata + toàn bộ feature cols (đủ bind UPSERT)
@@ -353,7 +363,7 @@ def run_ensemble_inference(
       - risk_score (final), risk_level (final), risk_probability
     """
     from src.ews.risk_config import FACTOR_KEYS, combine_risk_scores, load_risk_config
-    cfg = load_risk_config()
+    cfg = cfg or load_risk_config()
 
     meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
     feature_cols = [c for c in X.columns if c not in meta_cols]
