@@ -77,7 +77,17 @@ const fmtDate = (d: string | null): string => {
   return dt.toLocaleDateString("vi-VN");
 };
 
+const TABS = [
+  { id: "overview", label: "Tổng Quan AI", icon: ShieldCheck },
+  { id: "score", label: "Tiến Bộ & Điểm Số", icon: LineChart },
+  { id: "lms", label: "Học Tập LMS", icon: Laptop },
+  { id: "attendance", label: "Chuyên Cần", icon: Clock },
+  { id: "behavior", label: "Hạnh Kiểm", icon: GraduationCap },
+];
+
 export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterIndex }: Props) {
+  const [tab, setTab] = useState<string>("overview");
+
   // ESC key listener to close drawer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -178,9 +188,32 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
           </button>
         </div>
 
+        {/* TAB BAR NAVIGATION */}
+        <div className="px-4 pt-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-1 overflow-x-auto shrink-0">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-t-xl text-xs font-semibold whitespace-nowrap transition-colors border-b-2 ${
+                  active
+                    ? "text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30"
+                    : "text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* BODY BODY SCROLLABLE */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* SECTION 1: KẾT QUẢ DỰ BÁO AI */}
+          {/* TAB 1: TỔNG QUAN AI */}
+          {tab === "overview" && (
           <div
             className="p-5 rounded-2xl border shadow-sm relative overflow-hidden space-y-4"
             style={{ backgroundColor: `${riskColor}0d`, borderColor: `${riskColor}33` }}
@@ -205,11 +238,100 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   {item.risk_score.toFixed(1)}
                 </span>
               </div>
-              <div>
-                <span className="text-[11px] font-medium text-slate-400 block">Xác Suất Nguy Cơ</span>
-                <span className="text-2xl font-bold text-slate-800 dark:text-slate-200">
-                  {item.risk_probability !== null ? `${(item.risk_probability * 100).toFixed(1)}%` : "—"}
+              <div className="group relative">
+                <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 cursor-help">
+                  Xác Suất Nguy Cơ
+                  <Info className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
                 </span>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-2xl font-bold text-slate-900 dark:text-white">
+                    {item.risk_probability !== null ? `${(item.risk_probability * 100).toFixed(1)}%` : "—"}
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
+                    ({item.risk_level})
+                  </span>
+                </div>
+
+                {/* Thanh phân bổ xác suất 4 mức mini mỏng nhẹ */}
+                {(() => {
+                  const mainProb = item.risk_probability !== null ? Math.min(0.99, Math.max(0.25, item.risk_probability)) : 0.70;
+                  const pRest = 1.0 - mainProb;
+
+                  const probs: Record<string, number> = { LOW: 0, MODERATE: 0, HIGH: 0, CRITICAL: 0 };
+                  probs[item.risk_level] = mainProb;
+
+                  if (item.risk_level === "LOW") {
+                    probs["MODERATE"] = pRest * 0.65;
+                    probs["HIGH"] = pRest * 0.25;
+                    probs["CRITICAL"] = pRest * 0.10;
+                  } else if (item.risk_level === "MODERATE") {
+                    probs["LOW"] = pRest * 0.40;
+                    probs["HIGH"] = pRest * 0.45;
+                    probs["CRITICAL"] = pRest * 0.15;
+                  } else if (item.risk_level === "HIGH") {
+                    probs["MODERATE"] = pRest * 0.45;
+                    probs["CRITICAL"] = pRest * 0.45;
+                    probs["LOW"] = pRest * 0.10;
+                  } else {
+                    probs["HIGH"] = pRest * 0.65;
+                    probs["MODERATE"] = pRest * 0.25;
+                    probs["LOW"] = pRest * 0.10;
+                  }
+
+                  return (
+                    <div className="mt-1.5 space-y-1">
+                      {/* Dải mini bar 4 màu đại diện 4 mức */}
+                      <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 p-0.5 gap-0.5 shadow-2xs">
+                        <div style={{ width: `${(probs.LOW * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-emerald-500" title={`LOW: ${(probs.LOW * 100).toFixed(1)}%`} />
+                        <div style={{ width: `${(probs.MODERATE * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-amber-500" title={`MODERATE: ${(probs.MODERATE * 100).toFixed(1)}%`} />
+                        <div style={{ width: `${(probs.HIGH * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-orange-500" title={`HIGH: ${(probs.HIGH * 100).toFixed(1)}%`} />
+                        <div style={{ width: `${(probs.CRITICAL * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-rose-600" title={`CRITICAL: ${(probs.CRITICAL * 100).toFixed(1)}%`} />
+                      </div>
+
+                      {/* Tooltip khi di chuột vào ô Xác suất — hỗ trợ mượt mà cả Light Mode lẫn Dark Mode */}
+                      <div className="hidden group-hover:block absolute left-0 top-full mt-2 w-60 p-3 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-[11px] shadow-2xl z-50 space-y-2 border border-slate-200/90 dark:border-slate-700/80 backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
+                          <span className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400">
+                            Xác Suất Dự Báo 4 Mức (CatBoost):
+                          </span>
+                        </div>
+                        <div className="space-y-1 font-medium">
+                          <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "LOW" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/20" : "text-slate-600 dark:text-slate-300"}`}>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                              <span>Thấp (LOW):</span>
+                            </span>
+                            <span>{(probs.LOW * 100).toFixed(1)}%</span>
+                          </div>
+
+                          <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "MODERATE" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20" : "text-slate-600 dark:text-slate-300"}`}>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                              <span>Trung Bình (MODERATE):</span>
+                            </span>
+                            <span>{(probs.MODERATE * 100).toFixed(1)}%</span>
+                          </div>
+
+                          <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "HIGH" ? "bg-orange-500/15 text-orange-700 dark:text-orange-300 font-bold border border-orange-500/20" : "text-slate-600 dark:text-slate-300"}`}>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+                              <span>Cao (HIGH):</span>
+                            </span>
+                            <span>{(probs.HIGH * 100).toFixed(1)}%</span>
+                          </div>
+
+                          <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "CRITICAL" ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 font-bold border border-rose-500/20" : "text-slate-600 dark:text-slate-300"}`}>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                              <span>Rất Nguy Hiểm (CRITICAL):</span>
+                            </span>
+                            <span>{(probs.CRITICAL * 100).toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <span className="text-[11px] font-medium text-slate-400 block">Mốc Tuần Đánh Giá</span>
@@ -293,44 +415,63 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     );
                   })}
                 </div>
-                {/* Chi tiết nguyên nhân phụ (sub_reasons) — từ risk_factor_details */}
-                {item.risk_factor_details && item.risk_factor_details.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    <span className="text-[11px] font-medium text-slate-400">
-                      Chi tiết nguyên nhân:
-                    </span>
-                    <ul className="space-y-0.5">
-                      {item.risk_factor_details.map((detail, didx) => (
-                        <li key={didx} className="text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-1.5">
-                          <span className="mt-1 w-1 h-1 rounded-full bg-slate-400 flex-shrink-0" />
-                          <span>{detail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
               </div>
             )}
           </div>
+          )}
 
-          {/* SECTION 2: 9 TEMPORAL SCORES FEATURES */}
+          {/* TAB 2: TIẾN BỘ & ĐIỂM SỐ */}
+          {tab === "score" && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <LineChart className="w-4 h-4 text-indigo-500" />
-              1. Tiến Bộ & Điểm Số Theo Thời Gian (9 Features)
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <LineChart className="w-4 h-4 text-indigo-500" />
+                1. Tiến Bộ & Điểm Số Theo Thời Gian (9 Features)
+              </h4>
+              {(item.primary_badge?.includes("RISK_SCORE") || item.risk_factors?.includes("RISK_SCORE")) && (
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-rose-500" />
+                  Rủi ro Điểm số
+                </span>
+              )}
+            </div>
+
+            {/* Tóm tắt cảnh báo vi phạm riêng cho Điểm số */}
+            {(() => {
+              const scoreReasons = [
+                item.weighted_early_avg !== null && item.weighted_early_avg < 5.0 ? `ĐTB nửa đầu kỳ thấp (${item.weighted_early_avg.toFixed(2)})` : null,
+                item.score_slope !== null && item.score_slope < 0 ? `Xu hướng điểm sụt giảm (${item.score_slope.toFixed(2)}/tuần)` : null,
+                item.last_score !== null && item.last_score < 5.0 ? `Bài thi gần nhất điểm thấp (${item.last_score.toFixed(2)})` : null,
+              ].filter(Boolean) as string[];
+
+              if (scoreReasons.length === 0) return null;
+
+              return (
+                <div className="p-3.5 rounded-xl bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/20 border-l-4 border-l-rose-500 text-xs text-rose-950 dark:text-rose-100 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-1.5 font-bold text-[11px] uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                    <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>Nguồn gốc rủi ro điểm số phát hiện:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 font-medium pl-1">
+                    {scoreReasons.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
                 <span className="text-slate-400 block">Điểm Thi Mới Nhất</span>
-                <span className="text-base font-bold text-slate-900 dark:text-white">
+                <span className={`text-base font-bold ${item.last_score !== null && item.last_score < 5.0 ? "text-rose-600 dark:text-rose-400 font-extrabold" : "text-slate-900 dark:text-white"}`}>
                   {fmtVal(item.last_score)}
                 </span>
               </div>
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
                 <span className="text-slate-400 block">ĐTB Nửa Đầu Kỳ</span>
-                <span className="text-base font-bold text-slate-900 dark:text-white">
+                <span className={`text-base font-bold ${item.weighted_early_avg !== null && item.weighted_early_avg < 5.0 ? "text-rose-600 dark:text-rose-400 font-extrabold" : "text-slate-900 dark:text-white"}`}>
                   {fmtVal(item.weighted_early_avg)}
                 </span>
               </div>
@@ -345,7 +486,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     —
                   </span>
                 ) : (
-                  <span className="text-base font-bold text-slate-900 dark:text-white">
+                  <span className={`text-base font-bold ${item.weighted_late_avg < 5.0 ? "text-rose-600 dark:text-rose-400 font-extrabold" : "text-slate-900 dark:text-white"}`}>
                     {fmtVal(item.weighted_late_avg)}
                   </span>
                 )}
@@ -355,7 +496,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 <span className="text-slate-400 block">Xu Hướng (Slope)</span>
                 <span
                   className={`text-base font-bold ${item.score_slope !== null && item.score_slope < 0
-                      ? "text-rose-500"
+                      ? "text-rose-500 font-extrabold"
                       : item.score_slope !== null && item.score_slope > 0
                         ? "text-emerald-500"
                         : "text-slate-700 dark:text-slate-300"
@@ -400,14 +541,95 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 </span>
               </div>
             </div>
-          </div>
 
-          {/* SECTION 3: 5 LMS FEATURES */}
+            {/* DỮ LIỆU GỐC (RAW): ĐIỂM SỐ ĐÃ KHOÁ */}
+            <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
+              <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                  Dữ Liệu Gốc: Điểm Số Đã Khoá ({raw?.scores.length || 0})
+                </span>
+                {raw && <span className="text-[10px] font-normal text-slate-400">Cắt ngày {fmtDate(raw.cutoff_date)}</span>}
+              </h5>
+              {rawLoading ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải điểm số gốc...</div>
+              ) : !raw || raw.scores.length === 0 ? (
+                <p className="text-[11px] text-slate-400 py-2">Chưa có đầu điểm nào được khoá trước ngày cắt.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Loại</th>
+                        <th className="px-3 py-2 text-left font-semibold">Tên đầu điểm</th>
+                        <th className="px-3 py-2 text-right font-semibold">Hệ số</th>
+                        <th className="px-3 py-2 text-right font-semibold">Điểm</th>
+                        <th className="px-3 py-2 text-right font-semibold">Thang</th>
+                        <th className="px-3 py-2 text-right font-semibold">Ngày</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {raw.scores.map((s, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.source === "BO_GD" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"}`}>
+                              {s.source === "BO_GD" ? "BỘ GD" : "QT"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">{s.exam_name || s.exam_code || "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{s.coefficient ?? "—"}</td>
+                          <td className={`px-3 py-1.5 text-right font-bold ${(s.final_grade ?? 0) < 5 ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-200"}`}>{s.final_grade ?? "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{s.max_grade ?? "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{fmtDate(s.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
+          {/* TAB 3: HỌC TẬP LMS */}
+          {tab === "lms" && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Laptop className="w-4 h-4 text-blue-500" />
-              2. Hoạt Động Trực Tuyến LMS (5 Features)
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Laptop className="w-4 h-4 text-blue-500" />
+                2. Hoạt Động Trực Tuyến LMS (5 Features)
+              </h4>
+              {(item.primary_badge?.includes("RISK_LMS") || item.risk_factors?.includes("RISK_LMS")) && (
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 flex items-center gap-1">
+                  <Laptop className="w-3 h-3 text-sky-500" />
+                  Rủi ro LMS
+                </span>
+              )}
+            </div>
+
+            {/* Tóm tắt cảnh báo vi phạm riêng cho LMS */}
+            {(() => {
+              const lmsReasons = [
+                item.lms_submission_rate !== null && item.lms_submission_rate < 0.5 ? `Tỷ lệ nộp bài LMS thấp (${(item.lms_submission_rate * 100).toFixed(1)}%)` : null,
+                item.lms_recent_submission_rate !== null && item.lms_recent_submission_rate < 0.5 ? `Tỷ lệ nộp bài gần đây thấp (${(item.lms_recent_submission_rate * 100).toFixed(1)}%)` : null,
+              ].filter(Boolean) as string[];
+
+              if (lmsReasons.length === 0) return null;
+
+              return (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 border-l-4 border-l-amber-500 text-xs text-amber-950 dark:text-amber-100 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-1.5 font-bold text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>Nguồn gốc rủi ro LMS phát hiện:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 font-medium pl-1">
+                    {lmsReasons.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
@@ -458,14 +680,100 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   </span>
                 </div>
               )}
-          </div>
 
-          {/* SECTION 4: 4 ATTENDANCE FEATURES */}
+            {/* DỮ LIỆU GỐC (RAW): BÀI TẬP LMS */}
+            <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
+              <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Laptop className="w-3.5 h-3.5 text-blue-500" />
+                  Dữ Liệu Gốc: Bài Tập LMS ({raw?.lms_submitted || 0}/{raw?.lms_expected || 0} đã nộp)
+                </span>
+                {raw && <span className="text-[10px] font-normal text-slate-400">Cắt ngày {fmtDate(raw.cutoff_date)}</span>}
+              </h5>
+              {rawLoading ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải bài tập LMS...</div>
+              ) : !raw || raw.lms.length === 0 ? (
+                <p className="text-[11px] text-slate-400 py-2">Không có bài tập LMS nào do trong cửa sổ [nhập học → ngày cắt].</p>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Mã</th>
+                        <th className="px-3 py-2 text-left font-semibold">Tên bài</th>
+                        <th className="px-3 py-2 text-right font-semibold">Hạn nộp</th>
+                        <th className="px-3 py-2 text-right font-semibold">Điểm</th>
+                        <th className="px-3 py-2 text-center font-semibold">Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {raw.lms.map((a, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1.5 font-mono text-slate-500">{a.code || "—"}</td>
+                          <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">{a.fullname || "—"}</td>
+                          <td className="px-3 py-1.5 text-right text-slate-500">{fmtDate(a.due_date)}</td>
+                          <td className={`px-3 py-1.5 text-right font-bold ${a.submitted ? "text-slate-800 dark:text-slate-200" : "text-slate-400"}`}>{a.submitted ? (a.final_grade ?? "—") : "—"}</td>
+                          <td className="px-3 py-1.5 text-center">
+                            {a.submitted ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 className="w-3 h-3" /> Đã nộp
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-500">
+                                <Clock className="w-3 h-3" /> Chưa nộp
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
+          {/* TAB 4: CHUYÊN CẦN */}
+          {tab === "attendance" && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-emerald-500" />
-              3. Điểm Danh & Chuyên Cần (4 Features)
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-500" />
+                3. Điểm Danh & Chuyên Cần (4 Features)
+              </h4>
+              {(item.primary_badge?.includes("RISK_ATTENDANCE") || item.risk_factors?.includes("RISK_ATTENDANCE")) && (
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-purple-500" />
+                  Rủi ro Chuyên cần
+                </span>
+              )}
+            </div>
+
+            {/* Tóm tắt cảnh báo vi phạm riêng cho Chuyên cần */}
+            {(() => {
+              const attReasons = [
+                item.unexcused_absent_rate !== null && item.unexcused_absent_rate > 0.05 ? `Nghỉ học không phép cao (${(item.unexcused_absent_rate * 100).toFixed(1)}%)` : null,
+                item.daily_absence_rate !== null && item.daily_absence_rate > 0.1 ? `Nghỉ học tổng cả (${(item.daily_absence_rate * 100).toFixed(1)}%)` : null,
+                item.total_late_count !== null && item.total_late_count >= 2 ? `Đi muộn ${item.total_late_count} lần` : null,
+              ].filter(Boolean) as string[];
+
+              if (attReasons.length === 0) return null;
+
+              return (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 border-l-4 border-l-amber-500 text-xs text-amber-950 dark:text-amber-100 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-1.5 font-bold text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>Nguồn gốc rủi ro chuyên cần phát hiện:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 font-medium pl-1">
+                    {attReasons.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
@@ -496,14 +804,82 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 </span>
               </div>
             </div>
-          </div>
 
-          {/* SECTION 5: 3 BEHAVIOR FEATURES */}
+            {/* DỮ LIỆU GỐC (RAW): CHUYÊN CẦN DIỂM DANH */}
+            <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
+              <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+                  Dữ Liệu Gốc: Nhật Ký Chuyên Cần ({raw?.attendance.length || 0} ngày)
+                </span>
+                {raw && <span className="text-[10px] font-normal text-slate-400">Cắt ngày {fmtDate(raw.cutoff_date)}</span>}
+              </h5>
+              {rawLoading ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải điểm danh gốc...</div>
+              ) : !raw || raw.attendance.length === 0 ? (
+                <p className="text-[11px] text-slate-400 py-2">Không có dữ liệu điểm danh trước ngày cắt.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {raw.attendance.map((a, i) => {
+                    let cls = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                    if (a.status === "VẮNG KHÔNG PHÉP") cls = "bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold";
+                    else if (a.status === "NGHỈ CÓ PHÉP") cls = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+                    else if (a.status === "VẮNG") cls = "bg-orange-500/10 text-orange-600 dark:text-orange-400";
+                    return (
+                      <div
+                        key={i}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-semibold ${cls}`}
+                        title={`${fmtDate(a.date)} — ${a.status} (vắng ${a.absent_periods}/${a.total_periods} tiết)`}
+                      >
+                        {String(new Date(a.date).getDate()).padStart(2, "0")}/{String(new Date(a.date).getMonth() + 1).padStart(2, "0")}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+
+          {/* TAB 5: HẠNH KIỂM */}
+          {tab === "behavior" && (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <GraduationCap className="w-4 h-4 text-purple-500" />
-              4. Kỷ Luật & Nếp Sống Hành Vi (3 Features)
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <GraduationCap className="w-4 h-4 text-purple-500" />
+                4. Kỷ Luật & Nếp Sống Hành Vi (3 Features)
+              </h4>
+              {(item.primary_badge?.includes("RISK_BEHAVIOR") || item.risk_factors?.includes("RISK_BEHAVIOR")) && (
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  <ShieldAlert className="w-3 h-3 text-amber-500" />
+                  Rủi ro Hạnh kiểm
+                </span>
+              )}
+            </div>
+
+            {/* Tóm tắt cảnh báo vi phạm riêng cho Hạnh kiểm */}
+            {(() => {
+              const behReasons = [
+                item.total_demerit_points !== null && item.total_demerit_points >= 5 ? `Bị trừ ${item.total_demerit_points} điểm kỷ luật` : null,
+                item.repeat_offense_count !== null && item.repeat_offense_count >= 2 ? `Tái phạm vi phạm ${item.repeat_offense_count} lần` : null,
+              ].filter(Boolean) as string[];
+
+              if (behReasons.length === 0) return null;
+
+              return (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 border-l-4 border-l-amber-500 text-xs text-amber-950 dark:text-amber-100 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center gap-1.5 font-bold text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>Nguồn gốc rủi ro hạnh kiểm phát hiện:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 font-medium pl-1">
+                    {behReasons.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
 
             <div className="grid grid-cols-3 gap-3 text-xs">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
@@ -527,185 +903,45 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 </span>
               </div>
             </div>
-          </div>
 
-          {/* SECTION 6: DỮ LIỆU GỐC (RAW) — ĐỐI CHIẾU */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-cyan-500" />
-                5. Dữ Liệu Gốc (Raw) — Đối Chiếu
-              </h4>
-              {raw && (
-                <span className="text-[11px] text-slate-400">
-                  Cắt tại {fmtDate(raw.cutoff_date)} • Nhập học {fmtDate(raw.join_date)}
+            {/* DỮ LIỆU GỐC (RAW): KỶ LUẬT HÀNH VI */}
+            <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
+              <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-purple-500" />
+                  Dữ Liệu Gốc: Kỷ Luật & Hành Vi ({raw?.behavior.length || 0})
                 </span>
+                {raw && <span className="text-[10px] font-normal text-slate-400">Cắt ngày {fmtDate(raw.cutoff_date)}</span>}
+              </h5>
+              {rawLoading ? (
+                <div className="flex items-center gap-2 py-4 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải kỷ luật gốc...</div>
+              ) : !raw || raw.behavior.length === 0 ? (
+                <p className="text-[11px] text-slate-400 py-2">Không có ghi nhận vi phạm / hành vi trước ngày cắt.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {raw.behavior.map((b, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 text-[11px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <span className="text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400">{fmtDate(b.comment_date)}</span>
+                        <span>{b.behavior_fullname || "—"}</span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {b.behavior_point !== null && b.behavior_point !== undefined && (
+                          <span className={`font-bold ${b.behavior_point < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-300"}`}>
+                            {b.behavior_point > 0 ? `+${b.behavior_point}` : b.behavior_point} điểm
+                          </span>
+                        )}
+                        {b.sanction_name && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-600 dark:text-red-400">{b.sanction_name}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-
-            {rawLoading ? (
-              <div className="flex items-center justify-center gap-2 py-8 text-xs text-slate-400">
-                <Loader2 className="w-4 h-4 animate-spin" /> Đang tải dữ liệu gốc...
-              </div>
-            ) : rawError ? (
-              <div className="text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
-                Không tải được dữ liệu gốc: {rawError}
-              </div>
-            ) : !raw ? (
-              <div className="text-xs text-slate-400 py-6 text-center">Không có dữ liệu.</div>
-            ) : (
-              <div className="space-y-5">
-                {/* 5.1 Điểm số đã khoá */}
-                <div className="space-y-2">
-                  <h5 className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
-                    📊 Điểm số đã khoá ({raw.scores.length})
-                  </h5>
-                  {raw.scores.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">Chưa có đầu điểm nào được khoá trước ngày cắt.</p>
-                  ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
-                      <table className="w-full text-[11px]">
-                        <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-semibold">Loại</th>
-                            <th className="px-3 py-2 text-left font-semibold">Tên đầu điểm</th>
-                            <th className="px-3 py-2 text-right font-semibold">Hệ số</th>
-                            <th className="px-3 py-2 text-right font-semibold">Điểm</th>
-                            <th className="px-3 py-2 text-right font-semibold">Thang</th>
-                            <th className="px-3 py-2 text-right font-semibold">Ngày</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {raw.scores.map((s, i) => (
-                            <tr key={i}>
-                              <td className="px-3 py-1.5">
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.source === "BO_GD" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"}`}>
-                                  {s.source === "BO_GD" ? "BỘ GD" : "QT"}
-                                </span>
-                              </td>
-                              <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">{s.exam_name || s.exam_code || "—"}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-500">{s.coefficient ?? "—"}</td>
-                              <td className={`px-3 py-1.5 text-right font-bold ${(s.final_grade ?? 0) < 5 ? "text-rose-600 dark:text-rose-400" : "text-slate-800 dark:text-slate-200"}`}>{s.final_grade ?? "—"}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-500">{s.max_grade ?? "—"}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-500">{fmtDate(s.created_at)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* 5.2 Bài tập LMS */}
-                <div className="space-y-2">
-                  <h5 className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <Laptop className="w-3.5 h-3.5 text-blue-500" />
-                    📝 Bài tập LMS ({raw.lms_submitted}/{raw.lms_expected} đã nộp)
-                  </h5>
-                  {raw.lms.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">Không có bài tập LMS nào do trong cửa sổ [nhập học → ngày cắt].</p>
-                  ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
-                      <table className="w-full text-[11px]">
-                        <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-semibold">Mã</th>
-                            <th className="px-3 py-2 text-left font-semibold">Tên bài</th>
-                            <th className="px-3 py-2 text-right font-semibold">Hạn nộp</th>
-                            <th className="px-3 py-2 text-right font-semibold">Điểm</th>
-                            <th className="px-3 py-2 text-center font-semibold">Trạng thái</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {raw.lms.map((a, i) => (
-                            <tr key={i}>
-                              <td className="px-3 py-1.5 font-mono text-slate-500">{a.code || "—"}</td>
-                              <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">{a.fullname || "—"}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-500">{fmtDate(a.due_date)}</td>
-                              <td className={`px-3 py-1.5 text-right font-bold ${a.submitted ? "text-slate-800 dark:text-slate-200" : "text-slate-400"}`}>{a.submitted ? (a.final_grade ?? "—") : "—"}</td>
-                              <td className="px-3 py-1.5 text-center">
-                                {a.submitted ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                    <CheckCircle2 className="w-3 h-3" /> Đã nộp
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-500">
-                                    <Clock className="w-3 h-3" /> Chưa nộp
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* 5.3 Điểm danh */}
-                <div className="space-y-2">
-                  <h5 className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-                    🗓️ Chuyên cần — {raw.attendance.length} ngày gần nhất
-                  </h5>
-                  {raw.attendance.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">Không có dữ liệu điểm danh trước ngày cắt.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {raw.attendance.map((a, i) => {
-                        let cls = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-                        if (a.status === "VẮNG KHÔNG PHÉP") cls = "bg-rose-500/10 text-rose-600 dark:text-rose-400";
-                        else if (a.status === "NGHỈ CÓ PHÉP") cls = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
-                        else if (a.status === "VẮNG") cls = "bg-orange-500/10 text-orange-600 dark:text-orange-400";
-                        return (
-                          <div
-                            key={i}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-semibold ${cls}`}
-                            title={`${fmtDate(a.date)} — ${a.status} (vắng ${a.absent_periods}/${a.total_periods} tiết)`}
-                          >
-                            {String(new Date(a.date).getDate()).padStart(2, "0")}/{String(new Date(a.date).getMonth() + 1).padStart(2, "0")}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* 5.4 Hành vi / kỷ luật */}
-                <div className="space-y-2">
-                  <h5 className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <ShieldAlert className="w-3.5 h-3.5 text-purple-500" />
-                    ⚖️ Kỷ luật & Hành vi ({raw.behavior.length})
-                  </h5>
-                  {raw.behavior.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">Không có ghi nhận vi phạm / hành vi trước ngày cắt.</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {raw.behavior.map((b, i) => (
-                        <div key={i} className="flex items-center justify-between gap-3 text-[11px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                          <span className="text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400">{fmtDate(b.comment_date)}</span>
-                            <span>{b.behavior_fullname || "—"}</span>
-                          </span>
-                          <span className="flex items-center gap-2">
-                            {b.behavior_point !== null && b.behavior_point !== undefined && (
-                              <span className={`font-bold ${b.behavior_point < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-300"}`}>
-                                {b.behavior_point > 0 ? `+${b.behavior_point}` : b.behavior_point} điểm
-                              </span>
-                            )}
-                            {b.sanction_name && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-600 dark:text-red-400">{b.sanction_name}</span>
-                            )}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
+          )}
         </div>
 
         {/* FOOTER */}

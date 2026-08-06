@@ -350,10 +350,10 @@ def get_ews_overview(
     Endpoint 2: Lấy dữ liệu KPI tổng quan phân hệ EWS (Tổng số dự báo, số lượng theo 4 mức, top môn rủi ro).
     """
     rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
-    # Ngưỡng badge từ config hiệu lực theo trường — dùng cho RISK_FACTOR_CONDITIONS (chart tròn)
+    # Ngưỡng badge từ config hiệu lực theo trường — mốc bắt đầu MODERATE (thresholds["LOW"], mặc định 20.0)
     threshold_moderate = ews_config_service.get_effective_config(
         db, current_user.so_school_id
-    ).thresholds.get("MODERATE", 25.0)
+    ).thresholds.get("LOW", 20.0)
     base_params = {
         "sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week,
         "mv": model_version, "threshold_moderate": threshold_moderate,
@@ -543,9 +543,10 @@ def get_ews_predictions(
     }
 
     # Ngưỡng badge từ config hiệu lực theo trường (BGH tinh chỉnh trong "Tinh chỉnh trọng số EWS")
+    # Mốc bắt đầu MODERATE chính là thresholds["LOW"] (vd 20.0 trong ảnh setting của trường)
     threshold_moderate = ews_config_service.get_effective_config(
         db, current_user.so_school_id
-    ).thresholds.get("MODERATE", 25.0)
+    ).thresholds.get("LOW", 20.0)
     params["threshold_moderate"] = threshold_moderate
 
     rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
