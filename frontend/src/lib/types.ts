@@ -976,6 +976,8 @@ export interface EwsPredictionRow {
   risk_level: EwsRiskLevel;
   risk_probability: number | null;
   risk_factors: string[];
+  primary_badge: string[];
+  risk_factor_details: string[];
   evaluated_at_date: string | null;
   cutoff_date: string | null;
   join_date: string | null;

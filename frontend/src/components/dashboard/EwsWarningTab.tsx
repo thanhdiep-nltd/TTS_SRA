@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   AlertTriangle,
   Award,
+  BookOpen,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Filter,
   Info,
+  Laptop,
   Loader2,
   Search,
   ShieldAlert,
@@ -46,27 +50,104 @@ import {
 
 const PAGE_SIZE = 10;
 
-const FACTOR_VI: Record<string, { label: string; icon: string; color: string }> = {
-  // Điểm số
-  SLOPE_DOWN: { label: "Tụt dốc điểm", icon: "📉", color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
-  LAST_SCORE_LOW: { label: "Bài thi gần nhất rớt", icon: "⚠️", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-  SCORE_VOLATILE: { label: "Điểm biến động mạnh", icon: "🎢", color: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20" },
-  MAX_DROP_HIGH: { label: "Tụt điểm lớn", icon: "📉", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
-  HIGH_WEIGHT_FAIL: { label: "Trượt bài hệ số cao", icon: "🧮", color: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20" },
-  // LMS
-  LMS_LOW_SUBMISSION: { label: "Nộp bài LMS thấp", icon: "📤", color: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20" },
-  LMS_LOW_SCORE: { label: "Điểm LMS thấp", icon: "💻", color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20" },
-  LMS_DROP: { label: "Điểm LMS suy giảm", icon: "📉", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
-  LMS_GAP: { label: "Lệch điểm LMS", icon: "⚖️", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" },
-  // Chuyên cần
-  ABSENTEEISM: { label: "Vắng học nhiều", icon: "🚫", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
-  UNEXCUSED_ABSENT: { label: "Nghỉ không phép", icon: "🏃", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-  LATE_MANY: { label: "Đi muộn nhiều", icon: "⏰", color: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20" },
-  // Hạnh kiểm
-  DEMERIT_HIGH: { label: "Nhiều điểm trừ hạnh kiểm", icon: "📛", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
-  REPEAT_OFFENSE: { label: "Tái phạm nhiều lần", icon: "🔁", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20" },
-  SEVERE_SANCTION: { label: "Kỷ luật nặng", icon: "⛔", color: "bg-red-600/10 text-red-700 dark:text-red-400 border-red-600/20" },
+const FACTOR_VI: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  // 4 Cờ Nhóm Nguyên Nhân (4 Domain Badges) sử dụng Lucide Icons
+  RISK_SCORE: {
+    label: "Rủi ro Điểm số",
+    icon: <BookOpen className="w-3 h-3 shrink-0 text-rose-500" />,
+    color: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25",
+  },
+  RISK_LMS: {
+    label: "Rủi ro Học tập LMS",
+    icon: <Laptop className="w-3 h-3 shrink-0 text-sky-500" />,
+    color: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25",
+  },
+  RISK_ATTENDANCE: {
+    label: "Rủi ro Chuyên cần",
+    icon: <Clock className="w-3 h-3 shrink-0 text-purple-500" />,
+    color: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/25",
+  },
+  RISK_BEHAVIOR: {
+    label: "Rủi ro Hạnh kiểm",
+    icon: <ShieldAlert className="w-3 h-3 shrink-0 text-amber-500" />,
+    color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25",
+  },
 };
+
+interface CustomSelectOption {
+  value: string;
+  label: string;
+  icon?: React.ReactNode;
+}
+
+function CustomDropdownSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "Tất cả",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: CustomSelectOption[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = options.find((o) => o.value === value) || options[0];
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 flex items-center justify-between font-medium hover:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-xs"
+      >
+        <span className="flex items-center gap-2 truncate">
+          {selected?.icon}
+          <span className="truncate">{selected?.label || placeholder}</span>
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 min-w-[160px]">
+          {options.map((opt) => {
+            const active = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                className={`w-full text-left text-xs px-3 py-2 flex items-center gap-2 transition-colors ${
+                  active
+                    ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-semibold"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium"
+                }`}
+              >
+                {opt.icon}
+                <span className="truncate">{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Ngày bắt đầu học kỳ (khớp backend feature_extractor.base_start):
 //   HK1: 05/09/năm, HK2: 20/01/năm sau. Trả về chuỗi 'YYYY-MM-DD' để so sánh string (ISO-safe).
@@ -107,7 +188,77 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
   const [gradeId, setGradeId] = useState<string>("ALL");
   const [className, setClassName] = useState<string>("ALL");
   const [riskFactor, setRiskFactor] = useState<string>("ALL");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const RISK_LEVEL_OPTIONS = useMemo(
+    () => [
+      { value: "ALL", label: "Tất cả (All Levels)" },
+      {
+        value: "CRITICAL",
+        label: "CRITICAL (Nghiêm trọng)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 shadow-xs" />,
+      },
+      {
+        value: "HIGH",
+        label: "HIGH (Rủi ro cao)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 shadow-xs" />,
+      },
+      {
+        value: "MODERATE",
+        label: "MODERATE (Trung bình)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0 shadow-xs" />,
+      },
+      {
+        value: "LOW",
+        label: "LOW (An toàn)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 shadow-xs" />,
+      },
+    ],
+    []
+  );
+
+  const riskFactorOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả cờ nguyên nhân" }];
+    if (meta?.risk_factors) {
+      meta.risk_factors.forEach((rf) => {
+        const f = FACTOR_VI[rf.code];
+        opts.push({
+          value: rf.code,
+          label: rf.label,
+          icon: f?.icon,
+        });
+      });
+    }
+    return opts;
+  }, [meta]);
+
+  const subjectOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả môn học" }];
+    if (meta?.subjects) {
+      meta.subjects.forEach((sub) => {
+        opts.push({
+          value: String(sub.id),
+          label: `${sub.name} (${sub.code})`,
+        });
+      });
+    }
+    return opts;
+  }, [meta]);
+
+  const gradeOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả khối lớp" }];
+    if (meta?.grades) {
+      meta.grades.forEach((g) => {
+        opts.push({
+          value: String(g.grade_id),
+          label: g.grade_name,
+        });
+      });
+    }
+    return opts;
+  }, [meta]);
+
+
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
 
@@ -254,6 +405,17 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
     const gid = gradeId === "ALL" ? null : Number(gradeId);
     return gid === null ? meta.classes : meta.classes.filter((c) => c.grade_id === gid);
   }, [meta, gradeId]);
+
+  const classDropdownOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả các lớp" }];
+    classOptions.forEach((cls) => {
+      opts.push({
+        value: cls.class_name,
+        label: cls.class_name,
+      });
+    });
+    return opts;
+  }, [classOptions]);
 
   // Danh sách dự báo trên trang hiện tại (tìm kiếm đã chuyển sang server-side qua param q)
   const predictionItems = predictions?.items || [];
@@ -406,101 +568,72 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
           {/* 1. Mức Rủi Ro */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mức Rủi Ro</label>
-            <select
+            <CustomDropdownSelect
               value={riskLevel}
-              onChange={(e) => {
-                setRiskLevel(e.target.value);
+              onChange={(v) => {
+                setRiskLevel(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              <option value="ALL">Tất cả (All Levels)</option>
-              <option value="CRITICAL">🔴 CRITICAL (Nghiêm trọng)</option>
-              <option value="HIGH">🟠 HIGH (Rủi ro cao)</option>
-              <option value="MODERATE">🟡 MODERATE (Trung bình)</option>
-              <option value="LOW">🟢 LOW (An toàn)</option>
-            </select>
+              options={RISK_LEVEL_OPTIONS}
+              placeholder="Tất cả mức rủi ro"
+            />
           </div>
 
           {/* 3. Môn Học */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Môn Học</label>
-            <select
+            <CustomDropdownSelect
               value={subjectId}
-              onChange={(e) => {
-                setSubjectId(e.target.value);
+              onChange={(v) => {
+                setSubjectId(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả môn học</option>
-              {meta?.subjects.map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.name} ({sub.code})
-                </option>
-              ))}
-            </select>
+              options={subjectOptions}
+              placeholder="Tất cả môn học"
+            />
           </div>
 
           {/* 4. Khối Lớp */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Khối Lớp</label>
-            <select
+            <CustomDropdownSelect
               value={gradeId}
-              onChange={(e) => {
-                setGradeId(e.target.value);
+              onChange={(v) => {
+                setGradeId(v);
                 setClassName("ALL"); // lớp cũ có thể không thuộc khối mới
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả khối lớp</option>
-              {meta?.grades.map((g) => (
-                <option key={g.grade_id} value={g.grade_id}>
-                  {g.grade_name}
-                </option>
-              ))}
-            </select>
+              options={gradeOptions}
+              placeholder="Tất cả khối lớp"
+            />
           </div>
 
           {/* 5. Tên Lớp */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Lớp Học</label>
-            <select
+            <CustomDropdownSelect
               value={className}
-              onChange={(e) => {
-                setClassName(e.target.value);
+              onChange={(v) => {
+                setClassName(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả các lớp</option>
-              {classOptions.map((cls, idx) => (
-                <option key={idx} value={cls.class_name}>
-                  {cls.class_name}
-                </option>
-              ))}
-            </select>
+              options={classDropdownOptions}
+              placeholder="Tất cả các lớp"
+            />
           </div>
 
           {/* 6. Cờ Nguyên Nhân (Risk Badge) */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Cờ Nguyên Nhân</label>
-            <select
+            <CustomDropdownSelect
               value={riskFactor}
-              onChange={(e) => {
-                setRiskFactor(e.target.value);
+              onChange={(v) => {
+                setRiskFactor(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả cờ nguyên nhân</option>
-              {meta?.risk_factors.map((rf) => (
-                <option key={rf.code} value={rf.code}>
-                  {FACTOR_VI[rf.code]?.icon ?? "🏷️"} {rf.label}
-                </option>
-              ))}
-            </select>
+              options={riskFactorOptions}
+              placeholder="Tất cả cờ nguyên nhân"
+            />
           </div>
 
           {/* 7. Tìm kiếm Mã/Tên HS */}
@@ -628,18 +761,22 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         </span>
                       </td>
 
-                      {/* Risk Factors Badges */}
+                      {/* Risk Factors Badges (dùng primary_badge, fallback risk_factors cho backward compat) */}
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap gap-1">
-                          {item.risk_factors && item.risk_factors.length > 0 ? (
-                            item.risk_factors.map((f, fIdx) => {
-                              const metaF = FACTOR_VI[f] || { label: f, icon: "⚠️", color: "bg-slate-100 text-slate-600" };
+                          {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).length > 0 ? (
+                            (item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).map((f, fIdx) => {
+                              const metaF = FACTOR_VI[f] || {
+                                label: f,
+                                icon: <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />,
+                                color: "bg-slate-100 text-slate-700 border-slate-200",
+                              };
                               return (
                                 <span
                                   key={fIdx}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border ${metaF.color}`}
+                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border shadow-sm transition-all ${metaF.color}`}
                                 >
-                                  <span>{metaF.icon}</span>
+                                  {metaF.icon}
                                   <span>{metaF.label}</span>
                                 </span>
                               );

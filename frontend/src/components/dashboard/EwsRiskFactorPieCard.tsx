@@ -3,27 +3,12 @@
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { AlertTriangle } from "lucide-react";
 
-// Nhóm cờ nguyên nhân → 4 nhóm yếu tố chính (khớp phân nhóm trong UI & RISK_FACTOR_CONDITIONS backend)
+// Cờ nguyên nhân (4 domain) → 4 nhóm yếu tố chính (khớp primary_badge backend)
 const FACTOR_GROUP_BY_CODE: Record<string, string> = {
-    // Điểm số
-    SLOPE_DOWN: "Điểm số",
-    LAST_SCORE_LOW: "Điểm số",
-    SCORE_VOLATILE: "Điểm số",
-    MAX_DROP_HIGH: "Điểm số",
-    HIGH_WEIGHT_FAIL: "Điểm số",
-    // LMS
-    LMS_LOW_SUBMISSION: "LMS",
-    LMS_LOW_SCORE: "LMS",
-    LMS_DROP: "LMS",
-    LMS_GAP: "LMS",
-    // Chuyên cần
-    ABSENTEEISM: "Chuyên cần",
-    UNEXCUSED_ABSENT: "Chuyên cần",
-    LATE_MANY: "Chuyên cần",
-    // Hạnh kiểm
-    DEMERIT_HIGH: "Hạnh kiểm",
-    REPEAT_OFFENSE: "Hạnh kiểm",
-    SEVERE_SANCTION: "Hạnh kiểm",
+    RISK_SCORE: "Điểm số",
+    RISK_LMS: "LMS",
+    RISK_ATTENDANCE: "Chuyên cần",
+    RISK_BEHAVIOR: "Hạnh kiểm",
 };
 
 // Thứ tự & màu cho 4 nhóm chính

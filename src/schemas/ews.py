@@ -29,7 +29,9 @@ class EwsPredictionRow(BaseModel):
     risk_score: float = Field(..., description="Thang điểm rủi ro [0.00, 100.00]")
     risk_level: str = Field(..., description="LOW | MODERATE | HIGH | CRITICAL")
     risk_probability: Optional[float] = None
-    risk_factors: List[str] = Field(default_factory=list, description="Cơ chế cờ rủi ro: SLOPE_DOWN | LAST_SCORE_LOW | ABSENTEEISM")
+    risk_factors: List[str] = Field(default_factory=list, description="Cờ nguyên nhân (backward compat): RISK_SCORE | RISK_LMS | RISK_ATTENDANCE | RISK_BEHAVIOR (giữ = primary_badge)")
+    primary_badge: List[str] = Field(default_factory=list, description="1–4 Cờ chính (Multi-badge): domain có Contribution cao nhất + mọi domain có risk_i >= threshold_moderate (MODERATE trở lên, do BGH tinh chỉnh)")
+    risk_factor_details: List[str] = Field(default_factory=list, description="Mảng chuỗi mô tả chi tiết nguyên nhân phụ (VD: 'Rủi ro Điểm số (đóng góp 0.24)', 'Rủi ro Học tập LMS (đóng góp 0.27)')")
     evaluated_at_date: Optional[date] = None
     cutoff_date: Optional[date] = None  # Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     join_date: Optional[date] = None  # Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT
@@ -113,7 +115,7 @@ class EwsClassOption(BaseModel):
 
 class EwsRiskFactorOption(BaseModel):
     """Một tùy chọn cờ nguyên nhân (Risk Badge) cho bộ lọc."""
-    code: str = Field(..., description="Mã cờ (vd: SLOPE_DOWN, ABSENTEEISM)")
+    code: str = Field(..., description="Mã cờ (vd: RISK_SCORE, RISK_LMS, RISK_ATTENDANCE, RISK_BEHAVIOR)")
     label: str = Field(..., description="Nhãn tiếng Việt")
 
 

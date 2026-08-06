@@ -35,26 +35,32 @@ interface Props {
   semesterIndex?: number;
 }
 
-const FACTOR_MAP: Record<string, { label: string; icon: string; desc: string }> = {
-  // Điểm số
-  SLOPE_DOWN: { label: "Tụt dốc điểm số", icon: "📉", desc: "Xu hướng điểm số qua các bài thi rớt mạnh hơn -0.5 điểm/tuần" },
-  LAST_SCORE_LOW: { label: "Bài thi gần nhất rớt", icon: "⚠️", desc: "Bài kiểm tra mới nhất có điểm < 5.0" },
-  SCORE_VOLATILE: { label: "Điểm số biến động mạnh", icon: "🎢", desc: "Độ lệch chuẩn điểm số vượt quá 2.0" },
-  MAX_DROP_HIGH: { label: "Tụt điểm lớn", icon: "📉", desc: "Mức tụt điểm lớn nhất giữa các bài thi > 2.0" },
-  HIGH_WEIGHT_FAIL: { label: "Trượt bài hệ số cao", icon: "🧮", desc: "Bài kiểm tra hệ số cao gần nhất có điểm < 5.0" },
-  // LMS
-  LMS_LOW_SUBMISSION: { label: "Nộp bài LMS thấp", icon: "📤", desc: "Tỷ lệ nộp bài trên LMS dưới 50%" },
-  LMS_LOW_SCORE: { label: "Điểm LMS thấp", icon: "💻", desc: "Điểm trung bình bài tập LMS < 5.0" },
-  LMS_DROP: { label: "Điểm LMS suy giảm", icon: "📉", desc: "Điểm LMS gần đây tụt hơn 1.0 so với trước" },
-  LMS_GAP: { label: "Lệch điểm LMS", icon: "⚖️", desc: "Chênh lệch điểm LMS so với điểm lớp < -2.0" },
-  // Chuyên cần
-  ABSENTEEISM: { label: "Vắng học nhiều", icon: "🚫", desc: "Tỷ lệ nghỉ học vượt quá 10% số buổi học" },
-  UNEXCUSED_ABSENT: { label: "Nghỉ không phép", icon: "🏃", desc: "Tỷ lệ nghỉ không phép vượt quá 5%" },
-  LATE_MANY: { label: "Đi muộn nhiều", icon: "⏰", desc: "Tổng số lần đi muộn từ 5 lần trở lên" },
-  // Hạnh kiểm
-  DEMERIT_HIGH: { label: "Nhiều điểm trừ hạnh kiểm", icon: "📛", desc: "Tổng điểm trừ hạnh kiểm từ 5 điểm trở lên" },
-  REPEAT_OFFENSE: { label: "Tái phạm nhiều lần", icon: "🔁", desc: "Số lần tái phạm vi phạm từ 2 lần trở lên" },
-  SEVERE_SANCTION: { label: "Kỷ luật nặng", icon: "⛔", desc: "Có ít nhất 1 hình thức kỷ luật nặng" },
+const FACTOR_MAP: Record<string, { label: string; icon: React.ReactNode; color: string; desc: string }> = {
+  // 4 Cờ Nhóm Nguyên Nhân (4 Domain Badges) sử dụng Lucide Vector Icons
+  RISK_SCORE: {
+    label: "Rủi ro Điểm số",
+    icon: <BookOpen className="w-3.5 h-3.5 shrink-0 text-rose-500" />,
+    color: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25",
+    desc: "Điểm số là nguyên nhân chính dẫn tới rủi ro",
+  },
+  RISK_LMS: {
+    label: "Rủi ro Học tập LMS",
+    icon: <Laptop className="w-3.5 h-3.5 shrink-0 text-sky-500" />,
+    color: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25",
+    desc: "Hoạt động học tập trực tuyến LMS là nguyên nhân chính",
+  },
+  RISK_ATTENDANCE: {
+    label: "Rủi ro Chuyên cần",
+    icon: <Clock className="w-3.5 h-3.5 shrink-0 text-purple-500" />,
+    color: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/25",
+    desc: "Vắng học/đi muộn là nguyên nhân chính dẫn tới rủi ro",
+  },
+  RISK_BEHAVIOR: {
+    label: "Rủi ro Hạnh kiểm",
+    icon: <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-amber-500" />,
+    color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25",
+    desc: "Hạnh kiểm/kỷ luật là nguyên nhân chính dẫn tới rủi ro",
+  },
 };
 
 // Ngày bắt đầu học kỳ (khớp backend feature_extractor.base_start):
@@ -261,27 +267,48 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               </div>
             ) : null}
 
-            {/* CỜ NGUYÊN NHÂN BADGES */}
-            {item.risk_factors && item.risk_factors.length > 0 && (
+            {/* CỜ NGUYÊN NHÂN BADGES — dùng primary_badge (fallback risk_factors cho backward compat) */}
+            {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).length > 0 && (
               <div className="space-y-1.5 pt-2">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Các Nguyên Nhân Cảnh Báo Sớm:
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  {item.risk_factors.map((factor, idx) => {
-                    const metaF = FACTOR_MAP[factor] || { label: factor, icon: "⚠️", desc: "" };
+                  {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).map((factor, idx) => {
+                    const metaF = FACTOR_MAP[factor] || {
+                      label: factor,
+                      icon: <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />,
+                      color: "bg-slate-100 text-slate-700 border-slate-200",
+                      desc: "",
+                    };
                     return (
                       <div
                         key={idx}
-                        className="px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium flex items-center gap-1.5"
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 shadow-sm transition-all ${metaF.color}`}
                         title={metaF.desc}
                       >
-                        <span>{metaF.icon}</span>
+                        {metaF.icon}
                         <span>{metaF.label}</span>
                       </div>
                     );
                   })}
                 </div>
+                {/* Chi tiết nguyên nhân phụ (sub_reasons) — từ risk_factor_details */}
+                {item.risk_factor_details && item.risk_factor_details.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    <span className="text-[11px] font-medium text-slate-400">
+                      Chi tiết nguyên nhân:
+                    </span>
+                    <ul className="space-y-0.5">
+                      {item.risk_factor_details.map((detail, didx) => (
+                        <li key={didx} className="text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-1.5">
+                          <span className="mt-1 w-1 h-1 rounded-full bg-slate-400 flex-shrink-0" />
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -327,13 +354,12 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
                 <span className="text-slate-400 block">Xu Hướng (Slope)</span>
                 <span
-                  className={`text-base font-bold ${
-                    item.score_slope !== null && item.score_slope < 0
+                  className={`text-base font-bold ${item.score_slope !== null && item.score_slope < 0
                       ? "text-rose-500"
                       : item.score_slope !== null && item.score_slope > 0
-                      ? "text-emerald-500"
-                      : "text-slate-700 dark:text-slate-300"
-                  }`}
+                        ? "text-emerald-500"
+                        : "text-slate-700 dark:text-slate-300"
+                    }`}
                 >
                   {item.score_slope !== null && item.score_slope > 0 ? `+${item.score_slope.toFixed(2)}` : fmtVal(item.score_slope)}
                 </span>

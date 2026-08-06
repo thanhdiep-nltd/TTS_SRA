@@ -53,50 +53,139 @@ router = APIRouter(prefix="/ews", tags=["Early Warning System"])
 
 # Bản đồ Cờ Nguyên Nhân (Risk Badges) → điều kiện SQL.
 # Dùng chung cho cả việc sinh mảng risk_factors (SELECT) và bộ lọc risk_factor (WHERE).
+# Mô hình 4 Cờ Nhóm Nguyên Nhân (4 Domain Badges) — thay thế 15 rule cũ.
+# Multi-badge: gắn cờ cho MỌI domain có risk_i >= threshold_moderate (MODERATE trở lên),
+# ngưỡng do BGH định nghĩa trong "Tinh chỉnh trọng số EWS" (config hiệu lực theo trường).
 RISK_FACTOR_CONDITIONS: dict[str, str] = {
-    # --- Điểm số ---
-    "SLOPE_DOWN": "rp.score_slope IS NOT NULL AND rp.score_slope < -0.5",
-    "LAST_SCORE_LOW": "rp.last_score IS NOT NULL AND rp.last_score < 5.0",
-    "SCORE_VOLATILE": "rp.score_volatility IS NOT NULL AND rp.score_volatility > 2.0",
-    "MAX_DROP_HIGH": "rp.max_drop IS NOT NULL AND rp.max_drop > 2.0",
-    "HIGH_WEIGHT_FAIL": "rp.last_high_weight_score IS NOT NULL AND rp.last_high_weight_score < 5.0",
-    # --- LMS ---
-    "LMS_LOW_SUBMISSION": "rp.lms_submission_rate IS NOT NULL AND rp.lms_submission_rate < 0.5",
-    "LMS_LOW_SCORE": "rp.lms_avg_score IS NOT NULL AND rp.lms_avg_score < 5.0",
-    "LMS_DROP": "rp.lms_recent_drop IS NOT NULL AND rp.lms_recent_drop > 1.0",
-    "LMS_GAP": "rp.lms_gradebook_gap IS NOT NULL AND rp.lms_gradebook_gap < -2.0",
-    # --- Chuyên cần ---
-    "ABSENTEEISM": "rp.daily_absence_rate IS NOT NULL AND rp.daily_absence_rate > 0.1",
-    "UNEXCUSED_ABSENT": "rp.unexcused_absent_rate IS NOT NULL AND rp.unexcused_absent_rate > 0.05",
-    "LATE_MANY": "rp.total_late_count IS NOT NULL AND rp.total_late_count >= 5",
-    # --- Hạnh kiểm ---
-    "DEMERIT_HIGH": "rp.total_demerit_points IS NOT NULL AND rp.total_demerit_points >= 5",
-    "REPEAT_OFFENSE": "rp.repeat_offense_count IS NOT NULL AND rp.repeat_offense_count >= 2",
-    "SEVERE_SANCTION": "rp.severe_sanction_count IS NOT NULL AND rp.severe_sanction_count >= 1",
+    "RISK_SCORE": "rp.score_risk >= :threshold_moderate",
+    "RISK_LMS": "rp.lms_risk >= :threshold_moderate",
+    "RISK_ATTENDANCE": "rp.attendance_risk >= :threshold_moderate",
+    "RISK_BEHAVIOR": "rp.behavior_risk >= :threshold_moderate",
 }
 
-# Nhãn tiếng Việt cho từng cờ nguyên nhân (dùng cho bộ lọc + hiển thị badge).
-_RISK_FACTOR_LABELS: dict[str, str] = {
-    # --- Điểm số ---
-    "SLOPE_DOWN": "Điểm số suy giảm",
-    "LAST_SCORE_LOW": "Điểm gần nhất thấp",
-    "SCORE_VOLATILE": "Điểm số biến động mạnh",
-    "MAX_DROP_HIGH": "Tụt điểm lớn",
-    "HIGH_WEIGHT_FAIL": "Trượt bài hệ số cao",
-    # --- LMS ---
-    "LMS_LOW_SUBMISSION": "Nộp bài LMS thấp",
-    "LMS_LOW_SCORE": "Điểm LMS thấp",
-    "LMS_DROP": "Điểm LMS suy giảm",
-    "LMS_GAP": "Lệch điểm LMS",
-    # --- Chuyên cần ---
-    "ABSENTEEISM": "Nghỉ học nhiều",
-    "UNEXCUSED_ABSENT": "Nghỉ không phép",
-    "LATE_MANY": "Đi muộn nhiều",
-    # --- Hạnh kiểm ---
-    "DEMERIT_HIGH": "Nhiều điểm trừ hạnh kiểm",
-    "REPEAT_OFFENSE": "Tái phạm nhiều lần",
-    "SEVERE_SANCTION": "Kỷ luật nặng",
+# Mapping alias backward compatibility: OLD_CODE → NEW_CODE.
+# Giúp client cũ (truyền SLOPE_DOWN, ABSENTEEISM...) vẫn hoạt động sau khi đổi sang 4 cờ nhóm.
+_RISK_FACTOR_ALIAS: dict[str, str] = {
+    # Điểm số
+    "SLOPE_DOWN": "RISK_SCORE",
+    "LAST_SCORE_LOW": "RISK_SCORE",
+    "SCORE_VOLATILE": "RISK_SCORE",
+    "MAX_DROP_HIGH": "RISK_SCORE",
+    "HIGH_WEIGHT_FAIL": "RISK_SCORE",
+    # LMS
+    "LMS_LOW_SUBMISSION": "RISK_LMS",
+    "LMS_LOW_SCORE": "RISK_LMS",
+    "LMS_DROP": "RISK_LMS",
+    "LMS_GAP": "RISK_LMS",
+    # Chuyên cần
+    "ABSENTEEISM": "RISK_ATTENDANCE",
+    "UNEXCUSED_ABSENT": "RISK_ATTENDANCE",
+    "LATE_MANY": "RISK_ATTENDANCE",
+    # Hạnh kiểm
+    "DEMERIT_HIGH": "RISK_BEHAVIOR",
+    "REPEAT_OFFENSE": "RISK_BEHAVIOR",
+    "SEVERE_SANCTION": "RISK_BEHAVIOR",
 }
+
+# Nhãn tiếng Việt cho 4 cờ nhóm (dùng cho bộ lọc + hiển thị badge).
+_RISK_FACTOR_LABELS: dict[str, str] = {
+    "RISK_SCORE": "Rủi ro Điểm số",
+    "RISK_LMS": "Rủi ro Học tập LMS",
+    "RISK_ATTENDANCE": "Rủi ro Chuyên cần",
+    "RISK_BEHAVIOR": "Rủi ro Hạnh kiểm",
+}
+
+# Ngưỡng gating: risk_score < 25 (thang 0–100) tương đương mức LOW.
+_RISK_GATING_THRESHOLD = 25.0
+
+
+def _evaluate_primary_risk_badge(
+    risk_level: str | None,
+    risk_score: float | None,
+    score_risk: float | None,
+    lms_risk: float | None,
+    attendance_risk: float | None,
+    behavior_risk: float | None,
+    weight_score: float | None,
+    weight_lms: float | None,
+    weight_attendance: float | None,
+    weight_behavior: float | None,
+    threshold_moderate: float,
+) -> tuple[list[str], list[str]]:
+    """Xác định Primary Badge (1–4 Cờ) + danh sách mô tả chi tiết nguyên nhân phụ.
+
+    Multi-badge theo ngưỡng (MODERATE trở lên) — không giới hạn số cờ:
+    1. Smart Gating: risk_level == 'LOW' hoặc risk_score < 25 → không có cờ.
+    2. Tính Contribution_i = weight_i * risk_i cho 4 domain.
+    3. Primary Badge = domain có Contribution cao nhất (luôn hiện, nhấn mạnh).
+    4. Badge bổ sung = MỌI domain có risk_i >= threshold_moderate (tối đa 4 cờ).
+    5. Fallback v1_single: nếu cả 4 risk_* đều NULL → dùng weight_* thuần,
+       domain nào weight >= threshold_moderate/100 cũng được gắn cờ.
+       - Nếu vẫn không có weight → mặc định RISK_SCORE.
+    6. Sinh risk_factor_details (mô tả chi tiết nguyên nhân phụ) cho Drawer.
+
+    Trả về (primary_badge, risk_factor_details).
+    """
+    # 1. Smart Gating
+    if risk_level == "LOW" or (risk_score is not None and risk_score < _RISK_GATING_THRESHOLD):
+        return [], []
+
+    # 2. Tính Contribution cho 4 domain
+    domains = [
+        ("RISK_SCORE", weight_score, score_risk),
+        ("RISK_LMS", weight_lms, lms_risk),
+        ("RISK_ATTENDANCE", weight_attendance, attendance_risk),
+        ("RISK_BEHAVIOR", weight_behavior, behavior_risk),
+    ]
+
+    # 5. Fallback v1_single: nếu cả 4 risk_* đều NULL → dùng weight_* thuần
+    all_risk_null = all(r is None for _, _, r in domains)
+    contributions: list[tuple[str, float]] = []
+    for code, w, r in domains:
+        if all_risk_null:
+            # Fallback: dùng weight thuần (mức đóng góp học được từ model)
+            contrib = w if w is not None else 0.0
+        else:
+            # Bình thường: weight * risk (xử lý NULL → 0 để tránh TypeError)
+            contrib = (w or 0.0) * (r or 0.0)
+        contributions.append((code, contrib))
+
+    # 3. Chọn domain có Contribution cao nhất
+    max_contrib = max(c for _, c in contributions)
+    if max_contrib <= 0:
+        # Không có contribution nào > 0 → mặc định RISK_SCORE (rủi ro học tập là chính)
+        return ["RISK_SCORE"], ["Rủi ro học tập là nguyên nhân chính (không có dữ liệu trụ cột chi tiết)"]
+
+    # 4. Multi-badge: gắn cờ cho MỌI domain đạt ngưỡng
+    #    - Primary = domain có Contribution cao nhất
+    #    - Bổ sung: mọi domain có risk >= threshold_moderate (MODERATE trở lên)
+    #    - Khi risk_* NULL (v1_single): dùng weight thuần >= threshold_moderate/100
+    #    - Sắp xếp giảm dần theo contribution để hiển thị primary đầu tiên
+    contributions.sort(key=lambda x: x[1], reverse=True)
+    primary_badge = [contributions[0][0]]
+    risk_threshold_frac = threshold_moderate / 100.0
+
+    # Duyệt `domains` (chứa bộ (code, weight, risk)) — contributions chỉ chứa (code, contrib).
+    for code, w, r in domains:
+        if code == primary_badge[0]:
+            continue
+        if all_risk_null:
+            # v1_single: weight thuần phản ánh độ đóng góp học được
+            if w is not None and w >= risk_threshold_frac:
+                primary_badge.append(code)
+        else:
+            # v2_ensemble: risk_i >= threshold_moderate
+            if r is not None and r >= threshold_moderate:
+                primary_badge.append(code)
+
+    # 6. Xây dựng risk_factor_details (mô tả chi tiết nguyên nhân phụ)
+    details: list[str] = []
+    for code, contrib in contributions:
+        if contrib > 0:
+            label = _RISK_FACTOR_LABELS.get(code, code)
+            details.append(f"{label} (đóng góp {contrib:.2f})")
+
+    return primary_badge, details
 
 
 def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
@@ -261,7 +350,15 @@ def get_ews_overview(
     Endpoint 2: Lấy dữ liệu KPI tổng quan phân hệ EWS (Tổng số dự báo, số lượng theo 4 mức, top môn rủi ro).
     """
     rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
-    base_params = {"sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week, "mv": model_version, **rbac_params}
+    # Ngưỡng badge từ config hiệu lực theo trường — dùng cho RISK_FACTOR_CONDITIONS (chart tròn)
+    threshold_moderate = ews_config_service.get_effective_config(
+        db, current_user.so_school_id
+    ).thresholds.get("MODERATE", 25.0)
+    base_params = {
+        "sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week,
+        "mv": model_version, "threshold_moderate": threshold_moderate,
+        **rbac_params,
+    }
 
     summary_sql = text(f"""
         SELECT
@@ -421,7 +518,7 @@ def get_ews_predictions(
     class_name: str | None = Query(None, description="Tên lớp"),
     q: str | None = Query(None, description="Tìm kiếm theo mã/tên học sinh hoặc tên môn học (ILIKE)"),
     min_risk_score: float | None = Query(None, description="Lọc risk_score tối thiểu"),
-    risk_factor: str | None = Query(None, description="Lọc theo cờ nguyên nhân (SLOPE_DOWN, ABSENTEEISM, LMS_LOW_SUBMISSION, ...)"),
+    risk_factor: str | None = Query(None, description="Lọc theo cờ nguyên nhân (RISK_SCORE, RISK_LMS, RISK_ATTENDANCE, RISK_BEHAVIOR; vẫn hỗ trợ code cũ SLOPE_DOWN, ABSENTEEISM, ...)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = None,
@@ -429,7 +526,10 @@ def get_ews_predictions(
 ):
     """
     Endpoint 3: Lấy danh sách bản ghi dự báo rủi ro chi tiết (có phân trang Server-side + filters).
-    Tự động tính mảng cờ rủi ro `risk_factors` (SLOPE_DOWN, LAST_SCORE_LOW, ABSENTEEISM, ...).
+    Tự động tính Multi-badge (1–4 cờ) theo 4 Domain, ngưỡng = threshold_moderate
+    (MODERATE trở lên) từ config hiệu lực của trường (BGH tinh chỉnh):
+    RISK_SCORE | RISK_LMS | RISK_ATTENDANCE | RISK_BEHAVIOR.
+    `risk_factors` giữ = primary_badge (backward compat với client cũ).
     """
     where_clauses = [
         "rp.school_year_id = :sy",
@@ -441,6 +541,12 @@ def get_ews_predictions(
         "sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week,
         "model_version": model_version,
     }
+
+    # Ngưỡng badge từ config hiệu lực theo trường (BGH tinh chỉnh trong "Tinh chỉnh trọng số EWS")
+    threshold_moderate = ews_config_service.get_effective_config(
+        db, current_user.so_school_id
+    ).thresholds.get("MODERATE", 25.0)
+    params["threshold_moderate"] = threshold_moderate
 
     rbac_where, rbac_params = _ews_rbac_filter(db, current_user)
     params.update(rbac_params)
@@ -465,7 +571,9 @@ def get_ews_predictions(
         where_clauses.append("rp.risk_score >= :min_risk_score")
         params["min_risk_score"] = min_risk_score
     if risk_factor:
-        cond = RISK_FACTOR_CONDITIONS.get(risk_factor)
+        # Backward compatibility: map code cũ (SLOPE_DOWN...) → code mới (RISK_SCORE...)
+        risk_factor_key = _RISK_FACTOR_ALIAS.get(risk_factor, risk_factor)
+        cond = RISK_FACTOR_CONDITIONS.get(risk_factor_key)
         if cond:
             where_clauses.append(cond)
 
@@ -521,28 +629,7 @@ def get_ews_predictions(
                rp.daily_absence_rate, rp.unexcused_absent_rate, rp.excused_absent_days,
                rp.total_late_count,
                -- Behavior
-               rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count,
-               ARRAY_REMOVE(ARRAY[
-                   -- Điểm số
-                   CASE WHEN rp.score_slope IS NOT NULL AND rp.score_slope < -0.5 THEN 'SLOPE_DOWN' END,
-                   CASE WHEN rp.last_score IS NOT NULL AND rp.last_score < 5.0 THEN 'LAST_SCORE_LOW' END,
-                   CASE WHEN rp.score_volatility IS NOT NULL AND rp.score_volatility > 2.0 THEN 'SCORE_VOLATILE' END,
-                   CASE WHEN rp.max_drop IS NOT NULL AND rp.max_drop > 2.0 THEN 'MAX_DROP_HIGH' END,
-                   CASE WHEN rp.last_high_weight_score IS NOT NULL AND rp.last_high_weight_score < 5.0 THEN 'HIGH_WEIGHT_FAIL' END,
-                   -- LMS
-                   CASE WHEN rp.lms_submission_rate IS NOT NULL AND rp.lms_submission_rate < 0.5 THEN 'LMS_LOW_SUBMISSION' END,
-                   CASE WHEN rp.lms_avg_score IS NOT NULL AND rp.lms_avg_score < 5.0 THEN 'LMS_LOW_SCORE' END,
-                   CASE WHEN rp.lms_recent_drop IS NOT NULL AND rp.lms_recent_drop > 1.0 THEN 'LMS_DROP' END,
-                   CASE WHEN rp.lms_gradebook_gap IS NOT NULL AND rp.lms_gradebook_gap < -2.0 THEN 'LMS_GAP' END,
-                   -- Chuyên cần
-                   CASE WHEN rp.daily_absence_rate IS NOT NULL AND rp.daily_absence_rate > 0.1 THEN 'ABSENTEEISM' END,
-                   CASE WHEN rp.unexcused_absent_rate IS NOT NULL AND rp.unexcused_absent_rate > 0.05 THEN 'UNEXCUSED_ABSENT' END,
-                   CASE WHEN rp.total_late_count IS NOT NULL AND rp.total_late_count >= 5 THEN 'LATE_MANY' END,
-                   -- Hạnh kiểm
-                   CASE WHEN rp.total_demerit_points IS NOT NULL AND rp.total_demerit_points >= 5 THEN 'DEMERIT_HIGH' END,
-                   CASE WHEN rp.repeat_offense_count IS NOT NULL AND rp.repeat_offense_count >= 2 THEN 'REPEAT_OFFENSE' END,
-                   CASE WHEN rp.severe_sanction_count IS NOT NULL AND rp.severe_sanction_count >= 1 THEN 'SEVERE_SANCTION' END
-               ], NULL) AS risk_factors
+               rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
@@ -562,7 +649,21 @@ def get_ews_predictions(
 
     items = []
     for r in rows:
-        factors = list(r.risk_factors) if r.risk_factors else []
+        # Đánh giá Multi-badge (1–4 Cờ) + chi tiết nguyên nhân phụ
+        primary_badge, factor_details = _evaluate_primary_risk_badge(
+            risk_level=r.risk_level,
+            risk_score=_flt(r.risk_score),
+            score_risk=_flt(r.score_risk),
+            lms_risk=_flt(r.lms_risk),
+            attendance_risk=_flt(r.attendance_risk),
+            behavior_risk=_flt(r.behavior_risk),
+            weight_score=_flt(r.weight_score),
+            weight_lms=_flt(r.weight_lms),
+            weight_attendance=_flt(r.weight_attendance),
+            weight_behavior=_flt(r.weight_behavior),
+            threshold_moderate=threshold_moderate,
+        )
+        # Backward compat: risk_factors = primary_badge (giữ component/cáchbot cũ hoạt động)
         items.append(
             EwsPredictionRow(
                 student_code=r.student_code,
@@ -578,7 +679,9 @@ def get_ews_predictions(
                 risk_score=_flt(r.risk_score) or 0.0,
                 risk_level=r.risk_level,
                 risk_probability=_flt(r.risk_probability),
-                risk_factors=factors,
+                risk_factors=primary_badge,
+                primary_badge=primary_badge,
+                risk_factor_details=factor_details,
                 evaluated_at_date=r.evaluated_at_date,
                 cutoff_date=r.cutoff_date,
                 join_date=r.join_date,
