@@ -440,8 +440,12 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
             {(() => {
               const scoreReasons = [
                 item.weighted_early_avg !== null && item.weighted_early_avg < 5.0 ? `ĐTB nửa đầu kỳ thấp (${item.weighted_early_avg.toFixed(2)})` : null,
+                !item.weighted_late_avg_imputed && item.weighted_late_avg !== null && item.weighted_late_avg < 5.0 ? `ĐTB nửa sau kỳ thấp (${item.weighted_late_avg.toFixed(2)})` : null,
                 item.score_slope !== null && item.score_slope < 0 ? `Xu hướng điểm sụt giảm (${item.score_slope.toFixed(2)}/tuần)` : null,
                 item.last_score !== null && item.last_score < 5.0 ? `Bài thi gần nhất điểm thấp (${item.last_score.toFixed(2)})` : null,
+                item.max_drop !== null && item.max_drop >= 2.0 ? `Từng bị sụt điểm mạnh đột ngột (giảm ${item.max_drop.toFixed(2)} điểm)` : null,
+                item.last_high_weight_score !== null && item.high_weight_score_count && item.high_weight_score_count > 0 && item.last_high_weight_score < 5.0 ? `Bài thi hệ số lớn gần nhất điểm thấp (${item.last_high_weight_score.toFixed(2)})` : null,
+                item.score_volatility !== null && item.score_volatility >= 2.0 ? `Phong độ điểm số trồi sụt bất ổn (độ biến động ${item.score_volatility.toFixed(2)})` : null,
               ].filter(Boolean) as string[];
 
               if (scoreReasons.length === 0) return null;
@@ -515,7 +519,13 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
                 <span className="text-slate-400 block">Mức Rớt Lớn Nhất</span>
-                <span className={`text-base font-bold ${item.max_drop && item.max_drop > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"}`}>
+                <span className={`text-base font-bold ${
+                  item.max_drop && item.max_drop >= 2.0
+                    ? "text-rose-600 dark:text-rose-400 font-extrabold"
+                    : item.max_drop && item.max_drop >= 1.5
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-slate-900 dark:text-white"
+                }`}>
                   {fmtVal(item.max_drop)}
                 </span>
               </div>
@@ -610,8 +620,11 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
             {/* Tóm tắt cảnh báo vi phạm riêng cho LMS */}
             {(() => {
               const lmsReasons = [
-                item.lms_submission_rate !== null && item.lms_submission_rate < 0.5 ? `Tỷ lệ nộp bài LMS thấp (${(item.lms_submission_rate * 100).toFixed(1)}%)` : null,
-                item.lms_recent_submission_rate !== null && item.lms_recent_submission_rate < 0.5 ? `Tỷ lệ nộp bài gần đây thấp (${(item.lms_recent_submission_rate * 100).toFixed(1)}%)` : null,
+                item.lms_submission_rate !== null && item.lms_submission_rate < 0.5 ? `Tỷ lệ nộp bài LMS tổng thể thấp (${(item.lms_submission_rate * 100).toFixed(1)}%)` : null,
+                item.lms_recent_submission_rate !== null && item.lms_recent_submission_rate < 0.5 ? `Tỷ lệ nộp bài LMS gần đây thấp (${(item.lms_recent_submission_rate * 100).toFixed(1)}%)` : null,
+                item.lms_recent_drop !== null && item.lms_recent_drop > 0.2 ? `Tỷ lệ nộp bài gần đây sụt giảm mạnh (giảm ${item.lms_recent_drop.toFixed(2)})` : null,
+                item.lms_avg_score !== null && item.lms_avg_score < 5.0 ? `ĐTB bài tập LMS thấp (${item.lms_avg_score.toFixed(2)})` : null,
+                item.lms_gradebook_gap !== null && item.lms_gradebook_gap >= 2.0 ? `Chênh lệch lớn giữa LMS và sổ điểm (${item.lms_gradebook_gap.toFixed(2)} điểm)` : null,
               ].filter(Boolean) as string[];
 
               if (lmsReasons.length === 0) return null;
@@ -754,7 +767,8 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
             {(() => {
               const attReasons = [
                 item.unexcused_absent_rate !== null && item.unexcused_absent_rate > 0.05 ? `Nghỉ học không phép cao (${(item.unexcused_absent_rate * 100).toFixed(1)}%)` : null,
-                item.daily_absence_rate !== null && item.daily_absence_rate > 0.1 ? `Nghỉ học tổng cả (${(item.daily_absence_rate * 100).toFixed(1)}%)` : null,
+                item.daily_absence_rate !== null && item.daily_absence_rate > 0.1 ? `Nghỉ học tổng cả cao (${(item.daily_absence_rate * 100).toFixed(1)}%)` : null,
+                item.excused_absent_days !== null && item.excused_absent_days >= 5 ? `Nghỉ học có phép nhiều (${item.excused_absent_days} ngày)` : null,
                 item.total_late_count !== null && item.total_late_count >= 2 ? `Đi muộn ${item.total_late_count} lần` : null,
               ].filter(Boolean) as string[];
 
@@ -862,6 +876,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               const behReasons = [
                 item.total_demerit_points !== null && item.total_demerit_points >= 5 ? `Bị trừ ${item.total_demerit_points} điểm kỷ luật` : null,
                 item.repeat_offense_count !== null && item.repeat_offense_count >= 2 ? `Tái phạm vi phạm ${item.repeat_offense_count} lần` : null,
+                item.severe_sanction_count !== null && item.severe_sanction_count >= 1 ? `Bị xử lý vi phạm nghiêm trọng (${item.severe_sanction_count} lần)` : null,
               ].filter(Boolean) as string[];
 
               if (behReasons.length === 0) return null;
