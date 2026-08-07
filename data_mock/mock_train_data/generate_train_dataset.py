@@ -704,7 +704,11 @@ def compute_features_at_checkpoint(
         if len(hw_indices) > 0:
             last_hw = seen_scores[:, :, hw_indices[-1]]
         else:
-            last_hw = last_score.copy()
+            # FIX TRAIN/SERVE SKEW (Phương án C): khi KHÔNG có bài hệ số lớn (count=0),
+            # để NULL thật (NaN) — CatBoost xử lý NaN native (nhánh riêng), model học
+            # "không có bài hệ số lớn" là một trạng thái riêng, KHÔNG phạt như rủi ro cao.
+            # Đồng bộ với serve-side feature_extractor (giữ NULL thật, không impute).
+            last_hw = np.full((N, NS), np.nan)
 
     # === LMS FEATURES (5) ===
     #   • NỘP            : submitted > 0                  → avg thực, rate = submitted/expected

@@ -1055,6 +1055,7 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     risk_score              DECIMAL(5,2),         -- Thang điểm rủi ro 0.00 -> 100.00 (0: Safe, 100: Critical)
     risk_level              VARCHAR(15) NOT NULL, -- 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
     risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
+    shap_drivers            JSONB,                -- Top 5 nhân tố tác động SHAP (rank, feature, shap_value, value)
     created_at              TIMESTAMPTZ DEFAULT NOW(),
 
     CONSTRAINT uq_fssrp_checkpoint UNIQUE (so_school_id, student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)
@@ -1082,6 +1083,10 @@ ALTER TABLE s360.fact_student_subject_risk_predictions
     ADD COLUMN IF NOT EXISTS weight_lms DECIMAL(5,4),
     ADD COLUMN IF NOT EXISTS weight_attendance DECIMAL(5,4),
     ADD COLUMN IF NOT EXISTS weight_behavior DECIMAL(5,4);
+
+-- M4-SHAP: migration cho DB đã tồn tại — thêm cột shap_drivers (idempotent)
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    ADD COLUMN IF NOT EXISTS shap_drivers JSONB;
 
 -- M2-ENSEMBLE: backfill model_version cho dữ liệu cũ (idempotent)
 UPDATE s360.fact_student_subject_risk_predictions

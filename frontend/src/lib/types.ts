@@ -961,6 +961,14 @@ export const EWS_RISK_COLORS: Record<EwsRiskLevel, string> = {
   CRITICAL: "#ef4444",
 };
 
+// Top 5 nhân tố tác động AI (CatBoost SHAP) — Signed SHAP, giữ dấu âm/dương.
+export interface ShapDriver {
+  rank: number;
+  feature: string;
+  shap_value: number; // > 0 = tăng rủi ro, < 0 = giảm rủi ro
+  value?: any; // giá trị feature thực tế của học sinh
+}
+
 export interface EwsPredictionRow {
   student_code: string;
   student_name: string | null;
@@ -978,6 +986,7 @@ export interface EwsPredictionRow {
   risk_factors: string[];
   primary_badge: string[];
   risk_factor_details: string[];
+  shap_drivers?: ShapDriver[];
   evaluated_at_date: string | null;
   cutoff_date: string | null;
   join_date: string | null;

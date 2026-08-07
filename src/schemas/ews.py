@@ -32,6 +32,10 @@ class EwsPredictionRow(BaseModel):
     risk_factors: List[str] = Field(default_factory=list, description="Cờ nguyên nhân (backward compat): RISK_SCORE | RISK_LMS | RISK_ATTENDANCE | RISK_BEHAVIOR (giữ = primary_badge)")
     primary_badge: List[str] = Field(default_factory=list, description="1–4 Cờ chính (Multi-badge): domain có Contribution cao nhất + mọi domain có risk_i >= threshold_moderate (MODERATE trở lên, do BGH tinh chỉnh)")
     risk_factor_details: List[str] = Field(default_factory=list, description="Mảng chuỗi mô tả chi tiết nguyên nhân phụ (VD: 'Rủi ro Điểm số (đóng góp 0.24)', 'Rủi ro Học tập LMS (đóng góp 0.27)')")
+    shap_drivers: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Top 5 nhân tố tác động SHAP (Rank, feature, shap_value, value) — Signed SHAP, giữ dấu âm/dương",
+    )
     evaluated_at_date: Optional[date] = None
     cutoff_date: Optional[date] = None  # Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     join_date: Optional[date] = None  # Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT

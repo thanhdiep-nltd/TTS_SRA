@@ -79,7 +79,7 @@ WITH student_grades AS MATERIALIZED (
         join_date AS join_date_raw
     FROM s360.dim_homeroom_class_student
     WHERE school_year_id = :school_year_id
-      AND (:so_school_id IS NULL OR so_school_id = :so_school_id)
+      AND (CAST(:so_school_id AS INTEGER) IS NULL OR so_school_id = CAST(:so_school_id AS INTEGER))
 ),
 subject_info AS (
     -- Lấy thông tin subject & subject_category
@@ -541,6 +541,15 @@ def extract_live_features(
         df["weighted_late_avg_imputed"] = False
     if "score_slope" in df.columns:
         df["score_slope"] = df["score_slope"].fillna(0.0)
+
+    # 3c. FIX TRAIN/SERVE SKEW — last_high_weight_score (Phương án C):
+    # Khi học sinh KHÔNG có bài hệ số lớn (high_weight_score_count=0), serve-side SQL trả NULL
+    # (ARRAY_AGG FILTER trả NULL khi không có phần tử).
+    # → GIỮ NULL THẬT (KHÔNG impute) — đồng bộ với training generator (compute_features_at_checkpoint
+    #   đã sửa thành NaN). CatBoost xử lý NaN native (nhánh riêng), model học "không có bài hệ số lớn"
+    #   là một trạng thái riêng, KHÔNG phạt như rủi ro cao.
+    # (Trước đây impute = weighted_early_avg gây hiểu lầm: feature vẫn xuất hiện trong Top 5 SHAP
+    #   với giá trị giả định dù thực tế NULL.)
 
     # 4. Context columns
     df["evaluated_at_week"] = evaluated_at_week

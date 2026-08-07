@@ -188,6 +188,17 @@ def _evaluate_primary_risk_badge(
     return primary_badge, details
 
 
+def _parse_shap(v):
+    """Parse cột shap_drivers (JSON string) → list dict; NULL/empty → None."""
+    if not v:
+        return None
+    try:
+        parsed = json.loads(v) if isinstance(v, str) else v
+        return parsed if isinstance(parsed, list) else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
     """Trả (where_sql, params) giới hạn dữ liệu EWS theo phân quyền user.
 
@@ -630,7 +641,8 @@ def get_ews_predictions(
                rp.daily_absence_rate, rp.unexcused_absent_rate, rp.excused_absent_days,
                rp.total_late_count,
                -- Behavior
-               rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count
+               rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count,
+               rp.shap_drivers
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
@@ -647,6 +659,16 @@ def get_ews_predictions(
 
     def _int(v):
         return int(v) if v is not None else None
+
+    def _parse_shap(v):
+        """Parse cột shap_drivers (JSON string) → list dict; NULL/empty → None."""
+        if not v:
+            return None
+        try:
+            parsed = json.loads(v) if isinstance(v, str) else v
+            return parsed if isinstance(parsed, list) else None
+        except (TypeError, ValueError):
+            return None
 
     items = []
     for r in rows:
@@ -683,6 +705,7 @@ def get_ews_predictions(
                 risk_factors=primary_badge,
                 primary_badge=primary_badge,
                 risk_factor_details=factor_details,
+                shap_drivers=_parse_shap(r.shap_drivers),
                 evaluated_at_date=r.evaluated_at_date,
                 cutoff_date=r.cutoff_date,
                 join_date=r.join_date,

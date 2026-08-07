@@ -93,7 +93,7 @@ def process_next_ews_job() -> None:
                 semester_index=next_job.semester_index,
                 evaluated_at_week=next_job.evaluated_at_week,
                 cutoff_date=next_job.cutoff_date,
-                skip_shap=True,
+                skip_shap=False,  # Bật SHAP drivers (Top 5 nhân tố tác động AI)
                 model_version=next_job.model_version,
                 so_school_id=next_job.so_school_id,
                 cfg=cfg,
