@@ -159,42 +159,12 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
     };
   }, [item, schoolYearId, semesterIndex]);
 
-  // Helper render Metric Card tự động gắn màu sắc & Badge theo kết quả SHAP AI (bỏ toàn bộ rule-based cũ)
-  const renderShapCard = (title: string, valueDisplay: React.ReactNode, featureName: string, colSpan?: string) => {
-    const driver = item?.shap_drivers?.find((d) => d.feature === featureName);
-    // BẢN CHẤT SHAP INDEX 3 (CRITICAL): > 0 = Tăng rủi ro (Risk Booster), < 0 = Giảm rủi ro / Giúp an toàn (Safety Factor)
-    const isRiskBooster = driver && driver.shap_value > 0;
-    const isSafetyFactor = driver && driver.shap_value < 0;
-
-    let cardStyle = "bg-slate-50 dark:bg-slate-800/50 border-slate-200/60 dark:border-slate-700/60";
-    let textStyle = "text-slate-900 dark:text-white font-bold";
-
-    if (isRiskBooster) {
-      cardStyle = "bg-rose-500/10 dark:bg-rose-950/20 border-rose-500/40 border-l-4 border-l-rose-500 shadow-2xs";
-      textStyle = "text-rose-600 dark:text-rose-400 font-extrabold";
-    } else if (isSafetyFactor) {
-      cardStyle = "bg-emerald-500/10 dark:bg-emerald-950/20 border-emerald-500/30 border-l-4 border-l-emerald-500 shadow-2xs";
-      textStyle = "text-emerald-600 dark:text-emerald-400 font-bold";
-    }
-
+  // Helper render Metric Card phẳng, sạch sẽ, không gán mác rủi ro hay tô đỏ/xanh ở từng ô card
+  const renderMetricCard = (title: string, valueDisplay: React.ReactNode, featureName?: string, colSpan?: string) => {
     return (
-      <div className={`p-3 rounded-xl border space-y-1.5 transition-all relative overflow-hidden ${colSpan || ""} ${cardStyle}`}>
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight">{title}</span>
-          {driver && (
-            <span
-              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shrink-0 ${
-                isRiskBooster
-                  ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                  : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-              }`}
-            >
-              {isRiskBooster ? "🔴 Tăng rủi ro" : "🟢 Giúp an toàn"}
-              {driver.rank && <span className="opacity-80">#{driver.rank}</span>}
-            </span>
-          )}
-        </div>
-        <div className={`text-base ${textStyle}`}>{valueDisplay}</div>
+      <div className={`p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 space-y-1 ${colSpan || ""}`}>
+        <span className="text-[11px] font-medium text-slate-400 block leading-tight">{title}</span>
+        <div className="text-base font-bold text-slate-900 dark:text-white tracking-tight">{valueDisplay}</div>
       </div>
     );
   };
@@ -482,6 +452,105 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   </div>
                 </div>
               )}
+
+              {/* ✨ TOP 5 NHÂN TỐ TÁC ĐỘNG AI MẠNH NHẤT (CatBoost SHAP) — DẠNG DỰA TRÊN DANH SÁCH LIỆT KÊ */}
+              {item.shap_drivers && item.shap_drivers.length > 0 && (() => {
+                const noHW = !item.high_weight_score_count || item.high_weight_score_count === 0;
+                
+                // Lọc ra Top 5 nhân tố có tác động thực sự (lọc bỏ rủi ro giả sư phạm & số nhiễu <= 0.005)
+                const validDrivers = item.shap_drivers.filter((d) => {
+                  if (Math.abs(d.shap_value) <= 0.005) return false;
+                  if (noHW && (d.feature === "high_weight_score_count" || d.feature === "max_coefficient_so_far" || d.feature === "last_high_weight_score")) return false;
+                  if (d.feature === "score_volatility" && (item.score_volatility === 0 || item.score_volatility === null)) return false;
+                  return true;
+                }).slice(0, 5);
+
+                if (validDrivers.length === 0) return null;
+
+                return (
+                  <div className="p-4 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/20 border-l-4 border-l-indigo-500 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
+                        <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+                        <span>Top {validDrivers.length} Nhân Tố Tác Động AI Mạnh Nhất (CatBoost SHAP):</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                        Xếp theo |SHAP|
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {validDrivers.map((d, i) => {
+                        const isRiskBooster = d.shap_value > 0;
+                        const numVal = d.value !== null && d.value !== undefined ? Number(d.value) : NaN;
+                        
+                        // ĐIỀU KIỆN KÉP CHO AN TOÀN: Chỉ khen "Giúp an toàn" khi shap_value < 0 VÀ giá trị thực tế tốt!
+                        let isRealValueGood = true;
+                        if (!isNaN(numVal)) {
+                          if (d.feature.includes("rate")) isRealValueGood = numVal >= 0.5; // nộp bài >= 50%
+                          else if (d.feature.includes("avg") || d.feature.includes("score")) isRealValueGood = numVal >= 5.0; // điểm >= 5.0
+                          else if (d.feature.includes("absence") || d.feature.includes("late") || d.feature.includes("demerit")) isRealValueGood = numVal === 0;
+                        }
+
+                        const isSafetyFactor = d.shap_value < 0 && isRealValueGood;
+
+                        // Định dạng giá trị hiển thị thực tế
+                        let formattedVal = "—";
+                        if (!isNaN(numVal)) {
+                          if (d.feature.includes("rate")) {
+                            formattedVal = `${(numVal * 100).toFixed(1)}%`;
+                          } else if (d.feature.includes("count") || d.feature.includes("days")) {
+                            formattedVal = `${Math.round(numVal)}`;
+                          } else {
+                            formattedVal = `${numVal.toFixed(2)}`;
+                          }
+                        } else if (d.value !== null && d.value !== undefined) {
+                          formattedVal = String(d.value);
+                        }
+
+                        return (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between text-xs px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 shadow-2xs"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] flex items-center justify-center shrink-0">
+                                #{i + 1}
+                              </span>
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                {FEATURE_VIETNAMESE_MAP[d.feature] || d.feature}
+                              </span>
+                              {formattedVal !== "—" && (
+                                <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/50 dark:border-slate-700/50">
+                                  {formattedVal}
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              {isRiskBooster ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                  Tăng rủi ro
+                                </span>
+                              ) : isSafetyFactor ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  Giúp an toàn
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                  Tác động nhỏ
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -502,9 +571,9 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                {renderShapCard("Điểm Thi Mới Nhất", fmtVal(item.last_score), "last_score")}
-                {renderShapCard("ĐTB Nửa Đầu Kỳ", fmtVal(item.weighted_early_avg), "weighted_early_avg")}
-                {renderShapCard(
+                {renderMetricCard("Điểm Thi Mới Nhất", fmtVal(item.last_score))}
+                {renderMetricCard("ĐTB Nửa Đầu Kỳ", fmtVal(item.weighted_early_avg))}
+                {renderMetricCard(
                   "ĐTB Nửa Sau Kỳ",
                   item.weighted_late_avg_imputed || item.weighted_late_avg === null ? (
                     <span className="text-slate-300 dark:text-slate-600 font-bold" title="Chưa có điểm nửa sau kỳ">
@@ -512,28 +581,25 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     </span>
                   ) : (
                     fmtVal(item.weighted_late_avg)
-                  ),
-                  "weighted_late_avg"
+                  )
                 )}
 
-                {renderShapCard(
+                {renderMetricCard(
                   "Xu Hướng (Slope)",
                   item.score_slope !== null && item.score_slope > 0
                     ? `+${item.score_slope.toFixed(2)}`
-                    : fmtVal(item.score_slope),
-                  "score_slope"
+                    : fmtVal(item.score_slope)
                 )}
-                {renderShapCard("Độ Biến Động (Volatility)", fmtVal(item.score_volatility), "score_volatility")}
-                {renderShapCard("Mức Rớt Lớn Nhất", fmtVal(item.max_drop), "max_drop")}
+                {renderMetricCard("Độ Biến Động (Volatility)", fmtVal(item.score_volatility))}
+                {renderMetricCard("Mức Rớt Lớn Nhất", fmtVal(item.max_drop))}
 
-                {renderShapCard("Hệ Số Cao Nhất", fmtVal(item.max_coefficient_so_far, "", 1), "max_coefficient_so_far")}
-                {renderShapCard("Số Bài Hệ Số Lớn", fmtInt(item.high_weight_score_count, " bài"), "high_weight_score_count")}
-                {renderShapCard(
+                {renderMetricCard("Hệ Số Cao Nhất", fmtVal(item.max_coefficient_so_far, "", 1))}
+                {renderMetricCard("Số Bài Hệ Số Lớn", fmtInt(item.high_weight_score_count, " bài"))}
+                {renderMetricCard(
                   "Điểm Hệ Số Lớn Cuối",
                   item.high_weight_score_count && item.high_weight_score_count > 0
                     ? fmtVal(item.last_high_weight_score)
-                    : "—",
-                  "last_high_weight_score"
+                    : "—"
                 )}
               </div>
 
@@ -603,11 +669,11 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                {renderShapCard("ĐTB LMS", fmtVal(item.lms_avg_score), "lms_avg_score")}
-                {renderShapCard("Tỷ Lệ Nộp Bài LMS", fmtPct(item.lms_submission_rate), "lms_submission_rate")}
-                {renderShapCard("Tỷ Lệ Nộp Gần Đây", fmtPct(item.lms_recent_submission_rate), "lms_recent_submission_rate")}
-                {renderShapCard("Sụt Giảm LMS Gần Đây", fmtVal(item.lms_recent_drop), "lms_recent_drop")}
-                {renderShapCard("Khoảng Cách LMS - Sổ Điểm (Gradebook Gap)", fmtVal(item.lms_gradebook_gap), "lms_gradebook_gap", "col-span-2")}
+                {renderMetricCard("ĐTB LMS", fmtVal(item.lms_avg_score))}
+                {renderMetricCard("Tỷ Lệ Nộp Bài LMS", fmtPct(item.lms_submission_rate))}
+                {renderMetricCard("Tỷ Lệ Nộp Gần Đây", fmtPct(item.lms_recent_submission_rate))}
+                {renderMetricCard("Sụt Giảm LMS Gần Đây", fmtVal(item.lms_recent_drop))}
+                {renderMetricCard("Khoảng Cách LMS - Sổ Điểm (Gradebook Gap)", fmtVal(item.lms_gradebook_gap), undefined, "col-span-2")}
               </div>
 
               {item.join_date &&
@@ -693,10 +759,10 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-xs">
-                {renderShapCard("Tỷ Lệ Nghỉ Học Tổng Cả", fmtPct(item.daily_absence_rate), "daily_absence_rate")}
-                {renderShapCard("Tỷ Lệ Nghỉ Không Phép", fmtPct(item.unexcused_absent_rate), "unexcused_absent_rate")}
-                {renderShapCard("Số Ngày Nghỉ Có Phép", fmtInt(item.excused_absent_days, " ngày"), "excused_absent_days")}
-                {renderShapCard("Số Lần Đi Trễ", fmtInt(item.total_late_count, " lần"), "total_late_count")}
+                {renderMetricCard("Tỷ Lệ Nghỉ Học Tổng Cả", fmtPct(item.daily_absence_rate))}
+                {renderMetricCard("Tỷ Lệ Nghỉ Không Phép", fmtPct(item.unexcused_absent_rate))}
+                {renderMetricCard("Số Ngày Nghỉ Có Phép", fmtInt(item.excused_absent_days, " ngày"))}
+                {renderMetricCard("Số Lần Đi Trễ", fmtInt(item.total_late_count, " lần"))}
               </div>
 
               {/* DỮ LIỆU GỐC (RAW): CHUYÊN CẦN DIỂM DANH */}
@@ -752,9 +818,9 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-xs">
-                {renderShapCard("Điểm Trừ Kỷ Luật", fmtInt(item.total_demerit_points, " điểm"), "total_demerit_points")}
-                {renderShapCard("Số Lần Tái Phạm", fmtInt(item.repeat_offense_count, " lần"), "repeat_offense_count")}
-                {renderShapCard("Vi Phạm Nghiêm Trọng", fmtInt(item.severe_sanction_count, " lần"), "severe_sanction_count")}
+                {renderMetricCard("Điểm Trừ Kỷ Luật", fmtInt(item.total_demerit_points, " điểm"))}
+                {renderMetricCard("Số Lần Tái Phạm", fmtInt(item.repeat_offense_count, " lần"))}
+                {renderMetricCard("Vi Phạm Nghiêm Trọng", fmtInt(item.severe_sanction_count, " lần"))}
               </div>
 
               {/* DỮ LIỆU GỐC (RAW): KỶ LUẬT HÀNH VI */}
@@ -794,6 +860,23 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 )}
               </div>
             </div>
+          )}
+
+          {/* 🛠️ KHỐI DEBUG RAW SHAP JSON CHUNG (Hiển thị ở TẤT CẢ CÁC TAB để tiện kiểm tra thô) */}
+          {item.shap_drivers && item.shap_drivers.length > 0 && (
+            <details className="mt-4 text-[10px] border-t border-slate-200 dark:border-slate-800 pt-3 text-slate-500 dark:text-slate-400">
+              <summary className="cursor-pointer font-mono font-bold text-indigo-600 dark:text-indigo-400 hover:underline select-none flex items-center gap-1.5 text-xs">
+                <span>🛠️ Raw SHAP Drivers JSON Debug ({item.shap_drivers.length} yếu tố — Click để xem/mở rộng)</span>
+              </summary>
+              <div className="mt-2 space-y-1.5">
+                <span className="text-[10px] text-slate-400 font-mono block">
+                  Dữ liệu gốc shap_drivers trả về từ DB/API (xếp theo |shap_value| giảm dần):
+                </span>
+                <pre className="p-3 rounded-xl bg-slate-900 text-emerald-400 font-mono text-[10px] overflow-x-auto max-h-64 border border-slate-800 leading-relaxed shadow-inner">
+                  {JSON.stringify(item.shap_drivers, null, 2)}
+                </pre>
+              </div>
+            </details>
           )}
         </div>
 

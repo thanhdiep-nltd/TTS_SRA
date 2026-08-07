@@ -36,6 +36,8 @@ DROP TABLE IF EXISTS public.exam_papers CASCADE;
 DROP TABLE IF EXISTS public.refresh_tokens CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
 
+DROP TABLE IF EXISTS s360.fact_swb_support CASCADE;
+DROP TABLE IF EXISTS s360.fact_swb_survey CASCADE;
 DROP TABLE IF EXISTS s360.fact_course_attendences CASCADE;
 DROP TABLE IF EXISTS s360.fact_so_class_attendance_statistics CASCADE;
 DROP TABLE IF EXISTS s360.fact_so_homeroom_class_late_attendances CASCADE;
@@ -941,6 +943,77 @@ CREATE INDEX idx_fca_student ON s360.fact_course_attendences(student_code);
 CREATE INDEX idx_fca_course ON s360.fact_course_attendences(course_id);
 CREATE INDEX idx_fca_date ON s360.fact_course_attendences(_date);
 COMMENT ON TABLE s360.fact_course_attendences IS 'Nhật ký điểm danh chi tiết theo từng tiết học / môn học phần';
+
+-- ============================================================
+-- SCHEMAS: SWB & Mental Health Survey (Khảo sát SWB & Hồ sơ Can thiệp Tâm lý)
+-- ============================================================
+
+-- 35. [KHẢO SÁT CHỈ SỐ HẠNH PHÚC & SỨC KHỎE TÂM THẦN] Kết quả khảo sát SWB Survey định kỳ
+CREATE TABLE s360.fact_swb_survey (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    survey_date                 DATE NOT NULL,
+    week_start                  DATE,
+    month_start                 DATE,
+    school_year_id              INTEGER REFERENCES s360.dim_school_year(id),
+    school_year                 VARCHAR(50),
+    student_code                VARCHAR(50) NOT NULL,
+    school_code                 VARCHAR(50),
+    school_name                 VARCHAR(255),
+    homeroom_class_id          INTEGER REFERENCES s360.dim_homeroom_class(id),
+    class_code                  VARCHAR(50),
+    class_name                  VARCHAR(100),
+    grade_id                    INTEGER,
+    grade_name                  VARCHAR(50),
+    question_set_id             BIGINT,
+    question_group_id           BIGINT,
+    question_group_name         VARCHAR(255),
+    question_group_name_en      VARCHAR(255),
+    question_id                 BIGINT,
+    converted_score             DOUBLE PRECISION,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fssur_student ON s360.fact_swb_survey(student_code);
+CREATE INDEX idx_fssur_class   ON s360.fact_swb_survey(homeroom_class_id);
+CREATE INDEX idx_fssur_date    ON s360.fact_swb_survey(survey_date);
+COMMENT ON TABLE s360.fact_swb_survey IS 'Nhật ký kết quả khảo sát độ hài lòng & chỉ số sức khỏe tâm thần (SWB Survey) định kỳ của học sinh';
+
+-- 36. [HỒ SƠ HỖ TRỢ CAN THIỆP TÂM LÝ & IEP] Nhật ký ca hỗ trợ tâm lý & kế hoạch giáo dục cá nhân
+CREATE TABLE s360.fact_swb_support (
+    id                          BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    student_code                VARCHAR(50) NOT NULL,
+    loai_can_thiep              VARCHAR(100),
+    ten_ho_tro                  VARCHAR(255),
+    trang_thai_ho_tro           VARCHAR(100),
+    ngay_bat_dau                DATE,
+    school_year_id              INTEGER REFERENCES s360.dim_school_year(id),
+    school_year                 VARCHAR(50),
+    school_code                 VARCHAR(50),
+    school_name                 VARCHAR(255),
+    grade_id                    INTEGER,
+    grade_name                  VARCHAR(50),
+    homeroom_class_id          INTEGER REFERENCES s360.dim_homeroom_class(id),
+    class_code                  VARCHAR(50),
+    class_name                  VARCHAR(100),
+    iep_muc_tieu                TEXT,
+    iep_tiep_can                TEXT,
+    iep_can_thiep_cu_the        TEXT,
+    iep_ke_hoach_trien_khai    TEXT,
+    iep_thu_thap_thong_tin      TEXT,
+    iep_nhat_ky_tro_giup        TEXT,
+    ngay_cap_nhat_iep           DATE,
+    iep_actions_can_lam         TEXT,
+    ten_chuong_trinh_nhom       VARCHAR(255),
+    muc_tieu_chuong_trinh_nhom TEXT,
+    ngay_ho_tro_gan_nhat        DATE,
+    ma_van_de_dang_can_thiep    VARCHAR(100),
+    reference_id                BIGINT,
+    created_at                  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fssup_student ON s360.fact_swb_support(student_code);
+CREATE INDEX idx_fssup_class   ON s360.fact_swb_support(homeroom_class_id);
+COMMENT ON TABLE s360.fact_swb_support IS 'Nhật ký hồ sơ hỗ trợ tâm lý & can thiệp chăm sóc đặc biệt (IEP) của học sinh';
 
 -- ============================================================
 -- SEED DATA: Cấu hình Ma trận Quy đổi 6 Thang Điểm
