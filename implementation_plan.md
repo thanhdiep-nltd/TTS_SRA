@@ -77,6 +77,13 @@ Dùng hàm `get_llm()` hiện có (không tạo class mới).
 [Dependencies]
 Dùng `get_llm()` từ `src/services/llm.py` (đã cấu hình qua `.env` `LLM_PROVIDER=openai/deepseek`). Không thêm package mới. Cần `concurrent.futures` (stdlib) cho batch.
 
+**⚡ Kiểm soát Concurrency & Rate Limit (tránh HTTP 429):**
+- `run_llm_forecasting_batch()` dùng `ThreadPoolExecutor(max_workers=5)` — giới hạn 5 LLM call song song
+- **Retry exponential backoff** khi HTTP 429/5xx: tối đa 3 lần, delay 2s → 4s → 8s
+- Lỗi sau 3 lần → ghi log + skip học sinh đó (không chặn batch), để `llm_*` = NULL
+- Cấu hình: `LLM_MAX_CONCURRENCY=5`, `LLM_MAX_RETRIES=3` trong `src/config.py`
+- Ghi `llm_evaluated_at` = NULL nếu lỗi → UI hiển thị "Chưa phân tích"
+
 [Testing]
 Thêm test đơn vị cho việc parse LLM response + logic trigger.
 
