@@ -1156,6 +1156,23 @@ export interface EwsRawBehaviorItem {
   sanction_name: string | null;
 }
 
+export interface EwsRawLifeEventItem {
+  event_name: string | null;
+  event_type: string | null;
+  event_date: string | null;
+  severity: string | null;
+  description: string | null;
+}
+
+export interface EwsRawMedicalItem {
+  condition_name: string | null;
+  condition_type: string | null;
+  severity: string | null;
+  is_chronic: boolean | null;
+  diagnosed_date: string | null;
+  notes: string | null;
+}
+
 export interface EwsRawDetail {
   student_code: string;
   subject_id: number;
@@ -1169,6 +1186,8 @@ export interface EwsRawDetail {
   lms_submitted: number;
   attendance: EwsRawAttendanceItem[];
   behavior: EwsRawBehaviorItem[];
+  life_events: EwsRawLifeEventItem[];
+  medical_history: EwsRawMedicalItem[];
 }
 
 export interface EwsRiskBreakdownItem {

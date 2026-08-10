@@ -10,6 +10,8 @@ import {
   ClipboardList,
   Clock,
   GraduationCap,
+  HeartPulse,
+  Home,
   Info,
   Laptop,
   LineChart,
@@ -109,6 +111,8 @@ const TABS = [
   { id: "lms", label: "Học Tập LMS", icon: Laptop },
   { id: "attendance", label: "Chuyên Cần", icon: Clock },
   { id: "behavior", label: "Hạnh Kiểm", icon: GraduationCap },
+  { id: "life_events", label: "Biến Cố Gia Đình", icon: Home },
+  { id: "medical", label: "Bệnh Tật", icon: HeartPulse },
 ];
 
 export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterIndex }: Props) {
@@ -456,7 +460,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               {/* ✨ TOP 5 NHÂN TỐ TÁC ĐỘNG AI MẠNH NHẤT (CatBoost SHAP) — DẠNG DỰA TRÊN DANH SÁCH LIỆT KÊ */}
               {item.shap_drivers && item.shap_drivers.length > 0 && (() => {
                 const noHW = !item.high_weight_score_count || item.high_weight_score_count === 0;
-                
+
                 // Lọc ra Top 5 nhân tố có tác động thực sự (lọc bỏ rủi ro giả sư phạm & số nhiễu <= 0.005)
                 const validDrivers = item.shap_drivers.filter((d) => {
                   if (Math.abs(d.shap_value) <= 0.005) return false;
@@ -483,7 +487,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       {validDrivers.map((d, i) => {
                         const isRiskBooster = d.shap_value > 0;
                         const numVal = d.value !== null && d.value !== undefined ? Number(d.value) : NaN;
-                        
+
                         // ĐIỀU KIỆN KÉP CHO AN TOÀN: Chỉ khen "Giúp an toàn" khi shap_value < 0 VÀ giá trị thực tế tốt!
                         let isRealValueGood = true;
                         if (!isNaN(numVal)) {
@@ -856,6 +860,113 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                         </span>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: BIẾN CỐ GIA ĐÌNH */}
+          {tab === "life_events" && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <Home className="w-4 h-4 text-amber-500" />
+                  5. Biến Cố Cuộc Sống & Gia Đình
+                </h4>
+              </div>
+
+              {/* DỮ LIỆU GỐC (RAW): BIẾN CỐ GIA ĐÌNH */}
+              <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
+                <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Home className="w-3.5 h-3.5 text-amber-500" />
+                    Dữ Liệu Gốc: Biến Cố Gia Đình ({raw?.life_events.length || 0})
+                  </span>
+                  {raw && <span className="text-[10px] font-normal text-slate-400">Cắt ngày {fmtDate(raw.cutoff_date)}</span>}
+                </h5>
+                {rawLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải biến cố gia đình...</div>
+                ) : !raw || raw.life_events.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 py-2">Không có biến cố gia đình / cuộc sống nào được ghi nhận.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {raw.life_events.map((e, i) => {
+                      const sev = e.severity?.toUpperCase() || "";
+                      const sevCls =
+                        sev === "CRITICAL" || sev === "HIGH"
+                          ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                          : sev === "MODERATE"
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                      return (
+                        <div key={i} className="flex items-start justify-between gap-3 text-[11px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                          <div className="space-y-0.5">
+                            <span className="text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                              <span className="text-[10px] text-slate-400">{fmtDate(e.event_date)}</span>
+                              <span className="font-semibold">{e.event_name || "—"}</span>
+                            </span>
+                            {e.description && <p className="text-[10px] text-slate-500 dark:text-slate-400">{e.description}</p>}
+                          </div>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${sevCls}`}>{e.severity || "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 7: BỆNH TẬT */}
+          {tab === "medical" && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <HeartPulse className="w-4 h-4 text-rose-500" />
+                  6. Bệnh Lý & Tiền Sử Y Tế
+                </h4>
+              </div>
+
+              {/* DỮ LIỆU GỐC (RAW): BỆNH TẬT */}
+              <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
+                <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <HeartPulse className="w-3.5 h-3.5 text-rose-500" />
+                    Dữ Liệu Gốc: Bệnh Lý & Tiền Sử Y Tế ({raw?.medical_history.length || 0})
+                  </span>
+                  {raw && <span className="text-[10px] font-normal text-slate-400">Cắt ngày {fmtDate(raw.cutoff_date)}</span>}
+                </h5>
+                {rawLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin" /> Đang tải bệnh lý...</div>
+                ) : !raw || raw.medical_history.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 py-2">Không có bệnh lý / tiền sử y tế nào được ghi nhận.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {raw.medical_history.map((m, i) => {
+                      const sev = m.severity?.toUpperCase() || "";
+                      const sevCls =
+                        sev === "HIGH"
+                          ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                          : sev === "MODERATE"
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+                      return (
+                        <div key={i} className="flex items-start justify-between gap-3 text-[11px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                          <div className="space-y-0.5">
+                            <span className="text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                              <span className="text-[10px] text-slate-400">{fmtDate(m.diagnosed_date)}</span>
+                              <span className="font-semibold">{m.condition_name || "—"}</span>
+                              {m.is_chronic && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400">Mãn tính</span>
+                              )}
+                            </span>
+                            {m.notes && <p className="text-[10px] text-slate-500 dark:text-slate-400">{m.notes}</p>}
+                          </div>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${sevCls}`}>{m.severity || "—"}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

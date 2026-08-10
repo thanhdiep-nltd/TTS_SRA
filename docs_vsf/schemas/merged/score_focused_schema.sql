@@ -38,6 +38,8 @@ DROP TABLE IF EXISTS public.users CASCADE;
 
 DROP TABLE IF EXISTS s360.fact_swb_support CASCADE;
 DROP TABLE IF EXISTS s360.fact_swb_survey CASCADE;
+DROP TABLE IF EXISTS s360.fact_student_medical_history CASCADE;
+DROP TABLE IF EXISTS s360.fact_student_life_events CASCADE;
 DROP TABLE IF EXISTS s360.fact_course_attendences CASCADE;
 DROP TABLE IF EXISTS s360.fact_so_class_attendance_statistics CASCADE;
 DROP TABLE IF EXISTS s360.fact_so_homeroom_class_late_attendances CASCADE;
@@ -1014,6 +1016,50 @@ CREATE TABLE s360.fact_swb_support (
 CREATE INDEX idx_fssup_student ON s360.fact_swb_support(student_code);
 CREATE INDEX idx_fssup_class   ON s360.fact_swb_support(homeroom_class_id);
 COMMENT ON TABLE s360.fact_swb_support IS 'Nhật ký hồ sơ hỗ trợ tâm lý & can thiệp chăm sóc đặc biệt (IEP) của học sinh';
+
+-- ============================================================
+-- 37. [BIẾN CỐ CUỘC SỐNG HỌC SINH] Nhật ký biến cố gia đình / tâm lý xã hội
+--     Lưu mọi biến cố (phạm vi LOW → CRITICAL): ly hôn, người thân qua đời,
+--     tai nạn gia đình, mâu thuẫn, áp lực học tập...
+-- ============================================================
+CREATE TABLE s360.fact_student_life_events (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    student_code    VARCHAR(50) NOT NULL,
+    event_type      VARCHAR(50) NOT NULL,  -- 'FAMILY_DIVORCE' | 'BEREAVEMENT' | 'FAMILY_ACCIDENT' | 'FAMILY_CONFLICT' | 'ACADEMIC_PRESSURE' | 'MENTAL_CRISIS'
+    event_name      VARCHAR(255) NOT NULL, -- 'Bố mẹ ly hôn', 'Người thân qua đời', 'Tai nạn gia đình'...
+    event_date      DATE NOT NULL,
+    severity        VARCHAR(20) NOT NULL DEFAULT 'MODERATE'
+                    CHECK (severity IN ('LOW', 'MODERATE', 'HIGH', 'CRITICAL')),
+    description     TEXT,
+    school_year_id  INTEGER REFERENCES s360.dim_school_year(id),
+    so_school_id    INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fsle_student ON s360.fact_student_life_events(student_code);
+CREATE INDEX idx_fsle_date    ON s360.fact_student_life_events(event_date);
+COMMENT ON TABLE s360.fact_student_life_events IS 'Nhật ký biến cố cuộc sống (ly hôn, qua đời, tai nạn, áp lực...) — nguồn gốc crisis tâm lý cho EWS/At-Risk';
+
+-- ============================================================
+-- 38. [TIỀN SỬ Y TẾ / BỆNH LÝ MÃN TÍNH HỌC SINH] Hồ sơ y tế
+--     Chỉ lưu cho học sinh CÓ BỆNH: tiểu đường, tim mạch, hen suyễn...
+-- ============================================================
+CREATE TABLE s360.fact_student_medical_history (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    student_code    VARCHAR(50) NOT NULL,
+    condition_type  VARCHAR(50) NOT NULL,  -- 'DIABETES' | 'CARDIOVASCULAR' | 'ASTHMA' | 'ALLERGY' | 'MENTAL_HEALTH'
+    condition_name  VARCHAR(255) NOT NULL, -- 'Tiểu đường type 1', 'Hen suyễn', 'Bệnh tim bẩm sinh'...
+    diagnosed_date  DATE,
+    severity        VARCHAR(20) NOT NULL DEFAULT 'MODERATE'
+                    CHECK (severity IN ('LOW', 'MODERATE', 'HIGH')),
+    is_chronic      BOOLEAN DEFAULT TRUE,
+    notes           TEXT,
+    school_year_id  INTEGER REFERENCES s360.dim_school_year(id),
+    so_school_id    INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fsmh_student ON s360.fact_student_medical_history(student_code);
+CREATE INDEX idx_fsmh_type    ON s360.fact_student_medical_history(condition_type);
+COMMENT ON TABLE s360.fact_student_medical_history IS 'Hồ sơ tiền sử y tế / bệnh lý mãn tính (tiểu đường, tim mạch, hen suyễn...) — chỉ lưu học sinh có bệnh';
 
 -- ============================================================
 -- SEED DATA: Cấu hình Ma trận Quy đổi 6 Thang Điểm

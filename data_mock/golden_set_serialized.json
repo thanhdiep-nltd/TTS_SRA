@@ -1,0 +1,602 @@
+[
+  {
+    "student_code": "VS000001",
+    "student_name": "Phạm Bảo Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Bảo Tuấn (VS000001) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.6, 4.47, 4.63, 4.8, 4.45, 4.45, 4.82, 4.65, 4.41, 4.61, 4.41, 4.41]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000002",
+    "student_name": "Phạm Đình Minh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Đình Minh (VS000002) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.55, 4.12, 4.16, 4.39, 4.3, 4.56, 4.32, 4.22, 4.79, 4.45, 4.51, 4.22]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000003",
+    "student_name": "Lý Đình Long",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Đình Long (VS000003) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 4.4/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.64, 2.83, 2.45, 2.91, 2.62, 2.61, 2.42, 3.06, 2.4, 1.98, 2.45, 1.73]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000004",
+    "student_name": "Hồ Bảo Linh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hồ Bảo Linh (VS000004) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.7/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.54, 4.11, 4.23, 4.54, 4.65, 4.53, 4.48, 4.44, 4.2, 4.36, 4.41, 4.71]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000005",
+    "student_name": "Huỳnh Minh Đạt",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Huỳnh Minh Đạt (VS000005) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.57, 4.15, 4.56, 4.42, 4.36, 4.62, 4.71, 4.69, 4.33, 4.44, 4.57, 4.7]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000006",
+    "student_name": "Trần Khánh Bình",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Khánh Bình (VS000006) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.4, 4.46, 4.28, 4.26, 4.66, 4.77, 4.49, 4.7, 4.57, 4.37, 4.57, 4.81]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000007",
+    "student_name": "Lê Đình Đức",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Đình Đức (VS000007) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.49, 4.81, 3.98, 4.66, 4.52, 4.44, 4.52, 4.1, 4.46, 4.57, 4.8, 4.4]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000008",
+    "student_name": "Bùi Thị Lâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Thị Lâm (VS000008) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 7.2/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.26, 3.35, 3.77, 3.6, 3.34, 3.65, 3.53, 3.79, 3.29, 3.4, 3.38, 3.06]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000009",
+    "student_name": "Bùi Phương Nam",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Phương Nam (VS000009) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.56, 4.55, 4.5, 4.45, 4.22, 4.42, 4.43, 4.34, 4.47, 4.58, 4.88, 4.53]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000010",
+    "student_name": "Đặng Văn Quỳnh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Văn Quỳnh (VS000010) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 7.2/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.58, 3.48, 2.92, 3.49, 3.52, 4.24, 3.44, 3.59, 3.49, 3.15, 3.84, 3.73]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000011",
+    "student_name": "Đỗ Hoàng Thảo",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đỗ Hoàng Thảo (VS000011) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.74, 3.23, 3.92, 3.08, 3.68, 4.16, 3.2, 3.33, 3.53, 3.35, 3.03, 3.52]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000012",
+    "student_name": "Ngô Đình Huy",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Ngô Đình Huy (VS000012) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.29, 4.59, 4.32, 4.81, 4.34, 4.44, 4.66, 4.25, 4.55, 4.76, 4.18, 4.54]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000013",
+    "student_name": "Hoàng Thành Đức",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hoàng Thành Đức (VS000013) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.55, 4.66, 4.25, 4.24, 4.6, 4.56, 4.55, 4.57, 4.36, 4.55, 4.56, 4.36]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000014",
+    "student_name": "Nguyễn Gia Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Gia Tuấn (VS000014) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.87, 4.59, 4.26, 4.63, 4.31, 4.66, 4.73, 4.34, 4.69, 4.58, 4.66, 4.88]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000015",
+    "student_name": "Đặng Khánh Đức",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Khánh Đức (VS000015) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 6.9/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.43, 3.27, 3.23, 3.26, 3.48, 3.6, 3.58, 3.75, 3.5, 3.94, 3.42, 4.32]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000016",
+    "student_name": "Dương Đình Hương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Dương Đình Hương (VS000016) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.63, 4.33, 4.29, 4.6, 4.46, 4.64, 4.59, 4.49, 4.33, 4.2, 4.41, 4.67]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000017",
+    "student_name": "Lê Ngọc Thảo",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Ngọc Thảo (VS000017) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.54, 4.25, 4.53, 4.58, 4.32, 4.53, 4.51, 4.27, 4.57, 4.61, 4.72, 4.71]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000018",
+    "student_name": "Đặng Khánh Vinh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Khánh Vinh (VS000018) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 5.6/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.39, 2.52, 2.95, 2.95, 2.95, 3.96, 2.97, 3.14, 3.09, 3.0, 2.71, 3.03]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000019",
+    "student_name": "Võ Văn Dương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Võ Văn Dương (VS000019) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 7.2/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.27, 3.43, 3.35, 3.52, 4.19, 2.94, 3.71, 3.02, 3.36, 3.83, 3.52, 3.18]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000020",
+    "student_name": "Lý Khánh Hương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Khánh Hương (VS000020) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.36, 4.64, 4.35, 4.54, 4.51, 4.37, 4.93, 4.63, 4.09, 4.54, 4.37, 4.67]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000021",
+    "student_name": "Nguyễn Minh Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Minh Tuấn (VS000021) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.34, 4.48, 4.6, 4.67, 4.26, 4.43, 4.41, 4.37, 4.85, 4.58, 4.25, 4.68]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000022",
+    "student_name": "Trần Gia Minh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Gia Minh (VS000022) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.8/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.92, 4.71, 4.2, 4.4, 4.75, 4.36, 4.59, 4.65, 4.31, 4.49, 3.85, 4.3]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000023",
+    "student_name": "Ngô Hoàng Thảo",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Ngô Hoàng Thảo (VS000023) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.45, 4.25, 4.83, 4.21, 4.41, 4.53, 4.79, 4.21, 4.73, 4.5, 4.3, 4.59]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000024",
+    "student_name": "Lê Đình Minh",
+    "has_crisis_record": true,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Đình Minh (VS000024) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 1.7/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.84, 3.68, 3.81, 3.72, 3.82, 3.93, 4.12, 3.15, 3.43, 2.21, 2.17, 1.92]\n- [CẢNH BÁO CAN THIỆP TÂM LÝ & IEP]:\n  * Sự cố / Biến cố: Khủng hoảng tâm lý nặng, trầm cảm học đường\n  * Thông tin thu thập: Học sinh có biểu hiện trầm cảm, thu mình sau sự cố: Khủng hoảng tâm lý nặng, trầm cảm học đường\n  * Kế hoạch can thiệp: Chuyên viên tâm lý làm việc trực tiếp về sự cố: Khủng hoảng tâm lý nặng, trầm cảm học đường. Đề nghị GVBM không ép phát biểu.\n"
+  },
+  {
+    "student_code": "VS000025",
+    "student_name": "Phạm Hoàng Thảo",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Hoàng Thảo (VS000025) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 7.1/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.58, 3.31, 3.44, 3.35, 3.32, 3.75, 3.61, 3.29, 3.77, 3.59, 3.74, 3.69]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000026",
+    "student_name": "Hồ Đức Lâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hồ Đức Lâm (VS000026) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.8/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.33, 4.39, 4.65, 4.62, 4.5, 4.52, 4.76, 4.38, 4.61, 4.46, 4.46, 4.72]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000027",
+    "student_name": "Võ Hoàng Long",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Võ Hoàng Long (VS000027) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.75, 3.74, 3.89, 3.51, 3.7, 3.41, 3.6, 3.46, 3.53, 3.68, 3.25, 4.13]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000028",
+    "student_name": "Phạm Minh Cường",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Minh Cường (VS000028) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.3, 4.26, 4.73, 4.66, 4.62, 4.63, 4.5, 4.32, 4.52, 4.36, 4.7, 4.47]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000029",
+    "student_name": "Nguyễn Bảo Nga",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Bảo Nga (VS000029) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 5.5/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.55, 2.7, 2.92, 2.63, 2.55, 2.87, 2.87, 2.65, 2.66, 2.87, 2.37, 2.38]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000030",
+    "student_name": "Nguyễn Thị Sơn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Thị Sơn (VS000030) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 8.9/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.36, 4.46, 4.56, 4.8, 4.67, 4.47, 4.5, 4.3, 4.5, 4.44, 4.56, 4.33]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000031",
+    "student_name": "Phạm Thị Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Thị Tuấn (VS000031) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.6, 4.81, 4.48, 4.58, 4.64, 4.42, 4.54, 4.5, 4.52, 4.35, 4.5, 4.6]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000032",
+    "student_name": "Dương Ngọc Cường",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Dương Ngọc Cường (VS000032) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.79, 4.69, 4.93, 4.35, 4.67, 4.54, 4.94, 4.34, 4.33, 4.38, 4.08, 4.39]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000033",
+    "student_name": "Hoàng Đình Minh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hoàng Đình Minh (VS000033) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.35, 4.53, 4.57, 4.88, 4.69, 4.38, 4.32, 4.6, 4.24, 4.87, 4.74, 4.41]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000034",
+    "student_name": "Đặng Hồng Tâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Hồng Tâm (VS000034) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.2/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.16, 4.77, 4.48, 4.75, 4.18, 4.38, 4.5, 4.51, 4.41, 4.62, 4.29, 4.47]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000035",
+    "student_name": "Phạm Khánh Minh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Khánh Minh (VS000035) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 7.2/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.54, 3.65, 3.71, 3.16, 3.04, 3.88, 3.6, 3.28, 3.97, 3.53, 3.85, 3.52]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000036",
+    "student_name": "Phạm Thị Dương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Thị Dương (VS000036) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.91, 4.85, 4.45, 4.69, 4.63, 4.77, 4.31, 4.64, 4.71, 4.15, 4.26, 4.09]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000037",
+    "student_name": "Huỳnh Thành Linh",
+    "has_crisis_record": true,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Huỳnh Thành Linh (VS000037) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 1.4/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.75, 3.94, 4.1, 3.41, 3.33, 2.32, 1.86, 1.79, 1.48, 1.0, 1.0, 1.0]\n- [CẢNH BÁO CAN THIỆP TÂM LÝ & IEP]:\n  * Sự cố / Biến cố: Bố mẹ làm thủ tục ly hôn\n  * Thông tin thu thập: Học sinh có biểu hiện trầm cảm, thu mình sau sự cố: Bố mẹ làm thủ tục ly hôn\n  * Kế hoạch can thiệp: Chuyên viên tâm lý làm việc trực tiếp về sự cố: Bố mẹ làm thủ tục ly hôn. Đề nghị GVBM không ép phát biểu.\n"
+  },
+  {
+    "student_code": "VS000038",
+    "student_name": "Nguyễn Thành Tâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Thành Tâm (VS000038) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.24, 4.63, 4.57, 4.31, 4.4, 4.29, 4.49, 4.69, 4.3, 4.6, 4.39, 4.34]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000039",
+    "student_name": "Ngô Thị Hải",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Ngô Thị Hải (VS000039) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 4.3/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.77, 2.49, 2.63, 2.44, 3.39, 2.81, 2.59, 2.76, 2.57, 2.43, 2.58, 2.53]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000040",
+    "student_name": "Vũ Hồng Hào",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Vũ Hồng Hào (VS000040) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.39, 4.38, 4.44, 4.04, 4.2, 4.77, 4.83, 4.45, 4.62, 4.56, 5.0, 4.72]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000041",
+    "student_name": "Phạm Thị Long",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Thị Long (VS000041) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.47, 4.31, 4.18, 4.54, 4.35, 4.22, 4.37, 4.28, 4.84, 4.68, 4.5, 4.8]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000042",
+    "student_name": "Nguyễn Đình Nga",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Đình Nga (VS000042) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.52, 4.33, 4.8, 4.61, 4.29, 4.46, 4.32, 4.22, 4.69, 4.88, 4.22, 4.61]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000043",
+    "student_name": "Trần Khánh Tú",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Khánh Tú (VS000043) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.37, 4.4, 4.38, 4.33, 4.51, 4.33, 4.55, 4.49, 4.45, 4.32, 4.38, 4.65]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000044",
+    "student_name": "Lê Thành Minh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Thành Minh (VS000044) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.6, 4.3, 4.52, 4.65, 4.17, 4.61, 4.37, 4.61, 4.35, 4.14, 4.17, 4.51]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000045",
+    "student_name": "Phạm Thành Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Thành Tuấn (VS000045) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 8.7/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.55, 4.32, 4.63, 4.17, 4.49, 4.26, 4.37, 4.51, 4.33, 4.42, 4.7, 4.38]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000046",
+    "student_name": "Lê Thành An",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Thành An (VS000046) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.67, 4.27, 4.61, 4.79, 4.01, 4.34, 4.62, 4.46, 4.57, 4.38, 4.52, 4.47]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000047",
+    "student_name": "Hoàng Khánh Thịnh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hoàng Khánh Thịnh (VS000047) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.73, 4.55, 4.57, 4.42, 4.4, 4.41, 4.58, 4.42, 4.56, 4.92, 4.67, 4.43]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000048",
+    "student_name": "Hoàng Thành Sơn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hoàng Thành Sơn (VS000048) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.74, 4.42, 4.09, 4.3, 4.13, 4.43, 4.5, 4.84, 4.57, 4.46, 4.67, 4.06]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000049",
+    "student_name": "Lê Minh Hương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Minh Hương (VS000049) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.55, 4.65, 4.2, 4.73, 4.57, 4.42, 4.63, 4.95, 4.54, 4.55, 4.41, 4.33]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000050",
+    "student_name": "Nguyễn Bảo Tâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Bảo Tâm (VS000050) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.67, 4.33, 4.51, 4.4, 4.6, 4.57, 4.71, 4.4, 4.45, 4.3, 4.41, 4.58]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000051",
+    "student_name": "Hồ Ngọc Bình",
+    "has_crisis_record": true,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hồ Ngọc Bình (VS000051) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 1.7/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.95, 3.62, 3.97, 4.07, 3.88, 4.18, 3.65, 3.15, 2.64, 2.9, 2.33, 1.79]\n- [CẢNH BÁO CAN THIỆP TÂM LÝ & IEP]:\n  * Sự cố / Biến cố: Gia đình có tang sự đột xuất\n  * Thông tin thu thập: Học sinh có biểu hiện trầm cảm, thu mình sau sự cố: Gia đình có tang sự đột xuất\n  * Kế hoạch can thiệp: Chuyên viên tâm lý làm việc trực tiếp về sự cố: Gia đình có tang sự đột xuất. Đề nghị GVBM không ép phát biểu.\n"
+  },
+  {
+    "student_code": "VS000052",
+    "student_name": "Nguyễn Hoàng Cường",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Hoàng Cường (VS000052) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.56, 4.27, 4.99, 4.53, 4.52, 4.65, 4.6, 4.54, 4.34, 4.59, 4.88, 4.77]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000053",
+    "student_name": "Trần Bảo Cường",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Bảo Cường (VS000053) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.7/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.82, 4.4, 4.3, 4.47, 4.51, 4.72, 4.16, 4.81, 4.47, 4.41, 4.3, 4.17]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000054",
+    "student_name": "Vũ Thị Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Vũ Thị Tuấn (VS000054) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.66, 4.51, 4.24, 4.24, 4.43, 4.83, 4.45, 4.2, 4.45, 4.45, 3.96, 4.49]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000055",
+    "student_name": "Bùi Bảo Bình",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Bảo Bình (VS000055) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.45, 4.64, 4.87, 4.73, 4.45, 4.28, 5.0, 4.51, 4.5, 4.5, 4.54, 4.47]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000056",
+    "student_name": "Vũ Đình Nhi",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Vũ Đình Nhi (VS000056) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.39, 4.39, 4.49, 4.39, 4.36, 4.52, 4.45, 4.8, 3.97, 4.72, 4.75, 4.09]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000057",
+    "student_name": "Lý Đức Giang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Đức Giang (VS000057) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.43, 4.43, 4.22, 4.34, 4.28, 4.85, 4.69, 4.75, 4.64, 4.27, 4.4, 4.6]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000058",
+    "student_name": "Phạm Đức Lâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Đức Lâm (VS000058) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 6.9/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.13, 3.71, 3.43, 3.39, 3.71, 3.63, 3.39, 3.85, 3.18, 3.68, 3.68, 3.41]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000059",
+    "student_name": "Đỗ Đình Hương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đỗ Đình Hương (VS000059) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.57, 4.25, 4.68, 4.46, 4.4, 4.71, 4.36, 4.22, 4.19, 4.62, 4.24, 4.85]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000060",
+    "student_name": "Huỳnh Khánh Vinh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Huỳnh Khánh Vinh (VS000060) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.08, 4.84, 4.54, 4.48, 4.39, 4.58, 4.49, 4.72, 4.52, 4.53, 4.43, 4.49]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000061",
+    "student_name": "Nguyễn Phương Phúc",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Phương Phúc (VS000061) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.56, 4.16, 4.23, 4.65, 4.53, 4.46, 4.5, 4.57, 4.39, 4.34, 4.54, 4.3]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000062",
+    "student_name": "Trần Hoàng Giang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Hoàng Giang (VS000062) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.58, 4.16, 4.71, 4.59, 4.55, 4.7, 4.83, 4.7, 4.13, 4.24, 4.38, 4.51]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000063",
+    "student_name": "Lê Ngọc Tuấn",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Ngọc Tuấn (VS000063) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.6, 4.35, 4.54, 4.35, 4.38, 4.22, 4.32, 4.23, 4.3, 4.71, 4.31, 5.0]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000064",
+    "student_name": "Lý Minh Khánh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Minh Khánh (VS000064) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.6, 4.54, 4.33, 4.64, 4.38, 4.52, 5.0, 4.48, 4.73, 4.36, 4.49, 4.85]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000065",
+    "student_name": "Lê Phương Trang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lê Phương Trang (VS000065) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 6.9/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.31, 4.04, 3.71, 3.33, 3.69, 3.79, 3.69, 3.03, 3.28, 3.43, 3.48, 3.69]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000066",
+    "student_name": "Bùi Khánh Quang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Khánh Quang (VS000066) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.54, 4.23, 4.58, 4.62, 4.61, 4.72, 4.67, 4.59, 4.49, 4.17, 4.59, 4.54]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000067",
+    "student_name": "Đỗ Hoàng Hương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đỗ Hoàng Hương (VS000067) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.58, 3.12, 3.18, 3.82, 3.49, 3.7, 3.51, 3.51, 3.78, 3.35, 3.53, 3.36]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000068",
+    "student_name": "Lý Hồng Hào",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Hồng Hào (VS000068) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.41, 4.44, 4.54, 4.4, 4.75, 4.32, 4.46, 4.41, 4.79, 4.54, 4.71, 4.2]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000069",
+    "student_name": "Lý Thị Tâm",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Thị Tâm (VS000069) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 4.3/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.88, 3.07, 2.82, 3.12, 2.64, 3.22, 3.49, 2.69, 2.57, 3.04, 2.97, 2.24]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000070",
+    "student_name": "Hồ Ngọc Giang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hồ Ngọc Giang (VS000070) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.42, 4.44, 4.23, 4.32, 4.3, 4.35, 4.49, 4.55, 4.81, 4.3, 4.7, 4.46]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000071",
+    "student_name": "Đặng Phương Hào",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Phương Hào (VS000071) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.49, 4.63, 4.28, 4.58, 4.53, 4.6, 4.56, 4.99, 4.37, 4.39, 4.38, 4.39]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000072",
+    "student_name": "Trần Đình Linh",
+    "has_crisis_record": true,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Đình Linh (VS000072) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 1.6/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.67, 4.04, 4.08, 3.69, 3.63, 3.49, 2.89, 2.73, 2.24, 1.5, 1.71, 1.36]\n- [CẢNH BÁO CAN THIỆP TÂM LÝ & IEP]:\n  * Sự cố / Biến cố: Gia đình có tang sự đột xuất\n  * Thông tin thu thập: Học sinh có biểu hiện trầm cảm, thu mình sau sự cố: Gia đình có tang sự đột xuất\n  * Kế hoạch can thiệp: Chuyên viên tâm lý làm việc trực tiếp về sự cố: Gia đình có tang sự đột xuất. Đề nghị GVBM không ép phát biểu.\n"
+  },
+  {
+    "student_code": "VS000073",
+    "student_name": "Đỗ Đức Đức",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đỗ Đức Đức (VS000073) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.38, 4.42, 4.56, 4.57, 4.63, 4.9, 4.46, 4.34, 4.22, 4.35, 4.49, 4.86]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000074",
+    "student_name": "Đặng Gia Linh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Gia Linh (VS000074) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 4.4/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.64, 2.87, 2.8, 3.16, 3.56, 2.54, 2.45, 2.81, 2.6, 2.85, 2.38, 1.99]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000075",
+    "student_name": "Dương Ngọc Nhi",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Dương Ngọc Nhi (VS000075) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.62, 4.72, 4.66, 4.6, 4.71, 4.73, 4.78, 4.63, 4.47, 4.53, 4.74, 4.34]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000076",
+    "student_name": "Vũ Hồng Bình",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Vũ Hồng Bình (VS000076) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 4.3/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.91, 2.68, 2.81, 3.18, 2.76, 2.61, 2.09, 2.62, 2.49, 2.85, 2.01, 2.07]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000077",
+    "student_name": "Phạm Đình Hải",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Đình Hải (VS000077) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.55, 4.82, 4.48, 4.56, 4.62, 4.54, 4.41, 4.54, 4.71, 4.29, 4.53, 4.36]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000078",
+    "student_name": "Huỳnh Khánh Nga",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Huỳnh Khánh Nga (VS000078) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.86, 3.04, 3.33, 3.61, 3.97, 3.48, 3.33, 4.06, 3.07, 2.84, 3.63, 3.35]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000079",
+    "student_name": "Bùi Gia Đạt",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Gia Đạt (VS000079) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.19, 3.71, 3.57, 3.33, 3.12, 3.76, 3.7, 3.47, 4.05, 3.18, 3.04, 3.29]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000080",
+    "student_name": "Dương Hồng Thịnh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Dương Hồng Thịnh (VS000080) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 7.1/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.49, 3.57, 3.43, 3.61, 3.12, 3.93, 3.48, 3.84, 3.6, 3.64, 3.67, 3.63]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000081",
+    "student_name": "Lý Thành An",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Thành An (VS000081) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.63, 4.77, 4.54, 4.64, 4.48, 4.79, 4.36, 4.86, 4.49, 4.21, 4.53, 4.36]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000082",
+    "student_name": "Hồ Ngọc Thịnh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hồ Ngọc Thịnh (VS000082) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.67, 4.37, 4.41, 4.12, 4.41, 4.02, 4.18, 4.65, 4.66, 4.59, 4.31, 4.49]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000083",
+    "student_name": "Ngô Đình Tú",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Ngô Đình Tú (VS000083) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.5, 4.27, 4.8, 4.68, 4.46, 4.51, 4.54, 4.09, 4.45, 4.36, 4.3, 4.44]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000084",
+    "student_name": "Hoàng Hồng Thịnh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hoàng Hồng Thịnh (VS000084) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 4.4/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.34, 2.99, 2.63, 2.97, 3.12, 2.88, 2.52, 2.21, 2.51, 2.32, 2.37, 2.19]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000085",
+    "student_name": "Phạm Minh Trang",
+    "has_crisis_record": true,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Minh Trang (VS000085) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 1.4/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.01, 3.69, 4.06, 3.84, 3.82, 2.86, 2.95, 2.24, 1.67, 1.3, 1.0, 1.0]\n- [CẢNH BÁO CAN THIỆP TÂM LÝ & IEP]:\n  * Sự cố / Biến cố: Gia đình có tang sự đột xuất\n  * Thông tin thu thập: Học sinh có biểu hiện trầm cảm, thu mình sau sự cố: Gia đình có tang sự đột xuất\n  * Kế hoạch can thiệp: Chuyên viên tâm lý làm việc trực tiếp về sự cố: Gia đình có tang sự đột xuất. Đề nghị GVBM không ép phát biểu.\n"
+  },
+  {
+    "student_code": "VS000086",
+    "student_name": "Nguyễn Đình Giang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Đình Giang (VS000086) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.6, 4.39, 4.5, 4.93, 4.85, 4.59, 4.51, 4.52, 4.62, 4.3, 4.45, 4.17]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000087",
+    "student_name": "Huỳnh Đức Tú",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Huỳnh Đức Tú (VS000087) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.58, 4.63, 4.4, 4.81, 4.25, 4.21, 4.54, 4.71, 4.84, 4.41, 4.72, 4.49]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000088",
+    "student_name": "Ngô Đức Khánh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Ngô Đức Khánh (VS000088) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 7.1/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.45, 3.77, 3.7, 3.03, 3.94, 3.91, 3.31, 3.62, 3.65, 3.58, 3.33, 3.3]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000089",
+    "student_name": "Đỗ Hoàng Huy",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đỗ Hoàng Huy (VS000089) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.49, 4.73, 4.61, 4.43, 4.65, 3.93, 4.73, 4.15, 4.43, 4.28, 4.24, 4.73]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000090",
+    "student_name": "Trần Đức Đức",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Trần Đức Đức (VS000090) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.36, 3.6, 3.49, 3.64, 3.52, 3.12, 3.8, 3.35, 3.03, 3.37, 3.95, 3.76]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000091",
+    "student_name": "Nguyễn Thị Phúc",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Thị Phúc (VS000091) ===\n- Lớp: Lớp 6A1 - Trường 1 (Khối 6)\n- Điểm trung bình học tập: 4.3/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [2.7, 2.7, 2.7, 3.42, 2.91, 2.93, 3.01, 2.67, 2.42, 2.34, 2.28, 2.19]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000092",
+    "student_name": "Bùi Hoàng Dương",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Hoàng Dương (VS000092) ===\n- Lớp: Lớp 7A1 - Trường 1 (Khối 7)\n- Điểm trung bình học tập: 8.3/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.65, 4.51, 4.65, 4.48, 4.52, 4.1, 4.68, 4.57, 4.7, 3.92, 4.92, 4.47]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000093",
+    "student_name": "Lý Bảo Giang",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Lý Bảo Giang (VS000093) ===\n- Lớp: Lớp 8A1 - Trường 1 (Khối 8)\n- Điểm trung bình học tập: 8.7/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.72, 4.29, 4.62, 4.29, 4.38, 4.88, 4.46, 4.54, 4.67, 4.6, 4.53, 4.57]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000094",
+    "student_name": "Nguyễn Gia Linh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Nguyễn Gia Linh (VS000094) ===\n- Lớp: Lớp 9A1 - Trường 1 (Khối 9)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.98, 4.49, 4.54, 4.71, 4.72, 4.74, 4.63, 4.27, 4.83, 4.27, 4.56, 4.35]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000095",
+    "student_name": "Đặng Khánh Nga",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đặng Khánh Nga (VS000095) ===\n- Lớp: Lớp 10A1 - Trường 1 (Khối 10)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.49, 4.57, 4.56, 4.58, 4.82, 4.59, 4.45, 4.69, 4.74, 4.25, 4.62, 4.64]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000096",
+    "student_name": "Huỳnh Thành Cường",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Huỳnh Thành Cường (VS000096) ===\n- Lớp: Lớp 6A1 - Trường 2 (Khối 6)\n- Điểm trung bình học tập: 8.5/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.44, 4.78, 4.47, 4.53, 4.47, 4.5, 4.28, 4.21, 4.82, 4.33, 4.3, 4.07]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000097",
+    "student_name": "Bùi Ngọc Quỳnh",
+    "has_crisis_record": true,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Bùi Ngọc Quỳnh (VS000097) ===\n- Lớp: Lớp 7A1 - Trường 2 (Khối 7)\n- Điểm trung bình học tập: 1.5/10.0 | Học lực: Trung bình | Hạnh kiểm: TRUNG_BINH\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.67, 3.54, 4.13, 4.0, 3.66, 3.85, 3.2, 2.54, 1.7, 2.26, 1.12, 1.0]\n- [CẢNH BÁO CAN THIỆP TÂM LÝ & IEP]:\n  * Sự cố / Biến cố: Bị bạn học cô lập và đánh hội đồng\n  * Thông tin thu thập: Học sinh có biểu hiện trầm cảm, thu mình sau sự cố: Bị bạn học cô lập và đánh hội đồng\n  * Kế hoạch can thiệp: Chuyên viên tâm lý làm việc trực tiếp về sự cố: Bị bạn học cô lập và đánh hội đồng. Đề nghị GVBM không ép phát biểu.\n"
+  },
+  {
+    "student_code": "VS000098",
+    "student_name": "Đỗ Thành Huy",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Đỗ Thành Huy (VS000098) ===\n- Lớp: Lớp 8A1 - Trường 2 (Khối 8)\n- Điểm trung bình học tập: 8.6/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.7, 4.99, 4.78, 4.61, 4.62, 4.67, 4.65, 4.56, 4.52, 4.49, 4.35, 4.44]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000099",
+    "student_name": "Hồ Đức Nga",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Hồ Đức Nga (VS000099) ===\n- Lớp: Lớp 9A1 - Trường 2 (Khối 9)\n- Điểm trung bình học tập: 8.4/10.0 | Học lực: Giỏi | Hạnh kiểm: TOT\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [4.16, 4.48, 4.3, 4.28, 4.54, 4.78, 4.68, 4.19, 4.3, 4.69, 4.3, 4.46]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  },
+  {
+    "student_code": "VS000100",
+    "student_name": "Phạm Thành Quỳnh",
+    "has_crisis_record": false,
+    "serialized_profile": "=== HỒ SƠ HỌC SINH: Phạm Thành Quỳnh (VS000100) ===\n- Lớp: Lớp 10A1 - Trường 2 (Khối 10)\n- Điểm trung bình học tập: 7.0/10.0 | Học lực: Khá | Hạnh kiểm: KHA\n- Diễn biến khảo sát chỉ số SWB (12 tuần): [3.67, 3.21, 3.53, 3.1, 3.32, 3.6, 3.02, 3.63, 3.49, 3.67, 3.57, 3.91]\n- Tình trạng tâm lý & biến cố: Bình thường (Không có hồ sơ can thiệp đặc biệt).\n"
+  }
+]

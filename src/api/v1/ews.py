@@ -34,7 +34,9 @@ from src.schemas.ews import (
     EwsRawAttendanceItem,
     EwsRawBehaviorItem,
     EwsRawDetail,
+    EwsRawLifeEventItem,
     EwsRawLmsItem,
+    EwsRawMedicalItem,
     EwsRawScore,
     EwsRiskBreakdownItem,
     EwsRiskFactorOption,
@@ -530,6 +532,8 @@ def get_ews_predictions(
     q: str | None = Query(None, description="Tìm kiếm theo mã/tên học sinh hoặc tên môn học (ILIKE)"),
     min_risk_score: float | None = Query(None, description="Lọc risk_score tối thiểu"),
     risk_factor: str | None = Query(None, description="Lọc theo cờ nguyên nhân (RISK_SCORE, RISK_LMS, RISK_ATTENDANCE, RISK_BEHAVIOR; vẫn hỗ trợ code cũ SLOPE_DOWN, ABSENTEEISM, ...)"),
+    has_life_event: bool | None = Query(None, description="True = chỉ học sinh CÓ biến cố gia đình/cuộc sống (fact_student_life_events)"),
+    has_medical: bool | None = Query(None, description="True = chỉ học sinh CÓ bệnh lý/tiền sử y tế (fact_student_medical_history)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = None,
@@ -588,6 +592,18 @@ def get_ews_predictions(
         cond = RISK_FACTOR_CONDITIONS.get(risk_factor_key)
         if cond:
             where_clauses.append(cond)
+
+    # Lọc nhanh học sinh có biến cố gia đình / bệnh lý (EXISTS trên 2 bảng mới)
+    if has_life_event:
+        where_clauses.append(
+            "EXISTS (SELECT 1 FROM s360.fact_student_life_events le "
+            "WHERE le.student_code = rp.student_code AND le.school_year_id = :sy)"
+        )
+    if has_medical:
+        where_clauses.append(
+            "EXISTS (SELECT 1 FROM s360.fact_student_medical_history mh "
+            "WHERE mh.student_code = rp.student_code AND mh.school_year_id = :sy)"
+        )
 
     base_where = "WHERE " + " AND ".join(where_clauses)
 
@@ -962,6 +978,47 @@ def get_ews_raw(
         for r in beh_rows
     ]
 
+    # 6. Biến cố cuộc sống / gia đình (fact_student_life_events)
+    le_sql = text("""
+        SELECT event_name, event_type, event_date, severity, description
+        FROM s360.fact_student_life_events
+        WHERE student_code = :sc AND school_year_id = :sy
+        ORDER BY event_date DESC
+        LIMIT 50
+    """)
+    le_rows = db.execute(le_sql, {"sc": student_code, "sy": school_year_id}).fetchall()
+    life_events = [
+        EwsRawLifeEventItem(
+            event_name=r.event_name,
+            event_type=r.event_type,
+            event_date=r.event_date,
+            severity=r.severity,
+            description=r.description,
+        )
+        for r in le_rows
+    ]
+
+    # 7. Bệnh lý / tiền sử y tế (fact_student_medical_history)
+    med_sql = text("""
+        SELECT condition_name, condition_type, severity, is_chronic, diagnosed_date, notes
+        FROM s360.fact_student_medical_history
+        WHERE student_code = :sc AND school_year_id = :sy
+        ORDER BY diagnosed_date DESC
+        LIMIT 50
+    """)
+    med_rows = db.execute(med_sql, {"sc": student_code, "sy": school_year_id}).fetchall()
+    medical_history = [
+        EwsRawMedicalItem(
+            condition_name=r.condition_name,
+            condition_type=r.condition_type,
+            severity=r.severity,
+            is_chronic=bool(r.is_chronic) if r.is_chronic is not None else None,
+            diagnosed_date=r.diagnosed_date,
+            notes=r.notes,
+        )
+        for r in med_rows
+    ]
+
     return EwsRawDetail(
         student_code=student_code,
         subject_id=subject_id,
@@ -975,6 +1032,8 @@ def get_ews_raw(
         lms_submitted=lms_submitted,
         attendance=attendance,
         behavior=behavior,
+        life_events=life_events,
+        medical_history=medical_history,
     )
 
 

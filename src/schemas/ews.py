@@ -179,6 +179,25 @@ class EwsRawBehaviorItem(BaseModel):
     sanction_name: Optional[str] = None
 
 
+class EwsRawLifeEventItem(BaseModel):
+    """Một biến cố cuộc sống / gia đình của học sinh (fact_student_life_events)."""
+    event_name: Optional[str] = None
+    event_type: Optional[str] = None
+    event_date: Optional[date] = None
+    severity: Optional[str] = None
+    description: Optional[str] = None
+
+
+class EwsRawMedicalItem(BaseModel):
+    """Một bệnh lý / tiền sử y tế của học sinh (fact_student_medical_history)."""
+    condition_name: Optional[str] = None
+    condition_type: Optional[str] = None
+    severity: Optional[str] = None
+    is_chronic: Optional[bool] = None
+    diagnosed_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
 class EwsRawDetail(BaseModel):
     """Dữ liệu gốc (raw) để đối chiếu dự báo EWS của cặp (học sinh - môn)."""
     student_code: str
@@ -193,6 +212,8 @@ class EwsRawDetail(BaseModel):
     lms_submitted: int = 0
     attendance: List[EwsRawAttendanceItem] = Field(default_factory=list)
     behavior: List[EwsRawBehaviorItem] = Field(default_factory=list)
+    life_events: List[EwsRawLifeEventItem] = Field(default_factory=list)
+    medical_history: List[EwsRawMedicalItem] = Field(default_factory=list)
 
 
 class EwsGoldenSetCase(BaseModel):

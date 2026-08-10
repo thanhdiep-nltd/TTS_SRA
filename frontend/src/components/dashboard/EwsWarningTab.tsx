@@ -10,6 +10,8 @@ import {
   ChevronRight,
   Clock,
   Filter,
+  HeartPulse,
+  Home,
   Info,
   Laptop,
   Loader2,
@@ -132,11 +134,10 @@ function CustomDropdownSelect({
                   onChange(opt.value);
                   setOpen(false);
                 }}
-                className={`w-full text-left text-xs px-3 py-2 flex items-center gap-2 transition-colors ${
-                  active
-                    ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-semibold"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium"
-                }`}
+                className={`w-full text-left text-xs px-3 py-2 flex items-center gap-2 transition-colors ${active
+                  ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-semibold"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 font-medium"
+                  }`}
               >
                 {opt.icon}
                 <span className="truncate">{opt.label}</span>
@@ -188,6 +189,9 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
   const [gradeId, setGradeId] = useState<string>("ALL");
   const [className, setClassName] = useState<string>("ALL");
   const [riskFactor, setRiskFactor] = useState<string>("ALL");
+  // Bộ lọc mới: học sinh có biến cố gia đình / bệnh lý (has_life_event, has_medical)
+  const [lifeEventFilter, setLifeEventFilter] = useState<string>("ALL");
+  const [medicalFilter, setMedicalFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
   const RISK_LEVEL_OPTIONS = useMemo(
@@ -341,6 +345,8 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
     if (gradeId !== "ALL") predParams.set("grade_id", gradeId);
     if (className !== "ALL") predParams.set("class_name", className);
     if (riskFactor !== "ALL") predParams.set("risk_factor", riskFactor);
+    if (lifeEventFilter !== "ALL") predParams.set("has_life_event", "true");
+    if (medicalFilter !== "ALL") predParams.set("has_medical", "true");
     if (debouncedQuery) predParams.set("q", debouncedQuery);
 
     api
@@ -358,7 +364,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, debouncedQuery, page, loadingMeta, refreshKey]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, lifeEventFilter, medicalFilter, debouncedQuery, page, loadingMeta, refreshKey]);
 
   // Debounce từ khóa tìm kiếm (300ms) → tìm kiếm server-side qua param q
   useEffect(() => {
@@ -633,6 +639,40 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
               }}
               options={riskFactorOptions}
               placeholder="Tất cả cờ nguyên nhân"
+            />
+          </div>
+
+          {/* 6b. Biến Cố Gia Đình */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Biến Cố Gia Đình</label>
+            <CustomDropdownSelect
+              value={lifeEventFilter}
+              onChange={(v) => {
+                setLifeEventFilter(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "ALL", label: "Tất cả" },
+                { value: "YES", label: "Có biến cố", icon: <Home className="w-3 h-3 text-amber-500" /> },
+              ]}
+              placeholder="Tất cả"
+            />
+          </div>
+
+          {/* 6c. Bệnh Lý */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Bệnh Lý</label>
+            <CustomDropdownSelect
+              value={medicalFilter}
+              onChange={(v) => {
+                setMedicalFilter(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "ALL", label: "Tất cả" },
+                { value: "YES", label: "Có bệnh lý", icon: <HeartPulse className="w-3 h-3 text-rose-500" /> },
+              ]}
+              placeholder="Tất cả"
             />
           </div>
 
