@@ -862,7 +862,7 @@ def seed_life_events_and_medical(session, students):
     - fact_student_medical_history: tiền sử y tế / bệnh lý mãn tính (CHỈ học sinh có bệnh)."""
     logger.info("Seeding life events (LOW→CRITICAL) + medical history (chỉ học sinh có bệnh)...")
 
-    # --- Biến cố cuộc sống: 12% chung cho MỌI học sinh (hoàn cảnh, KHÔNG theo risk tier).
+    # --- Biến cố cuộc sống: 8% chung cho MỌI học sinh (hoàn cảnh, KHÔNG theo risk tier).
     # `has_life_event` đã được quyết định khi tạo StudentV4 (đồng bộ crisis_week).
     # Severity dựa trên resilience: kiên cường → biến cố nhẹ (vẫn học tốt);
     # dễ tổn thương → biến cố nặng (gây crisis). ---
@@ -891,6 +891,12 @@ def seed_life_events_and_medical(session, students):
             event_week = max(1, p.crisis_week - random.randint(0, 2))
         else:
             event_week = random.randint(1, 8)
+        # Mô hình thời gian (Temporal Status): time_quantity + time_unit + status.
+        # event_week 1-8 (đã xảy ra trong kỳ) → biến cố gần đây hầu hết ONGOING;
+        # biến cố xa (>= 4 tuần trước) có thể đã RESOLVED nhưng vẫn lưu hồ sơ.
+        time_qty = random.randint(1, 6)
+        time_unit = random.choice(["WEEK", "MONTH"])
+        status = "ONGOING" if event_week >= 4 else "RESOLVED"
         life_event_params.append({
             "student_code": p.code,
             "event_type": event_type,
@@ -898,43 +904,66 @@ def seed_life_events_and_medical(session, students):
             "event_date": SCHOOL_YEAR_START + timedelta(weeks=event_week),
             "severity": severity,
             "description": desc,
+            "time_quantity": time_qty,
+            "time_unit": time_unit,
+            "status": status,
             "school_year_id": 2025,
             "so_school_id": p.school_id
         })
     execute_batch(session, """
         INSERT INTO s360.fact_student_life_events
-        (student_code, event_type, event_name, event_date, severity, description, school_year_id, so_school_id)
-        VALUES (:student_code, :event_type, :event_name, :event_date, :severity, :description, :school_year_id, :so_school_id);
+        (student_code, event_type, event_name, event_date, severity, description, time_quantity, time_unit, status, school_year_id, so_school_id)
+        VALUES (:student_code, :event_type, :event_name, :event_date, :severity, :description, :time_quantity, :time_unit, :status, :school_year_id, :so_school_id);
     """, life_event_params)
 
-    # --- Tiền sử y tế / bệnh lý mãn tính (CHỈ học sinh có bệnh, ~15%) ---
+    # --- Tiền sử y tế & Bệnh lý (gồm cả Mãn tính & Ngắn hạn như gãy tay, mổ ruột thừa, ~8%) ---
     MEDICAL_CONDITIONS = [
-        ("DIABETES", "Tiểu đường type 1", "Cần theo dõi đường huyết, chế độ ăn đặc biệt"),
-        ("CARDIOVASCULAR", "Bệnh tim bẩm sinh", "Hạn chế vận động mạnh, cần theo dõi tim"),
-        ("ASTHMA", "Hen suyễn", "Dễ lên cơn hen khi gắng sức, cần thuốc dự phòng"),
-        ("ALLERGY", "Dị ứng thức ăn", "Dị ứng đậu phộng / hải sản, cần tránh"),
-        ("MENTAL_HEALTH", "Rối loạn lo âu", "Cần hỗ trợ tâm lý định kỳ"),
+        # Mãn tính lâu dài (is_chronic = True)
+        ("DIABETES", "Tiểu đường type 1", "Cần theo dõi đường huyết, chế độ ăn đặc biệt", True),
+        ("CARDIOVASCULAR", "Bệnh tim bẩm sinh", "Hạn chế vận động mạnh, cần theo dõi tim", True),
+        ("ASTHMA", "Hen suyễn mãn tính", "Dễ lên cơn hen khi gắng sức, cần thuốc dự phòng", True),
+        ("ALLERGY", "Dị ứng thức ăn", "Dị ứng đậu phộng / hải sản, cần tránh", True),
+        ("MENTAL_HEALTH", "Rối loạn lo âu / Trầm cảm", "Cần hỗ trợ tâm lý định kỳ", True),
+        ("OPHTHALMIC", "Bệnh thị lực / Nhược thị mắt", "Tật khúc xạ mắt nặng, xếp ngồi bàn đầu để nhìn bảng", True),
+        # Ngắn hạn / Cấp tính (is_chronic = False)
+        ("INJURY", "Gãy tay / Chấn thương xương", "Bó bột tay, tạm thời miễn học Thể dục & bài kiểm tra viết", False),
+        ("SURGERY", "Phẫu thuật mổ ruột thừa", "Mổ ruột thừa, đang giai đoạn nghỉ dưỡng phục hồi sức khỏe", False),
+        ("ACUTE_INFECTION", "Bệnh nhiễm trùng / Sốt cấp tính", "Sốt xuất huyết / Viêm đường hô hấp cấp vừa điều trị", False),
     ]
     medical_params = []
     for p in students:
-        if random.random() > 0.15:  # chỉ ~15% học sinh có bệnh
+        if random.random() > 0.08:  # chỉ ~8% học sinh có bệnh/sự cố y tế
             continue
-        cond_type, cond_name, notes = random.choice(MEDICAL_CONDITIONS)
+        cond_type, cond_name, notes, is_chronic = random.choice(MEDICAL_CONDITIONS)
+        if is_chronic:
+            time_qty = random.randint(1, 24)
+            time_unit = "MONTH"
+            status = "ONGOING"
+            diag_date = SCHOOL_YEAR_START - timedelta(days=random.randint(30, 365))
+        else:
+            time_qty = random.randint(1, 6)
+            time_unit = random.choice(["WEEK", "MONTH"])
+            status = "ONGOING" if random.random() < 0.7 else "RESOLVED"
+            diag_date = SCHOOL_YEAR_START - timedelta(days=random.randint(7, 60))
+
         medical_params.append({
             "student_code": p.code,
             "condition_type": cond_type,
             "condition_name": cond_name,
-            "diagnosed_date": SCHOOL_YEAR_START - timedelta(days=random.randint(30, 365)),
+            "diagnosed_date": diag_date,
             "severity": random.choice(["LOW", "MODERATE", "HIGH"]),
-            "is_chronic": True,
+            "is_chronic": is_chronic,
             "notes": notes,
+            "time_quantity": time_qty,
+            "time_unit": time_unit,
+            "status": status,
             "school_year_id": 2025,
             "so_school_id": p.school_id
         })
     execute_batch(session, """
         INSERT INTO s360.fact_student_medical_history
-        (student_code, condition_type, condition_name, diagnosed_date, severity, is_chronic, notes, school_year_id, so_school_id)
-        VALUES (:student_code, :condition_type, :condition_name, :diagnosed_date, :severity, :is_chronic, :notes, :school_year_id, :so_school_id);
+        (student_code, condition_type, condition_name, diagnosed_date, severity, is_chronic, notes, time_quantity, time_unit, status, school_year_id, so_school_id)
+        VALUES (:student_code, :condition_type, :condition_name, :diagnosed_date, :severity, :is_chronic, :notes, :time_quantity, :time_unit, :status, :school_year_id, :so_school_id);
     """, medical_params)
 
     logger.info(f"Seeded life_events={len(life_event_params)}, medical_history={len(medical_params)}")
@@ -1030,13 +1059,13 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
     for i in range(n_total):
         risk_tiers.append(RISK_POOL[i % len(RISK_POOL)])
 
-    # Crisis weeks: 12% chung có biến cố hoàn cảnh (KHÔNG theo risk tier);
+    # Crisis weeks: 8% chung có biến cố hoàn cảnh (KHÔNG theo risk tier);
     # chỉ biến cố + resilience thấp mới gây crisis (điểm sụt giảm).
     # Quậy phá/học tệ KHÔNG biến cố → không crisis (risk do hành vi).
     # Cha mẹ ly hôn nhưng kiên cường → không crisis (vẫn học tốt).
     crisis_weeks = np.full(n_total, 999, dtype=np.float64)
     for i in range(n_total):
-        has_event = random.random() < 0.12
+        has_event = random.random() < 0.08
         resilience = latents[i][0] * 0.5 + latents[i][2] * 0.5
         if has_event and resilience < -0.5:
             crisis_weeks[i] = random.randint(4, 8)
@@ -1061,8 +1090,8 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
         grade_id = 6 + ((i % n_students_per_school) // 10) % 5
         # Gán profile G1-G9 (trải rộng điểm 0-10) + latent ability tạo đa dạng
         profile = random.choices(PROFILE_LIST, PROFILE_PROB)[0]
-        # Đồng bộ với crisis_weeks logic: 12% chung có biến cố + resilience thấp → crisis
-        st_has_event = random.random() < 0.12
+        # Đồng bộ với crisis_weeks logic: 8% chung có biến cố + resilience thấp → crisis
+        st_has_event = random.random() < 0.08
         st_resilience = float(latents[i][0] * 0.5 + latents[i][2] * 0.5)
         st = StudentV4(
             student_id=s_id,

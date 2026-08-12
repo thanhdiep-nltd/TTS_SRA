@@ -345,8 +345,14 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
     if (gradeId !== "ALL") predParams.set("grade_id", gradeId);
     if (className !== "ALL") predParams.set("class_name", className);
     if (riskFactor !== "ALL") predParams.set("risk_factor", riskFactor);
-    if (lifeEventFilter !== "ALL") predParams.set("has_life_event", "true");
-    if (medicalFilter !== "ALL") predParams.set("has_medical", "true");
+    if (lifeEventFilter !== "ALL") {
+      predParams.set("has_life_event", "true");
+      predParams.set("life_event_filter", lifeEventFilter);
+    }
+    if (medicalFilter !== "ALL") {
+      predParams.set("has_medical", "true");
+      predParams.set("medical_filter", medicalFilter);
+    }
     if (debouncedQuery) predParams.set("q", debouncedQuery);
 
     api
@@ -653,15 +659,16 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
               }}
               options={[
                 { value: "ALL", label: "Tất cả" },
-                { value: "YES", label: "Có biến cố", icon: <Home className="w-3 h-3 text-amber-500" /> },
+                { value: "ONGOING", label: "Đang diễn ra (Ongoing)" },
+                { value: "RESOLVED", label: "Không diễn ra / Đã kết thúc" },
               ]}
-              placeholder="Tất cả"
+              placeholder="Tất cả biến cố"
             />
           </div>
 
           {/* 6c. Bệnh Lý */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Bệnh Lý</label>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Bệnh Lý / Tiền Sử</label>
             <CustomDropdownSelect
               value={medicalFilter}
               onChange={(v) => {
@@ -670,9 +677,10 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
               }}
               options={[
                 { value: "ALL", label: "Tất cả" },
-                { value: "YES", label: "Có bệnh lý", icon: <HeartPulse className="w-3 h-3 text-rose-500" /> },
+                { value: "ONGOING", label: "Đang diễn ra (Ongoing)" },
+                { value: "RESOLVED", label: "Không diễn ra / Đã khỏi" },
               ]}
-              placeholder="Tất cả"
+              placeholder="Tất cả bệnh lý"
             />
           </div>
 
@@ -799,6 +807,17 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         >
                           {item.risk_level}
                         </span>
+                        {item.llm_risk_level && (
+                          <div className="mt-1">
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-block border"
+                              style={{ backgroundColor: `${EWS_RISK_COLORS[item.llm_risk_level] || "#8b5cf6"}1a`, color: EWS_RISK_COLORS[item.llm_risk_level] || "#8b5cf6", borderColor: `${EWS_RISK_COLORS[item.llm_risk_level] || "#8b5cf6"}40` }}
+                              title="Mức rủi ro theo phân tích AI (LLM)"
+                            >
+                              ✨ LLM: {item.llm_risk_level}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Risk Factors Badges (dùng primary_badge, fallback risk_factors cho backward compat) */}

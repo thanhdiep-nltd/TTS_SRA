@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # lớn (RAG/self-consistency) nhưng vẫn giảm 10x so với mặc định SDK.
     llm_timeout_s: float = Field(default=60.0, gt=0.0)
 
+    # LLM-based Forecasting (EWS) — giới hạn concurrency & retry để tránh HTTP 429.
+    # run_llm_forecasting_batch() dùng ThreadPoolExecutor(max_workers=llm_max_concurrency).
+    # _call_llm_with_retry() retry exponential backoff (2s→4s→8s) tối đa llm_max_retries lần.
+    llm_max_concurrency: int = Field(default=20, ge=1, le=50)
+    llm_max_retries: int = Field(default=3, ge=0, le=10)
+
     # Judge LLM (Eval-as-a-Metric, xem services/eval.py) — TÙY CHỌN, mặc định "same" nghĩa là
     # judge dùng chung get_llm() với agent đang được chấm (rẻ, không cần cấu hình thêm, nhưng
     # có rủi ro thiên vị tự đánh giá — model có xu hướng chấm điểm rộng lượng cho chính phong

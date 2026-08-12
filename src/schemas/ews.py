@@ -84,6 +84,14 @@ class EwsPredictionRow(BaseModel):
     repeat_offense_count: Optional[int] = None
     severe_sanction_count: Optional[int] = None
 
+    # 5. LLM-based Forecasting (M5) — kết quả phân tích định tính + score điều chỉnh
+    llm_risk_score: Optional[float] = None
+    llm_risk_level: Optional[str] = None
+    llm_narrative_summary: Optional[str] = None
+    llm_forecast_trend: Optional[str] = None
+    llm_recommended_actions: Optional[Any] = None
+    llm_evaluated_at: Optional[datetime] = None
+
 
 class EwsOverview(BaseModel):
     """Dữ liệu KPI tổng quan phân hệ EWS."""
@@ -186,6 +194,10 @@ class EwsRawLifeEventItem(BaseModel):
     event_date: Optional[date] = None
     severity: Optional[str] = None
     description: Optional[str] = None
+    # Mô hình thời gian (Temporal Status)
+    time_quantity: Optional[int] = None
+    time_unit: Optional[str] = None
+    status: Optional[str] = None
 
 
 class EwsRawMedicalItem(BaseModel):
@@ -196,6 +208,10 @@ class EwsRawMedicalItem(BaseModel):
     is_chronic: Optional[bool] = None
     diagnosed_date: Optional[date] = None
     notes: Optional[str] = None
+    # Mô hình thời gian (Temporal Status)
+    time_quantity: Optional[int] = None
+    time_unit: Optional[str] = None
+    status: Optional[str] = None
 
 
 class EwsRawDetail(BaseModel):
@@ -311,6 +327,16 @@ class EwsPredictRequest(BaseModel):
     semester_index: int = Field(..., ge=1, le=2, description="Học kỳ (1 hoặc 2)")
     evaluated_at_week: int = Field(..., description="Tuần đánh giá")
     model_version: str = Field("v2_ensemble", description="'v1_single' hoặc 'v2_ensemble'")
+
+
+class EwsLlmForecastRequest(BaseModel):
+    """Yêu cầu kích hoạt thủ công LLM-based Forecasting cho 1 học sinh (BGH/GVCN)."""
+    student_code: str = Field(..., description="Mã học sinh")
+    subject_id: int = Field(..., description="ID môn học")
+    school_year_id: int = Field(..., description="Năm học (VD: 2025)")
+    semester_index: int = Field(..., ge=1, le=2, description="Học kỳ (1 hoặc 2)")
+    evaluated_at_week: int = Field(..., description="Tuần đánh giá")
+    model_version: str = Field("v1_single", description="'v1_single' hoặc 'v2_ensemble' (để định vị dòng dự báo)")
 
 
 class EwsJobRead(BaseModel):

@@ -105,18 +105,37 @@ const fmtDate = (d: string | null): string => {
   return dt.toLocaleDateString("vi-VN");
 };
 
-const TABS = [
+const MAIN_GROUPS = [
   { id: "overview", label: "Tổng Quan AI", icon: ShieldCheck },
+  { id: "academic", label: "Học Tập & Kỷ Luật", icon: BookOpen, count: 4 },
+  { id: "context", label: "Hoàn Cảnh & Y Tế", icon: HeartPulse, count: 2 },
+  { id: "llm", label: "Phân Tích AI", icon: Sparkles },
+];
+
+const ACADEMIC_SUBTABS = [
   { id: "score", label: "Tiến Bộ & Điểm Số", icon: LineChart },
   { id: "lms", label: "Học Tập LMS", icon: Laptop },
   { id: "attendance", label: "Chuyên Cần", icon: Clock },
   { id: "behavior", label: "Hạnh Kiểm", icon: GraduationCap },
+];
+
+const CONTEXT_SUBTABS = [
   { id: "life_events", label: "Biến Cố Gia Đình", icon: Home },
-  { id: "medical", label: "Bệnh Tật", icon: HeartPulse },
+  { id: "medical", label: "Bệnh Lý / Tiền Sử", icon: HeartPulse },
 ];
 
 export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterIndex }: Props) {
   const [tab, setTab] = useState<string>("overview");
+
+  // Derive main group from active tab
+  const activeMainGroup =
+    tab === "overview"
+      ? "overview"
+      : ["score", "lms", "attendance", "behavior"].includes(tab)
+      ? "academic"
+      : ["life_events", "medical"].includes(tab)
+      ? "context"
+      : "llm";
 
   // ESC key listener to close drawer
   useEffect(() => {
@@ -163,6 +182,38 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
     };
   }, [item, schoolYearId, semesterIndex]);
 
+  // ==== LLM-based Forecasting (M5) — kích hoạt thủ công + hiển thị phân tích định tính ====
+  const [llmResult, setLlmResult] = useState<EwsPredictionRow | null>(null);
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmError, setLlmError] = useState<string | null>(null);
+
+  // Reset kết quả LLM khi học sinh/môn thay đổi (drawer dùng chung nhiều item)
+  useEffect(() => {
+    setLlmResult(null);
+    setLlmError(null);
+  }, [item?.student_code, item?.subject_id]);
+
+  const runLlmForecast = async () => {
+    if (!item) return;
+    setLlmLoading(true);
+    setLlmError(null);
+    try {
+      const updated = await api.post<EwsPredictionRow>("/ews/llm-forecast", {
+        student_code: item.student_code,
+        subject_id: item.subject_id,
+        school_year_id: schoolYearId ?? 2025,
+        semester_index: semesterIndex ?? 1,
+        evaluated_at_week: item.evaluated_at_week,
+        model_version: item.model_version || "v1_single",
+      });
+      setLlmResult(updated);
+    } catch (err) {
+      setLlmError(err instanceof ApiError ? err.message : "Không phân tích được bằng AI");
+    } finally {
+      setLlmLoading(false);
+    }
+  };
+
   // Helper render Metric Card phẳng, sạch sẽ, không gán mác rủi ro hay tô đỏ/xanh ở từng ô card
   const renderMetricCard = (title: string, valueDisplay: React.ReactNode, featureName?: string, colSpan?: string) => {
     return (
@@ -174,6 +225,10 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
   };
 
   if (!item) return null;
+
+  // Ưu tiên kết quả LLM mới trả về (llmResult), fallback về item (đã load từ list) — item đã non-null ở đây
+  const llmRow = llmResult ?? item;
+  const hasLlm = Boolean(llmRow.llm_narrative_summary || llmRow.llm_risk_score !== null);
 
   const riskColor = EWS_RISK_COLORS[item.risk_level] || "#94a3b8";
 
@@ -228,26 +283,85 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
           </button>
         </div>
 
-        {/* TAB BAR NAVIGATION */}
-        <div className="px-4 pt-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-1 overflow-x-auto shrink-0">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.id;
+        {/* TWO-TIER TAB NAVIGATION (Vừa khít 100% chiều ngang, không trượt ngang) */}
+        {/* TIER 1: MAIN GROUPS HEADER */}
+        <div className="px-4 pt-2.5 bg-slate-50/80 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 grid grid-cols-4 gap-1.5 shrink-0">
+          {MAIN_GROUPS.map((g) => {
+            const Icon = g.icon;
+            const active = activeMainGroup === g.id;
             return (
               <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-t-xl text-xs font-semibold whitespace-nowrap transition-colors border-b-2 ${active
-                  ? "text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30"
-                  : "text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                  }`}
+                key={g.id}
+                onClick={() => {
+                  if (g.id === "overview") setTab("overview");
+                  else if (g.id === "academic") setTab(["score", "lms", "attendance", "behavior"].includes(tab) ? tab : "score");
+                  else if (g.id === "context") setTab(["life_events", "medical"].includes(tab) ? tab : "life_events");
+                  else if (g.id === "llm") setTab("llm");
+                }}
+                className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-t-xl text-xs font-bold transition-all border-b-2 ${
+                  active
+                    ? "text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-white dark:bg-slate-800 shadow-2xs"
+                    : "text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/40"
+                }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{t.label}</span>
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="truncate">{g.label}</span>
+                {g.count && (
+                  <span className="hidden sm:inline-flex text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                    {g.count}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
+
+        {/* TIER 2: SUB-TAB PILL STRIP */}
+        {activeMainGroup === "academic" && (
+          <div className="px-4 py-2 bg-white dark:bg-slate-900 border-b border-slate-200/70 dark:border-slate-800 flex gap-2 shrink-0">
+            {ACADEMIC_SUBTABS.map((st) => {
+              const Icon = st.icon;
+              const active = tab === st.id;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => setTab(st.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    active
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{st.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {activeMainGroup === "context" && (
+          <div className="px-4 py-2 bg-white dark:bg-slate-900 border-b border-slate-200/70 dark:border-slate-800 flex gap-2 shrink-0">
+            {CONTEXT_SUBTABS.map((st) => {
+              const Icon = st.icon;
+              const active = tab === st.id;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => setTab(st.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    active
+                      ? "bg-indigo-600 text-white shadow-2xs"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{st.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* BODY BODY SCROLLABLE */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -970,6 +1084,155 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* TAB 8: PHÂN TÍCH AI (LLM-based Forecasting — M5) */}
+          {tab === "llm" && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-violet-500" />
+                  7. Phân Tích & Dự Báo bằng AI (LLM)
+                </h4>
+                {hasLlm && llmRow.llm_evaluated_at && (
+                  <span className="text-[10px] text-slate-400">Đánh giá lúc {fmtDate(llmRow.llm_evaluated_at)}</span>
+                )}
+              </div>
+
+              {/* Nút kích hoạt phân tích thủ công */}
+              {!hasLlm && (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+                    Kích hoạt AI phân tích định tính: kết hợp điểm CatBoost với biến cố gia đình & bệnh lý để
+                    giải thích nguyên nhân gốc rễ, dự báo xu hướng 3-4 tuần tới và đề xuất can thiệp.
+                  </p>
+                  <button
+                    onClick={runLlmForecast}
+                    disabled={llmLoading}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {llmLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Đang phân tích...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Phân Tích & Dự Báo bằng AI
+                      </>
+                    )}
+                  </button>
+                  {llmError && (
+                    <span className="text-[11px] text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-1.5">
+                      {llmError}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Hiển thị kết quả phân tích LLM */}
+              {hasLlm && (
+                <div className="space-y-4">
+                  {/* So sánh 2 điểm: CatBoost vs LLM */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                      <span className="text-[11px] font-medium text-slate-400 block">Điểm CatBoost (ML)</span>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span className="text-xl font-black" style={{ color: riskColor }}>{fmtVal(item.risk_score)}</span>
+                        <span className="text-[10px] font-semibold text-slate-500 uppercase">{item.risk_level}</span>
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-violet-500/10 dark:bg-violet-500/15 border border-violet-500/20">
+                      <span className="text-[11px] font-medium text-violet-500 block">Điểm LLM (Điều chỉnh định tính)</span>
+                      <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <span className="text-xl font-black text-violet-700 dark:text-violet-300">
+                          {llmRow.llm_risk_score !== null ? fmtVal(llmRow.llm_risk_score) : "—"}
+                        </span>
+                        {llmRow.llm_risk_level && (
+                          <span className="text-[10px] font-semibold text-violet-500 uppercase">{llmRow.llm_risk_level}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Narrative — nguyên nhân gốc rễ */}
+                  {llmRow.llm_narrative_summary && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Info className="w-3.5 h-3.5 text-violet-500" />
+                        Phân Tích Nguyên Nhân Gốc Rễ
+                      </span>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl px-3.5 py-3">
+                        {llmRow.llm_narrative_summary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Forecast trend */}
+                  {llmRow.llm_forecast_trend && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <LineChart className="w-3.5 h-3.5 text-violet-500" />
+                        Dự Báo Xu Hướng (3-4 tuần tới)
+                      </span>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl px-3.5 py-3">
+                        {llmRow.llm_forecast_trend}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Recommended actions */}
+                  {llmRow.llm_recommended_actions && llmRow.llm_recommended_actions.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <ClipboardList className="w-3.5 h-3.5 text-violet-500" />
+                        Hành Động Can Thiệp Đề Xuất
+                      </span>
+                      <div className="space-y-1.5">
+                        {llmRow.llm_recommended_actions.map((action, i) => (
+                          <div key={i} className="flex items-start gap-2.5 text-xs px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                            <span className="w-5 h-5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-400 font-bold text-[11px] flex items-center justify-center shrink-0">
+                              {i + 1}
+                            </span>
+                            <span className="text-slate-700 dark:text-slate-300">{action}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Nút chạy lại */}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={runLlmForecast}
+                      disabled={llmLoading}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {llmLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Đang phân tích...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          Chạy Lại Phân Tích
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {llmError && (
+                    <span className="text-[11px] text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-1.5 block">
+                      {llmError}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

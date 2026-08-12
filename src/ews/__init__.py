@@ -10,6 +10,7 @@ Package chứa các module cho pipeline tích hợp mô hình CatBoost EWS:
 
 from src.ews.feature_extractor import extract_live_features, EWS_FEATURE_COLS
 from src.ews.inference_service import load_model, run_inference
+from src.ews.llm_forecasting import forecast_student_risk, run_llm_forecasting_batch
 from src.ews.pipeline_runner import persist_predictions, run_pipeline
 
 __version__ = "1.0.0"
@@ -21,4 +22,6 @@ __all__ = [
     "run_inference",
     "persist_predictions",
     "run_pipeline",
+    "forecast_student_risk",
+    "run_llm_forecasting_batch",
 ]

@@ -97,6 +97,7 @@ def process_next_ews_job() -> None:
                 model_version=next_job.model_version,
                 so_school_id=next_job.so_school_id,
                 cfg=cfg,
+                enable_llm=True,
             )
             next_job.status = "completed"
             next_job.progress = 100

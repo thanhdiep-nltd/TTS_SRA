@@ -17,6 +17,7 @@ from src.core.security.sql_validator import get_user_assignment_constraints
 from src.ews import ews_config_service
 from src.ews.ews_config_service import EwsConfigValidationError
 from src.ews.job_worker import process_next_ews_job
+from src.ews.llm_forecasting import forecast_student_risk
 from src.ews.risk_config import load_risk_config
 from src.models import enums
 from src.models.tables import EwsPipelineJob, User
@@ -26,6 +27,7 @@ from src.schemas.ews import (
     EwsGoldenSetResult,
     EwsJobRead,
     EwsLevelCount,
+    EwsLlmForecastRequest,
     EwsMeta,
     EwsOverview,
     EwsPagedResult,
@@ -534,6 +536,8 @@ def get_ews_predictions(
     risk_factor: str | None = Query(None, description="Lọc theo cờ nguyên nhân (RISK_SCORE, RISK_LMS, RISK_ATTENDANCE, RISK_BEHAVIOR; vẫn hỗ trợ code cũ SLOPE_DOWN, ABSENTEEISM, ...)"),
     has_life_event: bool | None = Query(None, description="True = chỉ học sinh CÓ biến cố gia đình/cuộc sống (fact_student_life_events)"),
     has_medical: bool | None = Query(None, description="True = chỉ học sinh CÓ bệnh lý/tiền sử y tế (fact_student_medical_history)"),
+    life_event_filter: str | None = Query(None, description="Lọc chi tiết loại/trạng thái biến cố (ONGOING, FAMILY_DIVORCE, FAMILY_CONFLICT, BEREAVEMENT, RESOLVED)"),
+    medical_filter: str | None = Query(None, description="Lọc chi tiết loại/trạng thái bệnh lý (ONGOING, MENTAL_HEALTH, ASTHMA, DIABETES, CARDIOVASCULAR, ALLERGY, RESOLVED)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = None,
@@ -593,13 +597,57 @@ def get_ews_predictions(
         if cond:
             where_clauses.append(cond)
 
-    # Lọc nhanh học sinh có biến cố gia đình / bệnh lý (EXISTS trên 2 bảng mới)
-    if has_life_event:
+    # Lọc biến cố gia đình (bổ sung lọc chi tiết theo loại/trạng thái)
+    if life_event_filter and life_event_filter != "ALL":
+        if life_event_filter == "YES":
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM s360.fact_student_life_events le "
+                "WHERE le.student_code = rp.student_code AND le.school_year_id = :sy)"
+            )
+        elif life_event_filter in ("ONGOING", "RESOLVED"):
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM s360.fact_student_life_events le "
+                "WHERE le.student_code = rp.student_code AND le.school_year_id = :sy "
+                "AND le.status = :le_status)"
+            )
+            params["le_status"] = life_event_filter
+        else:
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM s360.fact_student_life_events le "
+                "WHERE le.student_code = rp.student_code AND le.school_year_id = :sy "
+                "AND (le.event_type = :le_type OR le.event_name ILIKE :le_type_q))"
+            )
+            params["le_type"] = life_event_filter
+            params["le_type_q"] = f"%{life_event_filter}%"
+    elif has_life_event:
         where_clauses.append(
             "EXISTS (SELECT 1 FROM s360.fact_student_life_events le "
             "WHERE le.student_code = rp.student_code AND le.school_year_id = :sy)"
         )
-    if has_medical:
+
+    # Lọc bệnh lý / tiền sử y tế (bổ sung lọc chi tiết theo loại/trạng thái)
+    if medical_filter and medical_filter != "ALL":
+        if medical_filter == "YES":
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM s360.fact_student_medical_history mh "
+                "WHERE mh.student_code = rp.student_code AND mh.school_year_id = :sy)"
+            )
+        elif medical_filter in ("ONGOING", "RESOLVED"):
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM s360.fact_student_medical_history mh "
+                "WHERE mh.student_code = rp.student_code AND mh.school_year_id = :sy "
+                "AND mh.status = :med_status)"
+            )
+            params["med_status"] = medical_filter
+        else:
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM s360.fact_student_medical_history mh "
+                "WHERE mh.student_code = rp.student_code AND mh.school_year_id = :sy "
+                "AND (mh.condition_type = :med_type OR mh.condition_name ILIKE :med_type_q))"
+            )
+            params["med_type"] = medical_filter
+            params["med_type_q"] = f"%{medical_filter}%"
+    elif has_medical:
         where_clauses.append(
             "EXISTS (SELECT 1 FROM s360.fact_student_medical_history mh "
             "WHERE mh.student_code = rp.student_code AND mh.school_year_id = :sy)"
@@ -658,7 +706,10 @@ def get_ews_predictions(
                rp.total_late_count,
                -- Behavior
                rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count,
-               rp.shap_drivers
+               rp.shap_drivers,
+               -- LLM-based Forecasting
+               rp.llm_risk_score, rp.llm_risk_level, rp.llm_narrative_summary,
+               rp.llm_forecast_trend, rp.llm_recommended_actions, rp.llm_evaluated_at
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
@@ -760,6 +811,13 @@ def get_ews_predictions(
                 total_demerit_points=_int(r.total_demerit_points),
                 repeat_offense_count=_int(r.repeat_offense_count),
                 severe_sanction_count=_int(r.severe_sanction_count),
+                # LLM-based Forecasting
+                llm_risk_score=_flt(r.llm_risk_score),
+                llm_risk_level=r.llm_risk_level,
+                llm_narrative_summary=r.llm_narrative_summary,
+                llm_forecast_trend=r.llm_forecast_trend,
+                llm_recommended_actions=_parse_shap(r.llm_recommended_actions),
+                llm_evaluated_at=r.llm_evaluated_at,
             )
         )
 
@@ -1540,6 +1598,140 @@ def trigger_ews_predict(
     background_tasks.add_task(process_next_ews_job)
     logger.info("EWS predict job %s created by user %d (school %d)", job.id, current_user.id, current_user.so_school_id)
     return _job_to_read(job)
+
+
+@router.post("/llm-forecast", response_model=EwsPredictionRow)
+def trigger_ews_llm_forecast(
+    payload: EwsLlmForecastRequest,
+    current_user: User = Depends(_control_roles),
+    db: Session = Depends(get_db),
+):
+    """Kích hoạt thủ công LLM-based Forecasting cho 1 học sinh (BGH).
+
+    Load dòng dự báo hiện tại (risk_score/risk_level + features) → gọi
+    forecast_student_risk (LLM phân tích định tính biến cố/bệnh lý) → lưu cột
+    llm_* → trả EwsPredictionRow cập nhật.
+    """
+    if payload.semester_index not in (1, 2):
+        raise HTTPException(status_code=422, detail="semester_index phải là 1 hoặc 2")
+    if payload.model_version not in ("v1_single", "v2_ensemble"):
+        raise HTTPException(status_code=422, detail="model_version phải là 'v1_single' hoặc 'v2_ensemble'")
+
+    # Load dòng dự báo hiện tại (features) + tên môn học
+    row_sql = text("""
+        SELECT rp.student_code, rp.subject_id, sub.name AS subject_name,
+               rp.risk_score, rp.risk_level, rp.risk_probability,
+               rp.weighted_early_avg, rp.weighted_late_avg, rp.score_slope,
+               rp.score_volatility, rp.max_drop, rp.last_score,
+               rp.lms_avg_score, rp.lms_recent_drop, rp.lms_submission_rate,
+               rp.daily_absence_rate, rp.unexcused_absent_rate,
+               rp.total_demerit_points, rp.repeat_offense_count, rp.severe_sanction_count
+        FROM s360.fact_student_subject_risk_predictions rp
+        LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+        WHERE rp.student_code = :sc AND rp.subject_id = :sid
+          AND rp.school_year_id = :sy AND rp.semester_index = :sem
+          AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+          AND rp.so_school_id = :school_id
+    """)
+    row = db.execute(
+        row_sql,
+        {
+            "sc": payload.student_code, "sid": payload.subject_id,
+            "sy": payload.school_year_id, "sem": payload.semester_index,
+            "wk": payload.evaluated_at_week, "mv": payload.model_version,
+            "school_id": current_user.so_school_id,
+        },
+    ).fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy dự báo EWS cho học sinh {payload.student_code}, môn {payload.subject_id} "
+                   f"tại mốc {payload.school_year_id}/{payload.semester_index}/tuần {payload.evaluated_at_week}.",
+        )
+
+    # Build features dict cho LLM prompt
+    features = {
+        "risk_score": row.risk_score,
+        "risk_level": row.risk_level,
+        "weighted_early_avg": row.weighted_early_avg,
+        "weighted_late_avg": row.weighted_late_avg,
+        "score_slope": row.score_slope,
+        "score_volatility": row.score_volatility,
+        "max_drop": row.max_drop,
+        "last_score": row.last_score,
+        "lms_avg_score": row.lms_avg_score,
+        "lms_recent_drop": row.lms_recent_drop,
+        "lms_submission_rate": row.lms_submission_rate,
+        "daily_absence_rate": row.daily_absence_rate,
+        "unexcused_absent_rate": row.unexcused_absent_rate,
+        "total_demerit_points": row.total_demerit_points,
+        "repeat_offense_count": row.repeat_offense_count,
+        "severe_sanction_count": row.severe_sanction_count,
+    }
+
+    # Gọi LLM-based forecasting (tự UPDATE cột llm_* trong DB)
+    result = forecast_student_risk(
+        session=db,
+        student_code=payload.student_code,
+        subject_id=payload.subject_id,
+        school_year_id=payload.school_year_id,
+        semester_index=payload.semester_index,
+        evaluated_at_week=payload.evaluated_at_week,
+        subject_name=row.subject_name or f"Môn #{payload.subject_id}",
+        features=features,
+    )
+
+    if result is None:
+        # Không thuộc nhóm trigger hoặc LLM lỗi → trả dòng hiện tại (llm_* = NULL)
+        # Re-query để lấy dòng mới nhất (có thể vẫn NULL).
+        pass
+
+    # Re-query dòng đầy đủ để trả EwsPredictionRow (kèm llm_*)
+    full_sql = text("""
+        SELECT rp.student_code, rp.subject_id, sub.name AS subject_name,
+               rp.evaluated_at_week, rp.risk_score, rp.risk_level, rp.risk_probability,
+               rp.evaluated_at_date, rp.cutoff_date, rp.join_date, rp.model_version,
+               rp.shap_drivers,
+               rp.llm_risk_score, rp.llm_risk_level, rp.llm_narrative_summary,
+               rp.llm_forecast_trend, rp.llm_recommended_actions, rp.llm_evaluated_at
+        FROM s360.fact_student_subject_risk_predictions rp
+        LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
+        WHERE rp.student_code = :sc AND rp.subject_id = :sid
+          AND rp.school_year_id = :sy AND rp.semester_index = :sem
+          AND rp.evaluated_at_week = :wk AND rp.model_version = :mv
+          AND rp.so_school_id = :school_id
+    """)
+    full_row = db.execute(
+        full_sql,
+        {
+            "sc": payload.student_code, "sid": payload.subject_id,
+            "sy": payload.school_year_id, "sem": payload.semester_index,
+            "wk": payload.evaluated_at_week, "mv": payload.model_version,
+            "school_id": current_user.so_school_id,
+        },
+    ).fetchone()
+
+    return EwsPredictionRow(
+        student_code=full_row.student_code,
+        student_name=full_row.student_code,
+        subject_id=full_row.subject_id,
+        subject_name=full_row.subject_name,
+        evaluated_at_week=full_row.evaluated_at_week,
+        risk_score=float(full_row.risk_score) if full_row.risk_score is not None else 0.0,
+        risk_level=full_row.risk_level,
+        risk_probability=float(full_row.risk_probability) if full_row.risk_probability is not None else None,
+        shap_drivers=_parse_shap(full_row.shap_drivers),
+        evaluated_at_date=full_row.evaluated_at_date,
+        cutoff_date=full_row.cutoff_date,
+        join_date=full_row.join_date,
+        model_version=full_row.model_version or "v1_single",
+        llm_risk_score=float(full_row.llm_risk_score) if full_row.llm_risk_score is not None else None,
+        llm_risk_level=full_row.llm_risk_level,
+        llm_narrative_summary=full_row.llm_narrative_summary,
+        llm_forecast_trend=full_row.llm_forecast_trend,
+        llm_recommended_actions=_parse_shap(full_row.llm_recommended_actions),
+        llm_evaluated_at=full_row.llm_evaluated_at,
+    )
 
 
 @router.get("/jobs", response_model=List[EwsJobRead])

@@ -51,11 +51,11 @@ TypeScript (`frontend/src/lib/types.ts`): thêm llm_* vào `EwsPredictionRow`; t
 Sửa file schema + backend + frontend; tạo 1 file service mới.
 
 - **New**: `src/ews/llm_forecasting.py` — dịch vụ LLM-based forecasting (gọi `get_llm()` từ `src/services/llm.py`)
-- **Modify**: `docs_vsf/schemas/merged/score_focused_schema.sql` — thêm 6 cột vào `fact_student_subject_risk_predictions` (kèm ALTER TABLE idempotent cho DB đã tồn tại)
+- **Modify**: `docs_vsf/schemas/merged/score_focused_schema.sql` — thêm 6 cột LLM vào `fact_student_subject_risk_predictions` + 3 cột thời gian (time_quantity/time_unit/status) vào `fact_student_life_events` + `fact_student_medical_history` (kèm ALTER TABLE idempotent cho DB đã tồn tại)
 - **Modify**: `src/ews/pipeline_runner.py` — sau Step 2 inference, gọi `run_llm_forecasting_batch()` cho nhóm trigger; thêm cột llm_* vào UPSERT_SQL + UPSERT_REQUIRED_COLS
-- **Modify**: `src/schemas/ews.py` — thêm field llm_* vào `EwsPredictionRow`
-- **Modify**: `src/api/v1/ews.py` — endpoint mới `POST /ews/llm-forecast` (trigger thủ công 1 học sinh); trả llm_* trong predictions/raw
-- **Modify**: `frontend/src/lib/types.ts` — thêm field llm_* vào `EwsPredictionRow`
+- **Modify**: `src/schemas/ews.py` — thêm field llm_* vào `EwsPredictionRow` + time_quantity/time_unit/status vào `EwsRawLifeEventItem` + `EwsRawMedicalItem`
+- **Modify**: `src/api/v1/ews.py` — endpoint mới `POST /ews/llm-forecast` (trigger thủ công 1 học sinh); trả llm_* trong predictions + time fields trong raw
+- **Modify**: `frontend/src/lib/types.ts` — thêm field llm_* vào `EwsPredictionRow` + time_quantity/time_unit/status vào `EwsRawLifeEventItem` + `EwsRawMedicalItem`
 - **Modify**: `frontend/src/components/dashboard/EwsDetailDrawer.tsx` — nút "Phân tích & Dự báo bằng AI" + hiển thị llm_* (narrative, trend, actions, cả 2 điểm)
 - **Modify**: `frontend/src/components/dashboard/EwsWarningTab.tsx` — hiển thị cột llm_risk_level/badge nếu có
 - **Modify**: `data_mock/mock_full_data/generate_full_system_mock_v4.py` — cập nhật `seed_life_events_and_medical()` để tự điền `time_quantity` (vd 2), `time_unit` ('MONTH'/'YEAR'), `status` ('ONGOING'/'RESOLVED') đồng bộ với schema mới
@@ -91,8 +91,8 @@ Thêm test đơn vị cho việc parse LLM response + logic trigger.
 - **Modify** `tests/test_ews_control_panel.py` (nếu cần): kiểm tra endpoint mới
 
 [Implementation Order]
-1. Schema: thêm 6 cột vào `score_focused_schema.sql` + ALTER TABLE idempotent → apply
-2. Backend schema `src/schemas/ews.py`: thêm field llm_* vào `EwsPredictionRow`
+1. Schema: thêm 6 cột LLM vào `fact_student_subject_risk_predictions` + 3 cột thời gian (time_quantity/time_unit/status) vào `fact_student_life_events` + `fact_student_medical_history` + ALTER TABLE idempotent → apply
+2. Backend schema `src/schemas/ews.py`: thêm field llm_* vào `EwsPredictionRow` + time_quantity/time_unit/status vào `EwsRawLifeEventItem` + `EwsRawMedicalItem`
 3. Tạo `src/ews/llm_forecasting.py` (prompt + parse + forecast_student_risk + batch)
 4. Hook `pipeline_runner.py`: gọi batch sau inference + thêm llm_* vào UPSERT
 5. Endpoint `POST /ews/llm-forecast` trong `src/api/v1/ews.py`

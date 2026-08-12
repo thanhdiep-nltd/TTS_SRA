@@ -1031,6 +1031,14 @@ export interface EwsPredictionRow {
   total_demerit_points: number | null;
   repeat_offense_count: number | null;
   severe_sanction_count: number | null;
+
+  // 5. LLM-based Forecasting (M5) — kết quả phân tích định tính + score điều chỉnh
+  llm_risk_score: number | null;
+  llm_risk_level: EwsRiskLevel | null;
+  llm_narrative_summary: string | null;
+  llm_forecast_trend: string | null;
+  llm_recommended_actions: string[] | null;
+  llm_evaluated_at: string | null;
 }
 
 export interface EwsLevelCount {
@@ -1162,6 +1170,10 @@ export interface EwsRawLifeEventItem {
   event_date: string | null;
   severity: string | null;
   description: string | null;
+  // Mô hình thời gian (Temporal Status)
+  time_quantity: number | null;
+  time_unit: string | null;
+  status: string | null;
 }
 
 export interface EwsRawMedicalItem {
@@ -1171,6 +1183,10 @@ export interface EwsRawMedicalItem {
   is_chronic: boolean | null;
   diagnosed_date: string | null;
   notes: string | null;
+  // Mô hình thời gian (Temporal Status)
+  time_quantity: number | null;
+  time_unit: string | null;
+  status: string | null;
 }
 
 export interface EwsRawDetail {

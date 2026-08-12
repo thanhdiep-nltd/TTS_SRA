@@ -1033,6 +1033,10 @@ CREATE TABLE s360.fact_student_life_events (
     description     TEXT,
     school_year_id  INTEGER REFERENCES s360.dim_school_year(id),
     so_school_id    INTEGER NOT NULL DEFAULT 1,
+    -- === MÔ HÌNH THỜI GIAN (Temporal Status) — phân biệt biến cố mới/cũ, đang diễn ra/đã kết thúc ===
+    time_quantity   INT,          -- Đã diễn ra X đơn vị (vd 3, 5, 10)
+    time_unit       VARCHAR(20),  -- DAY/WEEK/MONTH/YEAR
+    status          VARCHAR(20) DEFAULT 'UNKNOWN',  -- ONGOING / RESOLVED / UNKNOWN
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_fsle_student ON s360.fact_student_life_events(student_code);
@@ -1055,6 +1059,10 @@ CREATE TABLE s360.fact_student_medical_history (
     notes           TEXT,
     school_year_id  INTEGER REFERENCES s360.dim_school_year(id),
     so_school_id    INTEGER NOT NULL DEFAULT 1,
+    -- === MÔ HÌNH THỜI GIAN (Temporal Status) — phân biệt bệnh ngắn hạn/mãn tính, đang điều trị/đã hồi phục ===
+    time_quantity   INT,          -- Đã X đơn vị (vd gãy tay 3 tháng = 3 MONTH)
+    time_unit       VARCHAR(20),  -- DAY/WEEK/MONTH/YEAR
+    status          VARCHAR(20) DEFAULT 'UNKNOWN',  -- ONGOING / RESOLVED / UNKNOWN
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_fsmh_student ON s360.fact_student_medical_history(student_code);
@@ -1175,6 +1183,15 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     risk_level              VARCHAR(15) NOT NULL, -- 'LOW', 'MODERATE', 'HIGH', 'CRITICAL'
     risk_probability        DECIMAL(5,4),         -- Xác suất rủi ro (0.0000 -> 1.0000)
     shap_drivers            JSONB,                -- Top 5 nhân tố tác động SHAP (rank, feature, shap_value, value)
+
+    -- === LLM-BASED FORECASTING (M5) — kết quả phân tích định tính + score điều chỉnh ===
+    llm_risk_score          DECIMAL(5,2),         -- Điểm rủi ro 0-100 do LLM đánh giá (điều chỉnh định tính)
+    llm_risk_level          VARCHAR(15),          -- LOW/MODERATE/HIGH/CRITICAL do LLM
+    llm_narrative_summary   TEXT,                 -- Phân tích nguyên nhân gốc rễ (biến cố + bệnh)
+    llm_forecast_trend      TEXT,                 -- Dự báo xu hướng 3-4 tuần tới
+    llm_recommended_actions JSONB,                -- 2-3 hành động can thiệp khuyến nghị
+    llm_evaluated_at        TIMESTAMPTZ,          -- Thời điểm LLM đánh giá (NULL = chưa phân tích)
+
     created_at              TIMESTAMPTZ DEFAULT NOW(),
 
     CONSTRAINT uq_fssrp_checkpoint UNIQUE (so_school_id, student_code, subject_id, school_year_id, semester_index, evaluated_at_week, model_version)

@@ -131,6 +131,18 @@ def main() -> None:
         choices=["v1_single", "v2_ensemble"],
         help="Phiên bản model: v1_single (model đơn) hoặc v2_ensemble (factor-ensemble)",
     )
+    parser.add_argument(
+        "--so-school-id", type=int, default=None,
+        help="Mã trường (VD: 1 cho Trường 1). Nếu không truyền, mặc định chạy toàn bộ các trường",
+    )
+    parser.add_argument(
+        "--enable-llm", action="store_true", default=False,
+        help="Kích hoạt LLM-based Forecasting cho nhóm học sinh thuộc điều kiện trigger",
+    )
+    parser.add_argument(
+        "--dry-run-llm", action="store_true", default=False,
+        help="Chỉ kiểm tra và in số bản ghi đủ điều kiện trigger LLM, KHÔNG gọi LLM API thật",
+    )
 
     args = parser.parse_args()
 
@@ -156,6 +168,9 @@ def main() -> None:
             cutoff_date=cutoff_date,
             skip_shap=args.skip_shap,
             model_version=args.model_version,
+            so_school_id=args.so_school_id,
+            enable_llm=args.enable_llm,
+            dry_run_llm=args.dry_run_llm,
         )
         logger.info("✅ Pipeline completed successfully: %d predictions", len(result))
     except Exception:

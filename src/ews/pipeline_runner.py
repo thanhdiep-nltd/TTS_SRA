@@ -29,6 +29,7 @@ from src.ews.inference_service import (
     run_ensemble_inference,
     run_inference,
 )
+from src.ews.llm_forecasting import run_llm_forecasting_batch
 from src.ews.risk_config import FACTOR_KEYS, RiskConfig
 
 logger = logging.getLogger(__name__)
@@ -163,6 +164,8 @@ def run_pipeline(
     model_version: str = "v1_single",
     so_school_id: int | None = None,
     cfg: RiskConfig | None = None,
+    enable_llm: bool = False,
+    dry_run_llm: bool = False,
 ) -> pd.DataFrame:
     """
     Pipeline tích hợp EWS hoàn chỉnh.
@@ -177,9 +180,11 @@ def run_pipeline(
         model_version: 'v1_single' (model đơn) hoặc 'v2_ensemble' (factor-ensemble)
         so_school_id: Nếu cho, chỉ chạy cho trường này (BGH control panel).
         cfg: RiskConfig hiệu lực (đã merge theo trường). Chỉ dùng cho v2_ensemble.
+        enable_llm: Nếu True, sau khi persist gọi run_llm_forecasting_batch() cho nhóm trigger
+            (HIGH/CRITICAL hoặc có biến cố/bệnh ONGOING) để bổ sung phân tích định tính LLM.
 
     Returns:
-        DataFrame kết quả đã persist vào DB
+        DataFrame kết quả đã persist vào DB (kèm cột llm_* nếu enable_llm)
     """
     start_time = datetime.now()
     logger.info("=" * 60)
@@ -251,6 +256,20 @@ def run_pipeline(
     result["cutoff_date"] = cutoff_date
     result["model_version"] = model_version
     persist_predictions(session, result)
+
+    # Step 4 (optional): LLM-based Forecasting — gọi SAU persist để dòng dự báo đã tồn tại.
+    # run_llm_forecasting_batch tự UPDATE cột llm_* cho từng học sinh trigger qua session riêng.
+    if enable_llm or dry_run_llm:
+        result = run_llm_forecasting_batch(
+            session=session,
+            df=result,
+            school_year_id=school_year_id,
+            semester_index=semester_index,
+            evaluated_at_week=evaluated_at_week,
+            so_school_id=so_school_id,
+            enable=True,
+            dry_run=dry_run_llm,
+        )
 
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 60)
