@@ -331,26 +331,36 @@ lms_features AS MATERIALIZED (
 ),
 attendance_features AS MATERIALIZED (
     SELECT
-        fda.student_code,
-        ROUND(SUM(fda.absent_periods) * 1.0 / NULLIF(SUM(fda.total_periods), 0), 4) AS daily_absence_rate,
-        ROUND(SUM(fda.absent_no_permission) * 1.0 / NULLIF(SUM(fda.total_periods), 0), 4) AS unexcused_absent_rate,
+        ca.student_code,
+        c.subject_id,
+        ROUND(
+            SUM(CASE WHEN ca.status = 'ABSENT' THEN 1 ELSE 0 END) * 1.0 /
+            NULLIF(COUNT(DISTINCT (ca._date, ca.timetable_period_code)), 0),
+            4
+        ) AS daily_absence_rate,
+        ROUND(
+            SUM(CASE WHEN ca.status = 'ABSENT' AND ca.status_name LIKE '%không phép%' THEN 1 ELSE 0 END) * 1.0 /
+            NULLIF(COUNT(DISTINCT (ca._date, ca.timetable_period_code)), 0),
+            4
+        ) AS unexcused_absent_rate,
         COALESCE(fal.excused_days, 0) AS excused_absent_days,
         COALESCE(fla.late_count, 0) AS total_late_count
-    FROM s360.fact_so_daily_attendance fda
+    FROM s360.fact_course_attendences ca
+    JOIN s360.dim_course c ON ca.course_id = c.id
     LEFT JOIN (
         SELECT student_code, COUNT(DISTINCT absent_date) AS excused_days
         FROM s360.fact_absent_logs
         WHERE absent_date <= CAST(:cutoff_date AS DATE) AND is_approved = 1
         GROUP BY student_code
-    ) fal ON fda.student_code = fal.student_code
+    ) fal ON ca.student_code = fal.student_code
     LEFT JOIN (
         SELECT student_code, COUNT(*) AS late_count
         FROM s360.fact_so_homeroom_class_late_attendances
         WHERE attendance_date <= CAST(:cutoff_date AS DATE) AND is_late = 1
         GROUP BY student_code
-    ) fla ON fda.student_code = fla.student_code
-    WHERE fda._date <= CAST(:cutoff_date AS DATE) AND fda.school_year_id = :school_year_id
-    GROUP BY fda.student_code, fal.excused_days, fla.late_count
+    ) fla ON ca.student_code = fla.student_code
+    WHERE ca._date <= CAST(:cutoff_date AS DATE) AND ca.school_year_id = :school_year_id
+    GROUP BY ca.student_code, c.subject_id, fal.excused_days, fla.late_count
 ),
 behavior_features AS MATERIALIZED (
     SELECT
@@ -360,22 +370,19 @@ behavior_features AS MATERIALIZED (
         COUNT(CASE WHEN fbl.sanction_code IS NOT NULL THEN 1 END) AS severe_sanction_count
     FROM s360.fact_behavior_logs fbl
     LEFT JOIN (
-        SELECT student_code, SUM(cnt - 1) AS repeat_count
-        FROM (
-            SELECT student_code, behavior_id, COUNT(*) AS cnt
-            FROM s360.fact_behavior_logs
-            WHERE comment_date <= CAST(:cutoff_date AS DATE) AND behavior_point < 0
-            GROUP BY student_code, behavior_id
-            HAVING COUNT(*) > 1
-        ) t
-        GROUP BY student_code
+        SELECT student_code, COUNT(*) AS repeat_count
+        FROM s360.fact_behavior_logs
+        WHERE comment_date <= CAST(:cutoff_date AS DATE)
+        GROUP BY student_code, behavior_code
+        HAVING COUNT(*) > 1
     ) rep ON fbl.student_code = rep.student_code
     WHERE fbl.comment_date <= CAST(:cutoff_date AS DATE) AND fbl.school_year_id = :school_year_id
     GROUP BY fbl.student_code, rep.repeat_count
 )
 SELECT
-    tf.student_code,
     sg.so_school_id,
+    tf.student_code,
+    sg.homeroom_class_id,
     tf.subject_id,
     COALESCE(si.subject_category, 'MATH_SCIENCE') AS subject_category,
     COALESCE(sg.grade_level, 7) AS grade_level,
@@ -394,10 +401,10 @@ SELECT
     lf.lms_submission_rate,
     lf.lms_recent_submission_rate,
     lf.join_date,
-    af.daily_absence_rate,
-    af.unexcused_absent_rate,
-    af.excused_absent_days,
-    af.total_late_count,
+    COALESCE(af.daily_absence_rate, 0.0) AS daily_absence_rate,
+    COALESCE(af.unexcused_absent_rate, 0.0) AS unexcused_absent_rate,
+    COALESCE(af.excused_absent_days, 0) AS excused_absent_days,
+    COALESCE(af.total_late_count, 0) AS total_late_count,
     bf.total_demerit_points,
     bf.repeat_offense_count,
     bf.severe_sanction_count

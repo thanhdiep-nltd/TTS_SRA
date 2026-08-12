@@ -984,21 +984,41 @@ def get_ews_raw(
     lms_expected = len(lms)
     lms_submitted = sum(1 for it in lms if it.submitted)
 
-    # 4. Điểm danh hằng ngày (30 ngày gần nhất trước cutoff)
+    # 4. Điểm danh tiết học môn (fact_course_attendences) — ưu tiên theo môn học, fallback sang điểm danh ngày
     att_sql = text("""
-        SELECT _date, total_periods, absent_periods,
-               absent_no_permission, absent_with_permission
-        FROM s360.fact_so_daily_attendance
-        WHERE student_code = :sc AND school_year_id = :sy
-          AND _date <= CAST(:cutoff AS DATE)
-        ORDER BY _date DESC
+        SELECT ca._date, 1 AS total_periods,
+               CASE WHEN ca.status = 'ABSENT' THEN 1 ELSE 0 END AS absent_periods,
+               CASE WHEN ca.status = 'ABSENT' AND ca.status_name LIKE '%không phép%' THEN 1 ELSE 0 END AS absent_no_permission,
+               CASE WHEN ca.status = 'ABSENT' AND ca.status_name LIKE '%có phép%' THEN 1 ELSE 0 END AS absent_with_permission,
+               ca.status, ca.status_name
+        FROM s360.fact_course_attendences ca
+        JOIN s360.dim_course c ON ca.course_id = c.id
+        WHERE ca.student_code = :sc AND ca.school_year_id = :sy AND c.subject_id = :sid
+          AND ca._date <= CAST(:cutoff AS DATE)
+        ORDER BY ca._date DESC
         LIMIT 30
     """)
-    att_rows = db.execute(att_sql, {"sc": student_code, "sy": school_year_id, "cutoff": cutoff}).fetchall()
+    att_rows = db.execute(att_sql, {"sc": student_code, "sy": school_year_id, "sid": subject_id, "cutoff": cutoff}).fetchall()
+
+    if not att_rows:
+        att_sql = text("""
+            SELECT _date, total_periods, absent_periods,
+                   absent_no_permission, absent_with_permission,
+                   NULL AS status, NULL AS status_name
+            FROM s360.fact_so_daily_attendance
+            WHERE student_code = :sc AND school_year_id = :sy
+              AND _date <= CAST(:cutoff AS DATE)
+            ORDER BY _date DESC
+            LIMIT 30
+        """)
+        att_rows = db.execute(att_sql, {"sc": student_code, "sy": school_year_id, "cutoff": cutoff}).fetchall()
+
     attendance = []
     for r in att_rows:
-        if (r.absent_periods or 0) == 0:
+        if r.status == "PRESENT" or (r.absent_periods or 0) == 0:
             status = "CÓ MẶT"
+        elif r.status_name:
+            status = r.status_name.upper()
         elif (r.absent_no_permission or 0) > 0:
             status = "VẮNG KHÔNG PHÉP"
         elif (r.absent_with_permission or 0) > 0:

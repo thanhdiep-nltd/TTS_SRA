@@ -705,8 +705,82 @@ def seed_auxiliary_tables(session, students):
         ON CONFLICT (id) DO NOTHING;
     """, class_stat_params)
 
+    # --- dim_course + fact_course_attendences (Phương án 2: Điểm danh theo tiết học từng môn) ---
+    course_params = []
+    course_map = {}
+    course_id_counter = 1
+    for s_id in [1, 2]:
+        for g_id in range(6, 11):
+            for sub_id, code, name, name_en, atype, scale, cat in SUBJECTS_23:
+                course_params.append({
+                    "id": course_id_counter,
+                    "sid": s_id,
+                    "syid": 2025,
+                    "gid": g_id,
+                    "subid": sub_id,
+                    "code": f"COURSE_{code}_G{g_id}_S{s_id}",
+                    "name": f"Lớp {name} Khối {g_id}"
+                })
+                course_map[(s_id, g_id, sub_id)] = course_id_counter
+                course_id_counter += 1
+
+    execute_batch(session, """
+        INSERT INTO s360.dim_course (id, so_school_id, school_year_id, grade_id, subject_id, code, name, status)
+        VALUES (:id, :sid, :syid, :gid, :subid, :code, :name, 'ACTIVE')
+        ON CONFLICT (id) DO NOTHING;
+    """, course_params)
+
+    # Sinh điểm danh tiết học phần (fact_course_attendences) cho từng học sinh & từng môn
+    course_att_params = []
+    for p in students:
+        for week in range(1, 13):
+            att_date = SCHOOL_YEAR_START + timedelta(weeks=week - 1)
+            is_absent_day = random.random() < float(np.clip(1.0 - p.attend_series[week-1], 0.0, 1.0))
+            is_unexcused = (p.risk_tier in ['HIGH', 'CRITICAL'] and week >= p.crisis_week)
+
+            for sub_id, code, name, name_en, atype, scale, cat in SUBJECTS_23:
+                c_id = course_map.get((p.school_id, p.grade_id, sub_id))
+                if not c_id:
+                    continue
+
+                # 2 tiết / môn / tuần
+                for p_idx, p_code, p_name in [(1, "PER_01", "Tiết 1"), (2, "PER_03", "Tiết 3")]:
+                    # Nếu học sinh vắng trong ngày này
+                    if is_absent_day and random.random() < 0.5:
+                        status = "ABSENT"
+                        status_name = "Vắng không phép" if is_unexcused else "Nghỉ có phép"
+                        comment = "Vắng mặt không lý do" if is_unexcused else "Xin nghỉ có phép"
+                    elif random.random() < 0.02:
+                        status = "LATE"
+                        status_name = "Đi muộn"
+                        comment = "Vào lớp muộn 15 phút"
+                    else:
+                        status = "PRESENT"
+                        status_name = "Có mặt"
+                        comment = None
+
+                    course_att_params.append({
+                        "sid": p.school_id,
+                        "syid": 2025,
+                        "cid": c_id,
+                        "pcode": p_code,
+                        "pname": p_name,
+                        "adate": att_date,
+                        "scode": p.code,
+                        "status": status,
+                        "sname": status_name,
+                        "comment": comment
+                    })
+
+    execute_batch(session, """
+        INSERT INTO s360.fact_course_attendences
+        (so_school_id, school_year_id, course_id, timetable_period_code, timetable_period_name, _date, student_code, status, status_name, comment)
+        VALUES (:sid, :syid, :cid, :pcode, :pname, :adate, :scode, :status, :sname, :comment);
+    """, course_att_params)
+
     logger.info(f"Auxiliary tables seeded: exam_moet={len(exam_moet_params)}, course_enrolls={len(course_enroll_params)}, "
-                f"evaluate={len(eval_process_params)}, homeroom_att={len(homeroom_att_params)}, late={len(late_att_params)}, class_stat={len(class_stat_params)}")
+                f"evaluate={len(eval_process_params)}, homeroom_att={len(homeroom_att_params)}, late={len(late_att_params)}, class_stat={len(class_stat_params)}, "
+                f"dim_course={len(course_params)}, course_att={len(course_att_params)}")
 
 
 def seed_benchmark_students(session, students):
