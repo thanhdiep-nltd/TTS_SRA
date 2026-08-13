@@ -1,352 +1,202 @@
 # Implementation Plan
 
-[Overview]
-Sửa thẳng Report Agent hiện tại (`src/agents/report_agent/`) để hoạt động hoàn toàn trên schema mới (`s360` + `public` merged schema), giữ nguyên 4 loại báo cáo (academic_conduct, subject_quality, at_risk, subject_report) + báo cáo custom, render DOCX/HTML/PDF như hiện tại, không tạo V2, không tạo thêm bản sao.
+## [Overview]
 
-Report Agent hiện tại đang query trực tiếp các bảng cũ trong `public` schema với PK dạng UUID (`schools`, `academic_years`, `semesters`, `grades`, `classes`, `subjects`, `students`, `enrollments`, `scores`, `student_term_reports`, `teacher_assignments`). Schema mới (`score_focused_schema.sql`) đã merge App Core (10 bảng `public`) + School Online DWH (14 bảng `s360`), tất cả PK chuyển sang BIGINT/INTEGER, không còn UUID. Các bảng điểm được tổ chức lại thành fact tables trong `s360` schema (`fact_gradebooks`, `fact_gradebooks_moet`, `fact_so_assignment_grade`, `fact_subject_academic_records`, `fact_overall_academic_records`). Dữ liệu s360 đã có seed data từ `data_mock/mock_full_data/generate_full_system_mock_v4.py`. Mục tiêu: sửa thẳng `report_agent/tools.py` để query đúng schema mới, giữ nguyên toàn bộ logic render DOCX/HTML và 4 loại báo cáo. Các phần khác của hệ thống (dashboard, data_service_agent, ews, repositories) vẫn dùng schema cũ — giữ nguyên, không đụng tới.
+Thêm đánh dấu và bộ lọc "nâng rủi ro do LLM" (LLM risk escalation) vào dashboard EWS để làm nổi bật và dễ tìm các trường hợp mà bước dự báo LLM **nâng** mức rủi ro của học sinh lên cao hơn so với mức nền CatBoost (ví dụ: MODERATE → HIGH).
 
-[Types]
-Tạo ORM models mới cho schema `s360` và tạo schema mới `ReportExportRequestS360` (không sửa schema `ReportExportRequest` cũ).
+Hiện tại, pipeline EWS tạo ra hai kết quả đánh giá rủi ro cho mỗi mốc (học sinh - môn học): rủi ro ML của CatBoost (`risk_score`, `risk_level`) và dự báo định tính có tăng cường LLM (`llm_risk_score`, `llm_risk_level`) được lưu trong các cột `llm_*` của bảng `s360.fact_student_subject_risk_predictions`. Dashboard (`/ews/predictions` API + tab `EwsWarningTab` frontend) đã hiển thị cả hai badge (`risk_level` và "✨ LLM: <mức>") trên mỗi dòng, và drawer chi tiết hiển thị phần diễn giải của LLM.
 
-### New ORM Models (`src/models/s360_tables.py`)
+Tuy nhiên, hiện **không có cách nào** để biết khi nào LLM đã *tăng* mức rủi ro so với CatBoost. Việc này quan trọng vì một sự nâng cấp (ví dụ MODERATE → HIGH) nghĩa là ngữ cảnh định tính (biến cố gia đình, bệnh lý) đã phát hiện mức độ nghiêm trọng mà ML thuần bỏ sót — một tín hiệu ưu tiên cao, quan trọng cho quyết định. Triển khai này bổ sung: (1) một đánh dấu boolean `llm_risk_escalated` tính toán được trên mỗi dòng dự báo, và (2) bộ lọc `llm_escalated` trên endpoint `/ews/predictions` để người dùng cô lập chính xác các trường hợp này. Đây là cải tiến tối thiểu, chỉ-đọc, tuân theo pattern hiện có của codebase là tính toán các marker dẫn xuất (ví dụ `primary_badge`) trong Python thay vì lưu cột phi chuẩn hóa.
 
-```python
-from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, text
-from sqlalchemy import Enum as SAEnum
-from src.db.base import Base
-from src.models import enums
+Cách tiếp cận cố ý tối giản: không thay đổi schema database, không migration, không thay đổi logic pipeline/forecasting. Việc nâng cấp được suy ra ở thời điểm đọc bằng cách so sánh thứ hạng (rank) thứ tự của `llm_risk_level` với `risk_level`. Bộ lọc được áp dụng trong SQL (qua biểu thức CASE so sánh rank) để phân trang server-side, `COUNT`, và `LIMIT/OFFSET` vẫn đúng. Phạm vi trải qua ba file: router API (`src/api/v1/ews.py`), schema Pydantic (`src/schemas/ews.py`), tab frontend (`frontend/src/components/dashboard/EwsWarningTab.tsx`), cùng unit test, API test, và test E2E bằng Playwright MCP.
 
-_NOW = text("now()")
+## [Types]
 
-def pg_enum(py_enum, name: str) -> SAEnum:
-    return SAEnum(
-        py_enum,
-        name=name,
-        values_callable=lambda e: [m.value for m in e],
-        create_type=False,
-    )
+Thêm helper xếp hạng thứ tự cho các mức rủi ro và bổ sung marker tính toán mới vào schema phản hồi API. Không giới thiệu kiểu hoặc cột database mới; helper là hằng số dùng chung cho cả marker trả về và bộ lọc SQL.
 
-class DimSchoolYear(Base):
-    __tablename__ = "dim_school_year"
-    __table_args__ = {"schema": "s360"}
-    id = Column(Integer, primary_key=True)
-    code = Column(String(50), nullable=False)
-    fullname = Column(String(100), nullable=False)
-    start_date = Column(Date)
-    end_date = Column(Date)
-    is_current = Column(Integer, default=0)
-    is_locked = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-    source_system = Column(String(50), default='SCHOOL_ONLINE')
+**Xếp hạng thứ tự mức rủi ro** — dùng để xác định sự nâng cấp (định nghĩa dùng chung, khớp thứ tự `RISK_LEVELS` hiện có):
 
-class DimHomeroomClass(Base):
-    __tablename__ = "dim_homeroom_class"
-    __table_args__ = {"schema": "s360"}
-    id = Column(BigInteger, primary_key=True)
-    so_school_id = Column(Integer, nullable=False)
-    school_year_id = Column(Integer, ForeignKey("s360.dim_school_year.id"), nullable=False)
-    grade_id = Column(Integer, nullable=False)
-    code = Column(String(50), nullable=False)
-    fullname = Column(String(100), nullable=False)
-    homeroom_teacher_id = Column(BigInteger)
-    teacher_code = Column(String(50))
-    is_active = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-    source_system = Column(String(50), default='SCHOOL_ONLINE')
+| Mức | Rank |
+|-----|------|
+| LOW | 0 |
+| MODERATE | 1 |
+| HIGH | 2 |
+| CRITICAL | 3 |
 
-class DimHomeroomClassStudent(Base):
-    __tablename__ = "dim_homeroom_class_student"
-    __table_args__ = {"schema": "s360"}
-    id = Column(BigInteger, primary_key=True)
-    so_student_id = Column(BigInteger, nullable=False)
-    student_code = Column(String(50), nullable=False)
-    student_name = Column(String(255), nullable=False)
-    homeroom_class_id = Column(Integer, nullable=False)
-    class_code = Column(String(50))
-    class_name = Column(String(100))
-    so_school_id = Column(Integer, nullable=False)
-    school_year_id = Column(Integer, nullable=False)
-    school_name = Column(String(255))
-    teacher_code = Column(String(50))
-    grade_id = Column(Integer, nullable=False)
-    grade_name = Column(String(50))
-    moet_code = Column(String(50))
-    join_date = Column(Date)
-    is_graduated = Column(Integer, default=0)
-    status = Column(Integer, default=1)
-    is_active = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-    source_system = Column(String(50), default='SCHOOL_ONLINE')
-
-class DimSubject(Base):
-    __tablename__ = "dim_subject"
-    __table_args__ = {"schema": "s360"}
-    id = Column(Integer, primary_key=True)
-    code = Column(String(50), nullable=False)
-    name = Column(String(255), nullable=False)
-    name_en = Column(String(255))
-    subject_type = Column(String(50), default='CORE')
-    subject_category = Column(String(50), default='MATH_SCIENCE')
-    assessment_type = Column(pg_enum(enums.AssessmentType, "assessment_type_enum"), nullable=False, server_default=text("'SCORED'"))
-    default_scale_name = Column(String(50), nullable=False, server_default=text("'SCALE_10'"))
-    is_active = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-    source_system = Column(String(50), default='SCHOOL_ONLINE')
-
-class DimExam(Base):
-    __tablename__ = "dim_exam"
-    __table_args__ = {"schema": "s360"}
-    id = Column(BigInteger, primary_key=True)
-    so_exam_id = Column(BigInteger)
-    school_year_id = Column(Integer, nullable=False)
-    subject_id = Column(Integer, ForeignKey("s360.dim_subject.id"), nullable=False)
-    grade_id = Column(Integer, nullable=False)
-    exam_code = Column(String(50))
-    exam_name = Column(String(255), nullable=False)
-    coefficient = Column(Numeric(10, 1), default=1.0)
-    moet_semester_index = Column(Integer)
-    max_grade = Column(Numeric(10, 1), default=10.0)
-    is_periodic_exam = Column(Integer, default=0)
-    is_moet = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-
-class FactGradebooks(Base):
-    __tablename__ = "fact_gradebooks"
-    __table_args__ = {"schema": "s360"}
-    id = Column(BigInteger, primary_key=True)
-    so_school_id = Column(Integer, nullable=False)
-    school_year_id = Column(Integer, ForeignKey("s360.dim_school_year.id"), nullable=False)
-    semester_index = Column(Integer, nullable=False)
-    student_code = Column(String(50), nullable=False)
-    homeroom_class_id = Column(Integer, nullable=False)
-    subject_id = Column(Integer, ForeignKey("s360.dim_subject.id"), nullable=False)
-    so_exam_id = Column(BigInteger, ForeignKey("s360.dim_exam.id"))
-    final_grade = Column(Numeric(10, 2))
-    final_grade_percent = Column(Numeric(5, 2))
-    final_grade_letter = Column(String(10))
-    pass_fail_status = Column(pg_enum(enums.PassFail, "pass_fail_enum"))
-    scale_name_used = Column(String(50), default='SCALE_10')
-    max_grade = Column(Numeric(10, 1), default=10.0)
-    is_locked = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-    source_system = Column(String(50), default='SCHOOL_ONLINE')
-
-class FactOverallAcademicRecords(Base):
-    __tablename__ = "fact_overall_academic_records"
-    __table_args__ = {"schema": "s360"}
-    id = Column(BigInteger, primary_key=True)
-    so_school_id = Column(Integer, nullable=False)
-    school_year_id = Column(Integer, ForeignKey("s360.dim_school_year.id"), nullable=False)
-    grade_id = Column(Integer, nullable=False)
-    homeroom_class_id = Column(Integer, nullable=False)
-    student_id = Column(BigInteger, nullable=False)
-    student_code = Column(String(50), nullable=False)
-    final_grade = Column(Numeric(10, 1))
-    s1_final_grade = Column(Numeric(10, 1))
-    s2_final_grade = Column(Numeric(10, 1))
-    conduct = Column(pg_enum(enums.Conduct, "conduct_enum"))
-    s1_conduct = Column(pg_enum(enums.Conduct, "conduct_enum"))
-    s2_conduct = Column(pg_enum(enums.Conduct, "conduct_enum"))
-    learning_capacity = Column(String(50))
-    s1_learning_capacity = Column(String(50))
-    s2_learning_capacity = Column(String(50))
-    final_behavior_point = Column(Integer)
-    day_of_absent = Column(Integer, default=0)
-    s1_day_of_absent = Column(Integer, default=0)
-    s2_day_of_absent = Column(Integer, default=0)
-    homeroom_teacher_comment = Column(Text)
-    principal_comment = Column(Text)
-    is_passed_no_conditional = Column(Integer, default=1)
-    is_graduated = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-
-class FactSubjectAcademicRecords(Base):
-    __tablename__ = "fact_subject_academic_records"
-    __table_args__ = {"schema": "s360"}
-    id = Column(BigInteger, primary_key=True)
-    overall_record_id = Column(BigInteger)
-    subject_id = Column(Integer, ForeignKey("s360.dim_subject.id"), nullable=False)
-    student_code = Column(String(50), nullable=False)
-    final_grade = Column(Numeric(10, 1))
-    s1_final_grade = Column(Numeric(10, 1))
-    s2_final_grade = Column(Numeric(10, 1))
-    final_grade_after_summer = Column(Numeric(10, 1))
-    created_at = Column(DateTime(timezone=True), server_default=_NOW)
-    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
-```
-
-### New Schema (`src/schemas/analytics.py`)
-
-Tạo `ReportExportRequestS360` — **không sửa** `ReportExportRequest` cũ:
+**Trường Pydantic mới trên `EwsPredictionRow`** (`src/schemas/ews.py`):
 
 ```python
-class ReportExportRequestS360(BaseModel):
-    report_type: Literal["academic_conduct", "subject_quality", "at_risk", "subject_report"]
-    format: Literal["docx", "pdf", "html"]
-    grade_level: str = "all"
-    class_id: Optional[int] = None          # BIGINT — s360.dim_homeroom_class.id
-    semester_index: Optional[int] = None    # 1 hoặc 2
-    subject_id: Optional[int] = None        # INTEGER — s360.dim_subject.id
-    school_year_id: Optional[int] = None    # INTEGER — s360.dim_school_year.id
-    include_charts: bool = True
-    include_tables: bool = True
-    include_ai_insights: bool = True
-    include_signature: bool = True
+llm_risk_escalated: Optional[bool] = Field(
+    default=None,
+    description="True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm_risk_level) > rank(risk_level)). None nếu chưa có llm_risk_level.",
+)
 ```
 
-[Files]
-Sửa thẳng `src/agents/report_agent/` để dùng schema mới, thêm models mới, giữ nguyên các file khác. **Không tạo bất kỳ file/package tên V2.**
+- `True`: có `llm_risk_level` và rank của nó lớn hơn hẳn rank của `risk_level` (ví dụ MODERATE → HIGH, HIGH → CRITICAL).
+- `False`: cả hai mức đều có và rank bằng nhau, hoặc LLM hạ mức (ví dụ HIGH → MODERATE — vẫn là thay đổi nhưng không phải nâng).
+- `None`: thiếu `llm_risk_level` (chưa có đánh giá LLM cho mốc này).
 
-### New Files
+**Tham số query mới trên `GET /ews/predictions`:**
 
-| File | Purpose |
-|------|---------|
-| `src/models/s360_tables.py` | ORM models cho schema `s360` (8 models: DimSchoolYear, DimHomeroomClass, DimHomeroomClassStudent, DimSubject, DimExam, FactGradebooks, FactOverallAcademicRecords, FactSubjectAcademicRecords) |
+| Param | Kiểu | Giá trị |
+|-------|------|---------|
+| `llm_escalated` | `bool \| None` | `true` = chỉ các dòng có nâng cấp; `false` = chỉ các dòng LLM KHÔNG nâng; bỏ trống / `None` = không lọc (tất cả dòng) |
 
-### Modified Files
+**State & type mới phía frontend** (`frontend/src/lib/types.ts` và `EwsWarningTab.tsx`):
+- `EwsPredictionRow` thêm `llm_risk_escalated: boolean | null`.
+- Giá trị lọc mới `"ALL" | "true" | "false"` (qua `CustomDropdownSelect`) được serialize thành query param `llm_escalated`.
 
-| File | Changes |
-|------|---------|
-| `src/agents/report_agent/tools.py` | **Sửa thẳng** — bỏ import từ `src.models.tables` (các bảng cũ), import từ `src.models.s360_tables` (schema mới). **Giữ nguyên tên hàm gốc** (`compute_report_data`, `get_report_data_summary`, `generate_report_download_link`, `generate_custom_report_docx`), chỉ thay đổi logic bên trong. Giữ nguyên `render_markdown_to_docx`, `render_markdown_to_html`. Viết mới `is_valid_int`, `resolve_parameters` |
-| `src/agents/report_agent/node.py` | Giữ nguyên cấu trúc, chỉ đổi import tools (nếu tên hàm đổi) |
-| `src/schemas/analytics.py` | Thêm `ReportExportRequestS360` (giữ nguyên `ReportExportRequest` cũ) |
-| `src/api/v1/analytics.py` | Thêm `_average_gpa_s360`, `_at_risk_classes_s360`, `_grade_distribution_s360` (giữ nguyên hàm cũ) |
-| `src/api/v1/report_renderer.py` | Thêm `prepare_data_s360`, `generate_docx_report_s360`, `generate_html_report_s360` (giữ nguyên hàm cũ) |
-| `src/api/v1/reports.py` | Thêm `export_analytics_report_s360` (giữ nguyên `export_analytics_report` cũ) |
+## [Files]
 
-### Unchanged Files (không đụng tới)
+Sửa 3 file nguồn, 2 file cho types/test, và thêm 1 file test mới. Không xóa hoặc di chuyển file; không thay đổi file cấu hình.
 
-| File | Status |
-|------|--------|
-| `src/agents/graph.py` | Giữ nguyên — node `"report_agent"` không đổi |
-| `src/agents/supervisor/node.py` | Giữ nguyên — không đổi |
-| `src/agents/trace_adapter.py` | Giữ nguyên — không đổi |
-| `src/models/tables.py` | Giữ nguyên — các agent khác (data_service_agent, ews, repositories) vẫn dùng |
-| `src/api/v1/reports.py` (phần cũ) | Giữ nguyên `export_analytics_report()` |
-| `src/api/v1/report_renderer.py` (phần cũ) | Giữ nguyên `prepare_data()`, `generate_docx_report()`, `generate_html_report()` |
+**Các file được sửa:**
 
-[Functions]
-Sửa thẳng logic query trong `report_agent/tools.py` (giữ tên hàm gốc) và thêm hàm `_s360` trong shared API files.
+1. **`src/schemas/ews.py`**
+   - Thêm hằng số xếp hạng thứ tự `RISK_LEVEL_RANK: dict[str, int] = {"LOW": 0, "MODERATE": 1, "HIGH": 2, "CRITICAL": 3}` (cấp module, gần `EwsPredictionRow`).
+   - Thêm trường `llm_risk_escalated: Optional[bool] = None` vào `EwsPredictionRow` (sau các trường `llm_*` hiện có, ~dòng 93).
 
-### Modified Functions in `src/agents/report_agent/tools.py` (giữ tên gốc, đổi logic bên trong)
+2. **`src/api/v1/ews.py`**
+   - Import `RISK_LEVEL_RANK` từ `src.schemas.ews`.
+   - Trong `get_ews_predictions` (`~dòng 524`):
+     - Thêm query param `llm_escalated: bool | None = Query(None, description="True = chỉ học sinh được LLM nâng mức rủi ro (rank llm_risk_level > rank risk_level)")`.
+     - Khi `llm_escalated is not None`, thêm mệnh đề WHERE so sánh rank trong SQL tham chiếu cả `rp.risk_level` và `rp.llm_risk_level` (xem [Functions]).
+     - Thêm mục `params`: `"rank_base"` / `"rank_llm"` hoặc boolean `"llm_escalated"` tùy dạng SQL chọn.
+   - Trong vòng lặp serialize dòng (`~dòng 740`), tính toán và truyền `llm_risk_escalated=` vào `EwsPredictionRow` bằng helper nhỏ `_llm_risk_escalated(base_level, llm_level)`.
+   - (Tùy chọn, không phá vỡ) Thêm số lượng nâng cấp vào `EwsOverview` để card KPI hiển thị — chỉ khi cần; giữ ngoài phạm vi để tối giản.
 
-| Function | Thay đổi |
-|----------|-----------|
-| `is_valid_uuid` → `is_valid_int` | Thay kiểm tra UUID → kiểm tra integer hợp lệ |
-| `resolve_uuid_parameters` → `resolve_parameters` | Resolve text→BIGINT/INTEGER ID từ schema mới (class_id, semester_index, subject_id, school_year_id) |
-| `compute_report_data` | Đổi logic query sang `s360.fact_gradebooks`, `s360.fact_overall_academic_records`, `s360.dim_homeroom_class_student`, `s360.dim_homeroom_class`, `s360.dim_subject`, `public.teacher_assignments` |
-| `get_report_data_summary` | Gọi `compute_report_data` (đã sửa) |
-| `generate_report_download_link` | Gọi `export_analytics_report_s360`. **Hỗ trợ cả 3 format (docx, html, pdf) cùng lúc** như hiện tại |
-| `generate_custom_report_docx` | Giữ nguyên (không phụ thuộc schema) |
+3. **`frontend/src/lib/types.ts`**
+   - Thêm `llm_risk_escalated: boolean | null;` vào interface `EwsPredictionRow` (gần trường `llm_risk_level` hiện có).
 
-### Copied Functions (giữ nguyên, không thay đổi)
+4. **`frontend/src/components/dashboard/EwsWarningTab.tsx`**
+   - Thêm state lọc mới `const [llmEscalated, setLlmEscalated] = useState<string>("ALL");`.
+   - Thêm vào deps của effect fetch `/ews/predictions` và serialize: `if (llmEscalated !== "ALL") predParams.set("llm_escalated", llmEscalated);`.
+   - Thêm control `CustomDropdownSelect` lọc (vd nhãn "Nâng Rủi Ro (LLM)") với các tùy chọn: `ALL` (Tất cả), `true` (Có — LLM nâng mức), `false` (Không nâng).
+   - Trong ô "Mức Rủi Ro" của bảng dữ liệu, khi `item.llm_risk_escalated` là truthy, hiển thị thêm badge nâng cấp (vd pill amber/rose "⬆ LLM nâng") cạnh badge `✨ LLM:` hiện có.
 
-| Function | Source | Reason |
-|----------|--------|--------|
-| `render_markdown_to_docx` | `tools.py` (hiện tại) | Pure render, không phụ thuộc schema |
-| `render_markdown_to_html` | `tools.py` (hiện tại) | Pure render, không phụ thuộc schema |
+**File mới:**
 
-### New Functions in `src/api/v1/report_renderer.py`
+5. **`tests/test_ews_llm_escalation.py`**
+   - Unit test cho helper `_llm_risk_escalated` mới (hàm thuần).
+   - Test schema rằng `EwsPredictionRow` chấp nhận trường `llm_risk_escalated` mới (mô phỏng `tests/test_shap_drivers.py`).
+   - Test kiểu integration cho bộ lọc endpoint `/ews/predictions`: xác nhận lọc theo `llm_escalated=true` chỉ trả về các dòng nâng cấp và phân trang/đếm phản ánh đúng tập đã lọc.
 
-| Function | Purpose |
-|----------|---------|
-| `prepare_data_s360` | Query students, scores, conduct từ `s360.fact_overall_academic_records`, `s360.dim_homeroom_class_student`, `s360.fact_gradebooks` |
-| `generate_docx_report_s360` | Render DOCX từ data s360 |
-| `generate_html_report_s360` | Render HTML từ data s360 |
+**File test được sửa:**
 
-### New Functions in `src/api/v1/analytics.py`
+6. **`tests/test_shap_drivers.py`** (tùy chọn)
+   - Mở rộng các test xây dựng `EwsPredictionRow` hiện có để cũng kiểm tra trường mới mặc định là `None` (giữ suite hiện tại xanh và ghi lại mặc định mới).
 
-| Function | Purpose |
-|----------|---------|
-| `_average_gpa_s360` | Query `AVG(s360.fact_gradebooks.final_grade)` thay vì `AVG(scores.value)` |
-| `_at_risk_classes_s360` | Query `s360.fact_gradebooks` GROUP BY `homeroom_class_id` HAVING AVG < 5.0 |
-| `_grade_distribution_s360` | Query `s360.fact_gradebooks` JOIN `s360.dim_homeroom_class` |
+## [Functions]
 
-### New Functions in `src/api/v1/reports.py`
+Logic mới cốt lõi là một helper thuần duy nhất cộng với việc nối bộ lọc SQL. Không phá vỡ chữ ký hàm hiện có; chúng ta chỉ mở rộng `get_ews_predictions` với một tham số tùy chọn mới.
 
-| Function | Purpose |
-|----------|---------|
-| `export_analytics_report_s360` | Endpoint xuất báo cáo từ schema mới, nhận `ReportExportRequestS360`, gọi `prepare_data_s360` + `generate_*_report_s360` |
+**Hàm mới:**
 
-[Classes]
-Tạo ORM models mới và schema classes mới.
+1. **`_llm_risk_escalated(base_level: str | None, llm_level: str | None) -> bool | None`** — `src/api/v1/ews.py`
+   - Mục đích: xác định LLM có nâng mức rủi ro so với CatBoost hay không.
+   - Logic:
+     ```python
+     RISK_LEVEL_RANK = {"LOW": 0, "MODERATE": 1, "HIGH": 2, "CRITICAL": 3}
+     def _llm_risk_escalated(base_level, llm_level):
+         if not llm_level:
+             return None
+         b = RISK_LEVEL_RANK.get((base_level or "").upper())
+         l = RISK_LEVEL_RANK.get((llm_level or "").upper())
+         if b is None or l is None:
+             return None
+         return l > b
+     ```
 
-### New Classes in `src/models/s360_tables.py`
+2. **`_risk_level_rank_case(column: str) -> str`** — `src/api/v1/ews.py` (helper tùy chọn)
+   - Mục đích: sinh biểu thức SQL `CASE` tái sử dụng ánh xạ một cột mức rủi ro sang rank thứ tự cho mệnh đề WHERE của bộ lọc.
+   - Trả về: `CASE {column} WHEN 'LOW' THEN 0 WHEN 'MODERATE' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'CRITICAL' THEN 3 ELSE -1 END`.
+   - Dùng để xây mệnh đề WHERE nâng cấp (giữ SQL dễ đọc và an toàn tham số vì `column` là literal cố định, không phải đầu vào người dùng).
 
-| Class | Table | Schema |
-|-------|-------|--------|
-| `DimSchoolYear` | `dim_school_year` | `s360` |
-| `DimHomeroomClass` | `dim_homeroom_class` | `s360` |
-| `DimHomeroomClassStudent` | `dim_homeroom_class_student` | `s360` |
-| `DimSubject` | `dim_subject` | `s360` |
-| `DimExam` | `dim_exam` | `s360` |
-| `FactGradebooks` | `fact_gradebooks` | `s360` |
-| `FactOverallAcademicRecords` | `fact_overall_academic_records` | `s360` |
-| `FactSubjectAcademicRecords` | `fact_subject_academic_records` | `s360` |
+**Hàm được sửa:**
 
-### New Classes in `src/schemas/analytics.py`
+3. **`get_ews_predictions`** — `src/api/v1/ews.py` (`~dòng 524`)
+   - Thêm query param `llm_escalated: bool | None = Query(None, ...)`.
+   - Khi có giá trị, thêm vào `where_clauses`:
+     ```python
+     if llm_escalated is not None:
+         base_rank = _risk_level_rank_case("rp.risk_level")
+         llm_rank = _risk_level_rank_case("rp.llm_risk_level")
+         if llm_escalated:
+             where_clauses.append(f"({llm_rank} > {base_rank} AND rp.llm_risk_level IS NOT NULL)")
+         else:
+             where_clauses.append(f"NOT ({llm_rank} > {base_rank} AND rp.llm_risk_level IS NOT NULL)")
+     ```
+   - Lưu ý: `llm_escalated=false` cố ý giữ các dòng có `llm_risk_level IS NULL` (chưa chạy LLM) là "không nâng" — khớp view mặc định của dashboard. Nếu product muốn chỉ các dòng đã đánh giá cho `false`, bọc nhánh `false` trong `AND rp.llm_risk_level IS NOT NULL` (nêu rõ là quyết định trong [Testing]).
+   - Trong vòng lặp serialize, thay đổi vị trí dòng `llm_risk_level=r.llm_risk_level,` cũng truyền `llm_risk_escalated=_llm_risk_escalated(r.risk_level, r.llm_risk_level),`.
 
-| Class | Changes |
-|-------|---------|
-| `ReportExportRequestS360` | Mới — `semester_index: Optional[int]`, `class_id: Optional[int]`, `subject_id: Optional[int]`, `school_year_id: Optional[int]` |
+**Hàm bị xóa:** Không có.
 
-### Unchanged Classes
+## [Classes]
 
-| Class | Status |
-|-------|--------|
-| `ReportExportRequest` | Giữ nguyên (dashboard vẫn dùng) |
-| Tất cả models cũ trong `src/models/tables.py` | Giữ nguyên (data_service_agent, ews, repositories vẫn dùng) |
+Không có class nào được thêm, xóa, hoặc thay đổi cấu trúc. Thay đổi duy nhất ở cấp class là thêm một trường vào model Pydantic hiện có.
 
-[Dependencies]
-Không cần thêm package mới. Tất cả dependencies đã có sẵn:
-- `sqlalchemy` — ORM queries
-- `docx` — DOCX generation
-- `langchain_core.tools` — `@tool` decorator
-- `langgraph.prebuilt` — `create_react_agent`
-- `fastapi` — API endpoints
+**Class được sửa:**
 
-[Testing]
-Tạo test file mới và cập nhật test hiện có.
+1. **`EwsPredictionRow`** — `src/schemas/ews.py`
+   - Thêm trường `llm_risk_escalated: Optional[bool] = None` (sau các trường dự báo `llm_*`).
+   - Thêm hằng số cấp module `RISK_LEVEL_RANK`.
 
-### New Test Files
+**Class mới:** Không có.
 
-| File | Purpose |
-|------|---------|
-| `tests/test_agents/test_report_agent_s360.py` | Test `resolve_parameters`, `compute_report_data`, `get_report_data_summary` với mock data từ schema mới |
+**Class bị xóa:** Không có.
 
-### Modified Test Files
+## [Dependencies]
 
-| File | Changes |
-|------|---------|
-| `tests/test_report_renderer.py` | Thêm test cases cho `prepare_data_s360`, `generate_docx_report_s360`, `generate_html_report_s360` |
+Không có dependency mới nào cho Python hoặc frontend. Triển khai dựa trên: thư viện chuẩn Python (`src/schemas/ews.py`, `src/api/v1/ews.py`), `pydantic`, `fastapi`, `sqlalchemy` hiện có; và các dependency frontend hiện có (`lucide-react` icons, `CustomDropdownSelect`). Không thay đổi `requirements.txt` hoặc `package.json`. Test E2E dùng MCP server Playwright (`github.com/microsoft/playwright-mcp`) — không cần cài đặt thêm.
 
-### Test Strategy
+## [Testing]
 
-1. **Unit test `resolve_parameters`**: Test resolve text→ID với mock `SessionLocal`
-2. **Unit test `compute_report_data`**: Test query logic với mock data `s360` schema
-3. **Integration test `get_report_data_summary`**: Test full flow từ tool call → response
-4. **Integration test `generate_report_download_link`**: Test tạo file DOCX/HTML/PDF (cả 3 format)
-5. **Regression test dashboard**: Đảm bảo dashboard vẫn hoạt động với schema cũ (hàm cũ không bị break)
-6. **Verify `report_agent/tools.py` không còn import từ `src.models.tables`**: `grep -r "from src.models.tables" src/agents/report_agent/` phải trả về 0 kết quả
+Ba tầng test: unit + schema, API integration, và E2E Playwright MCP. Tất cả phải chạy qua mà không có thay đổi schema DB.
 
-[Implementation Order]
-Thứ tự triển khai để giảm thiểu xung đột và đảm bảo tích hợp thành công.
+**Tầng 1 — Unit & Schema (`tests/test_ews_llm_escalation.py`):**
 
-1. **Tạo `src/models/s360_tables.py`** — ORM models cho schema `s360` (8 models, không phụ thuộc gì khác)
-2. **Thêm `ReportExportRequestS360` vào `src/schemas/analytics.py`** — Không sửa `ReportExportRequest` cũ
-3. **Cập nhật `src/api/v1/analytics.py`** — Thêm `_average_gpa_s360`, `_at_risk_classes_s360`, `_grade_distribution_s360`
-4. **Cập nhật `src/api/v1/report_renderer.py`** — Thêm `prepare_data_s360`, `generate_docx_report_s360`, `generate_html_report_s360`
-5. **Cập nhật `src/api/v1/reports.py`** — Thêm `export_analytics_report_s360`
-6. **Sửa thẳng `src/agents/report_agent/tools.py`** — Bỏ import từ `src.models.tables`, import từ `src.models.s360_tables`. Đổi logic bên trong `compute_report_data`, `get_report_data_summary`, `generate_report_download_link`. Viết mới `is_valid_int`, `resolve_parameters`. Giữ nguyên `render_markdown_to_docx`, `render_markdown_to_html`, `generate_custom_report_docx`
-7. **Cập nhật `src/agents/report_agent/node.py`** — Đổi import tools (nếu tên hàm đổi)
-8. **Tạo `tests/test_agents/test_report_agent_s360.py`** — Unit + integration tests
-9. **Cập nhật `tests/test_report_renderer.py`** — Thêm test s360
-10. **Verify `report_agent/tools.py` không còn import từ `src.models.tables`** — `grep -r "from src.models.tables" src/agents/report_agent/` = 0 kết quả
-11. **Chạy toàn bộ tests** — Đảm bảo không break dashboard và các agent khác
+1. `TestLlmRiskEscalated` — test hàm thuần `_llm_risk_escalated`:
+   - `MODERATE → HIGH` trả về `True` (ví dụ chính người dùng nêu).
+   - `HIGH → CRITICAL` trả về `True`.
+   - Các mức bằng nhau (`HIGH → HIGH`) trả về `False`.
+   - Hạ mức (`HIGH → MODERATE`) trả về `False`.
+   - Thiếu `llm_level` trả về `None`.
+   - Mức không biết / `None` cho base hoặc llm trả về `None`.
+
+2. `TestEwsPredictionRowLlmEscalation` — test schema:
+   - Xây `EwsPredictionRow` với `llm_risk_escalated=True` và kiểm tra round-trip; kiểm tra mặc định là `None` khi bỏ trống.
+
+**Tầng 2 — API integration (`TestPredictionsLlmEscalationFilter` trong `tests/test_ews_llm_escalation.py`):**
+   - Dùng test client/mock DB theo quy ước `tests/test_ews_control_panel.py`.
+   - Seed các dòng: (a) base `MODERATE` + `llm HIGH` (nâng), (b) base `MODERATE` + `llm MODERATE` (không), (c) base `HIGH` + `llm HIGH` (không), (d) base `HIGH` + `llm null` (không LLM).
+   - `GET /ews/predictions?llm_escalated=true` → chỉ trả về (a).
+   - `GET /ews/predictions?llm_escalated=false` → trả về (b), (c), (d) (với ngữ nghĩa `false` đã chọn — xác nhận có bao gồm (d) hay không).
+   - Xác nhận `total` phản ánh số lượng đã lọc và phân trang hoạt động.
+
+**Tầng 3 — E2E Playwright MCP (dùng `github.com/microsoft/playwright-mcp`):**
+
+Vì frontend không có setup Playwright test cục bộ (không có dependency `@playwright/test`), việc kiểm thử UI E2E được thực hiện qua **Playwright MCP server**. Luồng: khởi động backend FastAPI + frontend `next dev`, rồi dùng browser_* tools của Playwright MCP để thao tác và xác minh trực quan. Các kịch bản:
+
+1. **Mở dashboard EWS** — `browser_navigate` tới URL frontend → tab "Cảnh báo EWS"/`EwsWarningTab`. `browser_snapshot` để xác nhận bảng dự báo render.
+2. **Chọn mốc đánh giá có dữ liệu LLM** — điều hướng tới mốc (`school_year_id`/`semester_index`/`evaluated_at_week`) có `llm_risk_level` khác rỗng.
+3. **Kiểm tra badge nâng cấp** — xác nhận các dòng có `llm_risk_escalated=true` hiển thị badge "⬆ LLM nâng" bên cạnh badge `✨ LLM:` trong ô "Mức Rủi Ro". `browser_find` hoặc `browser_snapshot` để lấy văn bản.
+4. **Mở bộ lọc "Nâng Rủi Ro (LLM)"** — `browser_click` dropdown, chọn tùy chọn "Có — LLM nâng mức". Xác nhận dropdown hiển thị.
+5. **Áp dụng bộ lọc = true** — sau khi chọn, kiểm tra request tới `/ews/predictions` có chứa `llm_escalated=true` qua `browser_network_requests`, và bảng chỉ còn các dòng nâng cấp (mọi badge `✨ LLM:` đều cao hơn mức nền).
+6. **Kiểm tra `false`** — chọn "Không nâng", xác nhận bảng chỉ còn dòng không-nâng và request có `llm_escalated=false`.
+7. **Chụp ảnh xác minh** — `browser_take_screenshot` lưu ảnh trước/sau khi lọc để lưu hồ sơ (vd `tests/playrights/ews_llm_escalation_filter.png`), ghi kết quả vào file báo cáo tham chiếu `tests/playrights/chat_reports.txt` như quy ước hiện có.
+8. **Kiểm tra hồi quy** — dùng `browser_network_requests` đảm bảo không lỗi console/network (`browser_console_messages` với level `error`) khi thay đổi bộ lọc.
+
+**Các test hiện có** — xác nhận không hồi quy:
+- `pytest tests/test_llm_forecasting.py tests/test_shap_drivers.py tests/test_ews_control_panel.py`
+
+## [Implementation Order]
+
+Các bước được sắp xếp để giữ backend nhất quán trước khi đụng frontend, thêm test ở từng lớp, và E2E Playwright MCP ở cuối sau khi UI hoàn chỉnh.
+
+1. **Thêm hỗ trợ schema** — `src/schemas/ews.py`: thêm hằng số `RISK_LEVEL_RANK` và trường `llm_risk_escalated` vào `EwsPredictionRow`.
+2. **Thêm helper API + bộ lọc** — `src/api/v1/ews.py`: thêm helper `_llm_risk_escalated` và `_risk_level_rank_case`; thêm query param `llm_escalated` + mệnh đề WHERE SQL; điền `llm_risk_escalated` vào các dòng phản hồi.
+3. **Thêm test backend (unit + API)** — tạo `tests/test_ews_llm_escalation.py` (helper, schema, endpoint filter); chạy và xác nhận xanh.
+4. **Cập nhật types frontend** — `frontend/src/lib/types.ts`: thêm `llm_risk_escalated: boolean | null` vào `EwsPredictionRow`.
+5. **Cập nhật UI frontend** — `frontend/src/components/dashboard/EwsWarningTab.tsx`: thêm state `llmEscalated` + dropdown lọc + gửi param `llm_escalated`; hiển thị badge nâng cấp trong ô mức rủi ro.
+6. **Xác minh backend + build frontend** — chạy `pytest` backend và build/lint frontend (`npm run lint` / `npm run build`).
+7. **Test E2E Playwright MCP** — khởi động backend + `next dev`, dùng Playwright MCP kiểm tra dropdown lọc, badge nâng cấp, request `llm_escalated`, chụp ảnh, và kiểm tra lỗi console/network.

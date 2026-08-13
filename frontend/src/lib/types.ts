@@ -1039,6 +1039,8 @@ export interface EwsPredictionRow {
   llm_forecast_trend: string | null;
   llm_recommended_actions: string[] | null;
   llm_evaluated_at: string | null;
+  // True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm) > rank(base)); null nếu chưa có đánh giá LLM.
+  llm_risk_escalated: boolean | null;
 }
 
 export interface EwsLevelCount {

@@ -382,7 +382,6 @@ behavior_features AS MATERIALIZED (
 SELECT
     sg.so_school_id,
     tf.student_code,
-    sg.homeroom_class_id,
     tf.subject_id,
     COALESCE(si.subject_category, 'MATH_SCIENCE') AS subject_category,
     COALESCE(sg.grade_level, 7) AS grade_level,
@@ -412,7 +411,7 @@ FROM temporal_features tf
 LEFT JOIN subject_info si ON tf.subject_id = si.subject_id
 LEFT JOIN student_grades sg ON tf.student_code = sg.student_code
 LEFT JOIN lms_features lf ON tf.student_code = lf.student_code AND tf.subject_id = lf.subject_id
-LEFT JOIN attendance_features af ON tf.student_code = af.student_code
+LEFT JOIN attendance_features af ON tf.student_code = af.student_code AND tf.subject_id = af.subject_id
 LEFT JOIN behavior_features bf ON tf.student_code = bf.student_code
 -- GUARD DỮ LIỆU MỒ CÔI: học sinh có điểm (temporal_features) nhưng KHÔNG có bản ghi
 -- homeroom/khối/trường trong dim_homeroom_class_student → sg.so_school_id = NULL.

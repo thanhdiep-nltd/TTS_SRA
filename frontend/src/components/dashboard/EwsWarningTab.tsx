@@ -192,6 +192,8 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
   // Bộ lọc mới: học sinh có biến cố gia đình / bệnh lý (has_life_event, has_medical)
   const [lifeEventFilter, setLifeEventFilter] = useState<string>("ALL");
   const [medicalFilter, setMedicalFilter] = useState<string>("ALL");
+  // Bộ lọc nâng rủi ro do LLM (llm_escalated): true / false / ALL
+  const [llmEscalated, setLlmEscalated] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
   const RISK_LEVEL_OPTIONS = useMemo(
@@ -353,6 +355,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
       predParams.set("has_medical", "true");
       predParams.set("medical_filter", medicalFilter);
     }
+    if (llmEscalated !== "ALL") predParams.set("llm_escalated", llmEscalated);
     if (debouncedQuery) predParams.set("q", debouncedQuery);
 
     api
@@ -370,7 +373,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, lifeEventFilter, medicalFilter, debouncedQuery, page, loadingMeta, refreshKey]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, lifeEventFilter, medicalFilter, llmEscalated, debouncedQuery, page, loadingMeta, refreshKey]);
 
   // Debounce từ khóa tìm kiếm (300ms) → tìm kiếm server-side qua param q
   useEffect(() => {
@@ -648,6 +651,24 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
             />
           </div>
 
+          {/* 6a. Nâng Rủi Ro (LLM) */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Nâng Rủi Ro (LLM)</label>
+            <CustomDropdownSelect
+              value={llmEscalated}
+              onChange={(v) => {
+                setLlmEscalated(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "ALL", label: "Tất cả" },
+                { value: "true", label: "Có — LLM nâng mức", icon: <TrendingUp className="w-3 h-3 text-rose-500" /> },
+                { value: "false", label: "Không nâng", icon: <TrendingDown className="w-3 h-3 text-slate-400" /> },
+              ]}
+              placeholder="Tất cả"
+            />
+          </div>
+
           {/* 6b. Biến Cố Gia Đình */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Biến Cố Gia Đình</label>
@@ -816,6 +837,15 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                             >
                               ✨ LLM: {item.llm_risk_level}
                             </span>
+                            {item.llm_risk_escalated && (
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-block border ml-1"
+                                style={{ backgroundColor: "#f973161a", color: "#f97316", borderColor: "#f9731640" }}
+                                title="LLM nâng mức rủi ro so với CatBoost (vd MODERATE → HIGH)"
+                              >
+                                ⬆ LLM nâng
+                              </span>
+                            )}
                           </div>
                         )}
                       </td>

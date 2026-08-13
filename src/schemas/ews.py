@@ -8,6 +8,16 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
+# Xếp hạng thứ tự mức rủi ro (LOW < MODERATE < HIGH < CRITICAL) — dùng để xác định
+# sự "nâng rủi ro" do LLM so với CatBoost (rank(llm_risk_level) > rank(risk_level)).
+RISK_LEVEL_RANK: dict[str, int] = {
+    "LOW": 0,
+    "MODERATE": 1,
+    "HIGH": 2,
+    "CRITICAL": 3,
+}
+
+
 class EwsLevelCount(BaseModel):
     """Số lượng và tỷ lệ học sinh theo mức rủi ro."""
     level: str = Field(..., description="Mức rủi ro: LOW | MODERATE | HIGH | CRITICAL")
@@ -91,6 +101,10 @@ class EwsPredictionRow(BaseModel):
     llm_forecast_trend: Optional[str] = None
     llm_recommended_actions: Optional[Any] = None
     llm_evaluated_at: Optional[datetime] = None
+    llm_risk_escalated: Optional[bool] = Field(
+        default=None,
+        description="True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm_risk_level) > rank(risk_level)). None nếu chưa có llm_risk_level.",
+    )
 
 
 class EwsOverview(BaseModel):

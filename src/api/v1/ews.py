@@ -48,6 +48,7 @@ from src.schemas.ews import (
     EwsValidWeeks,
     EwsWeekOption,
     EwsWeightConfig,
+    RISK_LEVEL_RANK,
 )
 
 logger = logging.getLogger(__name__)
@@ -201,6 +202,33 @@ def _parse_shap(v):
         return parsed if isinstance(parsed, list) else None
     except (TypeError, ValueError):
         return None
+
+
+def _llm_risk_escalated(base_level: str | None, llm_level: str | None) -> bool | None:
+    """Xác định LLM có nâng mức rủi ro so với CatBoost hay không.
+
+    Trả về True nếu rank(llm_risk_level) > rank(risk_level) (vd MODERATE → HIGH),
+    False nếu bằng/hạ mức, None nếu thiếu llm_level hoặc mức không hợp lệ.
+    """
+    if not llm_level:
+        return None
+    b = RISK_LEVEL_RANK.get((base_level or "").upper())
+    l = RISK_LEVEL_RANK.get((llm_level or "").upper())
+    if b is None or l is None:
+        return None
+    return l > b
+
+
+def _risk_level_rank_case(column: str) -> str:
+    """Sinh biểu thức SQL CASE ánh xạ cột mức rủi ro → rank thứ tự cho bộ lọc.
+
+    `column` phải là literal cố định (vd 'rp.risk_level', 'rp.llm_risk_level'),
+    không phải đầu vào người dùng — để tránh SQL injection.
+    """
+    return (
+        f"CASE {column} WHEN 'LOW' THEN 0 WHEN 'MODERATE' THEN 1 "
+        f"WHEN 'HIGH' THEN 2 WHEN 'CRITICAL' THEN 3 ELSE -1 END"
+    )
 
 
 def _ews_rbac_filter(db: Session, user) -> tuple[str, dict]:
@@ -534,6 +562,7 @@ def get_ews_predictions(
     q: str | None = Query(None, description="Tìm kiếm theo mã/tên học sinh hoặc tên môn học (ILIKE)"),
     min_risk_score: float | None = Query(None, description="Lọc risk_score tối thiểu"),
     risk_factor: str | None = Query(None, description="Lọc theo cờ nguyên nhân (RISK_SCORE, RISK_LMS, RISK_ATTENDANCE, RISK_BEHAVIOR; vẫn hỗ trợ code cũ SLOPE_DOWN, ABSENTEEISM, ...)"),
+    llm_escalated: bool | None = Query(None, description="True = chỉ học sinh được LLM nâng mức rủi ro so với CatBoost (rank(llm_risk_level) > rank(risk_level))"),
     has_life_event: bool | None = Query(None, description="True = chỉ học sinh CÓ biến cố gia đình/cuộc sống (fact_student_life_events)"),
     has_medical: bool | None = Query(None, description="True = chỉ học sinh CÓ bệnh lý/tiền sử y tế (fact_student_medical_history)"),
     life_event_filter: str | None = Query(None, description="Lọc chi tiết loại/trạng thái biến cố (ONGOING, FAMILY_DIVORCE, FAMILY_CONFLICT, BEREAVEMENT, RESOLVED)"),
@@ -596,6 +625,16 @@ def get_ews_predictions(
         cond = RISK_FACTOR_CONDITIONS.get(risk_factor_key)
         if cond:
             where_clauses.append(cond)
+
+    # Lọc nâng rủi ro do LLM (rank(llm_risk_level) > rank(risk_level)) — giữ phân trang server-side.
+    # `llm_escalated=False` bao gồm cả dòng chưa có llm_risk_level (NULL) coi là "không nâng".
+    if llm_escalated is not None:
+        base_rank = _risk_level_rank_case("rp.risk_level")
+        llm_rank = _risk_level_rank_case("rp.llm_risk_level")
+        if llm_escalated:
+            where_clauses.append(f"({llm_rank} > {base_rank} AND rp.llm_risk_level IS NOT NULL)")
+        else:
+            where_clauses.append(f"NOT ({llm_rank} > {base_rank} AND rp.llm_risk_level IS NOT NULL)")
 
     # Lọc biến cố gia đình (bổ sung lọc chi tiết theo loại/trạng thái)
     if life_event_filter and life_event_filter != "ALL":
@@ -814,6 +853,7 @@ def get_ews_predictions(
                 # LLM-based Forecasting
                 llm_risk_score=_flt(r.llm_risk_score),
                 llm_risk_level=r.llm_risk_level,
+                llm_risk_escalated=_llm_risk_escalated(r.risk_level, r.llm_risk_level),
                 llm_narrative_summary=r.llm_narrative_summary,
                 llm_forecast_trend=r.llm_forecast_trend,
                 llm_recommended_actions=_parse_shap(r.llm_recommended_actions),
