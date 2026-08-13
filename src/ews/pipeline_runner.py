@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime
+from typing import Callable, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -166,6 +167,7 @@ def run_pipeline(
     cfg: RiskConfig | None = None,
     enable_llm: bool = False,
     dry_run_llm: bool = False,
+    progress_callback: Callable[[int, str], None] | None = None,
 ) -> pd.DataFrame:
     """
     Pipeline tích hợp EWS hoàn chỉnh.
@@ -194,6 +196,8 @@ def run_pipeline(
 
     # Step 1: Extract features
     logger.info("[Step 1/3] Extracting features...")
+    if progress_callback:
+        progress_callback(5, "Đang trích xuất đặc trưng...")
     X = extract_live_features(
         session=session,
         school_year_id=school_year_id,
@@ -203,12 +207,16 @@ def run_pipeline(
         so_school_id=so_school_id,
     )
     logger.info("[Step 1/3] Done: %d rows x %d cols", len(X), len(X.columns))
+    if progress_callback:
+        progress_callback(15, f"Đã trích xuất {len(X)} dòng dữ liệu")
 
     # Step 2: Load model & inference (theo model_version)
     # Giai đoạn 1: CHỈ tính SHAP cho học sinh CRITICAL (xem trước hiệu quả).
     # → Gọi inference với return_shap=False (không tính SHAP cho toàn bộ 3500 học sinh),
     #   sau đó lọc CRITICAL và chỉ tính SHAP cho subset đó (nhanh, O(n²) nhỏ).
     logger.info("[Step 2/3] Running inference (model=%s, skip_shap=%s)...", model_version, skip_shap)
+    if progress_callback:
+        progress_callback(20, "Đang chạy mô hình dự đoán...")
     if model_version == "v2_ensemble":
         models = load_ensemble()
         result = run_ensemble_inference(models, X, return_shap=False, cfg=cfg)
@@ -225,8 +233,13 @@ def run_pipeline(
         result["weight_attendance"] = contrib["attendance"]
         result["weight_behavior"] = contrib["behavior"]
 
+    if progress_callback:
+        progress_callback(35, f"Đã dự đoán {len(result)} bản ghi rủi ro")
+
     # SHAP: tính cho học sinh CRITICAL + LOW (mở rộng từ giai đoạn 1), các mức khác → []
     if not skip_shap:
+        if progress_callback:
+            progress_callback(40, "Đang tính SHAP (nhân tố ảnh hưởng)...")
         shap_mask = result["risk_level"].isin(["CRITICAL", "LOW"])
         shap_idx = result.index[shap_mask]
         logger.info("[Step 2/3] SHAP: %d/%d học sinh CRITICAL+LOW", len(shap_idx), len(result))
@@ -248,18 +261,27 @@ def run_pipeline(
         logger.info("[Step 2/3] SHAP computed for %d CRITICAL+LOW rows", len(shap_idx))
     logger.info("[Step 2/3] Done: %d predictions", len(result))
 
+    if progress_callback:
+        progress_callback(70, "Đã tính xong SHAP")
+
     # Step 3: Persist to DB
     logger.info("[Step 3/3] Persisting to DB...")
+    if progress_callback:
+        progress_callback(75, "Đang lưu kết quả vào DB...")
     # Thêm school_year_id, semester_index, cutoff_date, model_version vào result trước khi persist
     result["school_year_id"] = school_year_id
     result["semester_index"] = semester_index
     result["cutoff_date"] = cutoff_date
     result["model_version"] = model_version
     persist_predictions(session, result)
+    if progress_callback:
+        progress_callback(85, f"Đã lưu {len(result)} bản ghi vào DB")
 
     # Step 4 (optional): LLM-based Forecasting — gọi SAU persist để dòng dự báo đã tồn tại.
     # run_llm_forecasting_batch tự UPDATE cột llm_* cho từng học sinh trigger qua session riêng.
     if enable_llm or dry_run_llm:
+        if progress_callback:
+            progress_callback(90, "Đang chạy dự báo LLM (phân tích định tính)...")
         result = run_llm_forecasting_batch(
             session=session,
             df=result,
@@ -269,7 +291,12 @@ def run_pipeline(
             so_school_id=so_school_id,
             enable=True,
             dry_run=dry_run_llm,
+            progress_callback=progress_callback,
+            progress_from=90,
+            progress_to=95,
         )
+        if progress_callback:
+            progress_callback(95, "Đã hoàn tất dự báo LLM")
 
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 60)

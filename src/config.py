@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model_name: str = "deepseek-v4-flash"
     deepseek_api_base: str = "https://api.deepseek.com"
-    llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    llm_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
     # SDK OpenAI mặc định timeout ~600s nếu không đặt -> 1 lần API chậm/treo sẽ "ngốn" cả task nền
     # (chat, item_generation, content_difficulty đều dùng chung get_llm()). 60s đủ rộng cho prompt
     # lớn (RAG/self-consistency) nhưng vẫn giảm 10x so với mặc định SDK.

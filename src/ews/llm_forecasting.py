@@ -27,7 +27,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 from sqlalchemy import text
@@ -594,6 +594,9 @@ def run_llm_forecasting_batch(
     so_school_id: int | None = None,
     enable: bool = True,
     dry_run: bool = False,
+    progress_callback: Callable[[int, str], None] | None = None,
+    progress_from: int = 90,
+    progress_to: int = 95,
 ) -> pd.DataFrame:
     """Gọi LLM song song (thread pool) cho nhóm trigger trong df.
 
@@ -720,6 +723,18 @@ def run_llm_forecasting_batch(
             )
         return sc, sid, result
 
+    total_tasks = len(tasks)
+    completed = 0
+
+    def _report_progress() -> None:
+        if not progress_callback or total_tasks == 0:
+            return
+        # Map [0..total] -> [progress_from .. progress_to]
+        frac = completed / total_tasks
+        pct = int(progress_from + frac * (progress_to - progress_from))
+        pct = max(min(pct, progress_to), progress_from)
+        progress_callback(pct, f"Đang chạy dự báo LLM... {completed}/{total_tasks}")
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(_worker, t) for t in tasks]
         for future in as_completed(futures):
@@ -730,6 +745,9 @@ def run_llm_forecasting_batch(
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[LLM Forecast] Lỗi xử lý task: %s", exc)
                 continue
+            finally:
+                completed += 1
+                _report_progress()
 
     # Gắn kết quả vào df (theo cặp student_code + subject_id)
     for idx, row in df.iterrows():

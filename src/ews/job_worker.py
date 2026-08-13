@@ -87,6 +87,14 @@ def process_next_ews_job() -> None:
         try:
             # Config hiệu lực theo trường (baseline + override) — chỉ dùng cho v2_ensemble
             cfg = get_effective_config(db, next_job.so_school_id)
+
+            def _update_progress(pct: int, message: str) -> None:
+                """Cập nhật tiến độ job vào DB (UI poll hiển thị liên tục)."""
+                next_job.progress = max(0, min(100, pct))
+                next_job.rows_processed = len(result) if "result" in locals() else next_job.rows_processed
+                logger.info("EWS job %s progress: %d%% — %s", next_job.id, pct, message)
+                db.commit()
+
             result = run_pipeline(
                 session=db,
                 school_year_id=next_job.school_year_id,
@@ -98,6 +106,7 @@ def process_next_ews_job() -> None:
                 so_school_id=next_job.so_school_id,
                 cfg=cfg,
                 enable_llm=True,
+                progress_callback=_update_progress,
             )
             next_job.status = "completed"
             next_job.progress = 100
