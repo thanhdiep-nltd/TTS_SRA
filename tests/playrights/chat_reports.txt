@@ -1,0 +1,5 @@
+dùng mcp đăng nhập bằng tài khoản
+Username: principal_cp@vinschool.edu.vn
+Password: password123
+
+Vào "Trợ lý AI (Chatbot)" để nhắn "cho tôi báo cáo tình hình học tập của lớp 6A năm học 2025-2026, HK2"

@@ -379,7 +379,7 @@ async def chat(request: ChatRequest, user: CurrentUser, db: Session = Depends(ge
                     "query": request.message,
                     "messages": langchain_messages,
                     "school_context": {
-                        "school_id": str(user.so_school_id),
+                        "school_id": user.so_school_id,
                         "role": user.role.value if hasattr(user.role, "value") else str(user.role),
                         "user_id": str(user.id),
                     },
