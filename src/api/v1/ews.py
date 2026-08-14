@@ -754,7 +754,8 @@ def get_ews_predictions(
         LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         {base_where}
-        ORDER BY rp.risk_score DESC
+        -- Xếp hạng theo điểm LLM nếu có, ngược lại dùng điểm CatBoost
+        ORDER BY COALESCE(rp.llm_risk_score, rp.risk_score) DESC
         LIMIT :limit OFFSET :offset;
     """)
 

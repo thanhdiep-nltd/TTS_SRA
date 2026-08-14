@@ -698,7 +698,14 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                 </tr>
               ) : predictionItems.length > 0 ? (
                 predictionItems.map((item, idx) => {
-                  const riskColor = EWS_RISK_COLORS[item.risk_level] || "#94a3b8";
+                  const hasLlm = item.llm_risk_score !== null && !!item.llm_risk_level;
+                  // Sparkles chỉ hiện khi LLM thực sự thay đổi điểm/mức so với CatBoost
+                  const llmChanged =
+                    hasLlm &&
+                    (item.llm_risk_score !== item.risk_score || item.llm_risk_level !== item.risk_level);
+                  const displayLevel = hasLlm ? item.llm_risk_level! : item.risk_level;
+                  const displayScore = hasLlm ? item.llm_risk_score! : item.risk_score;
+                  const riskColor = EWS_RISK_COLORS[displayLevel] || "#94a3b8";
                   return (
                     <tr
                       key={idx}
@@ -750,7 +757,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         )}
                       </td>
 
-                      {/* Đánh Giá Rủi Ro (2-tone Badge Điểm + Mức) */}
+                      {/* Đánh Giá Rủi Ro (2-tone Badge Điểm + Mức) — dùng điểm/mức LLM nếu có, kèm Sparkles */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div
                           className="inline-flex items-stretch rounded-full border overflow-hidden shadow-2xs"
@@ -759,10 +766,11 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                           }}
                         >
                           <span
-                            className="px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider flex items-center justify-center leading-normal"
+                            className="px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider flex items-center justify-center gap-1 leading-normal"
                             style={{ backgroundColor: riskColor }}
                           >
-                            {item.risk_level}
+                            {llmChanged && <Sparkles className="w-3 h-3" />}
+                            {displayLevel}
                           </span>
                           <span
                             className="px-2.5 py-0.5 font-mono font-bold text-xs flex items-center justify-center leading-normal"
@@ -771,7 +779,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                               color: riskColor,
                             }}
                           >
-                            {item.risk_score.toFixed(1)}
+                            {displayScore.toFixed(1)}
                           </span>
                         </div>
                         {item.llm_risk_escalated && (
@@ -813,15 +821,14 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                           <span>Điểm thi: </span>
                           {item.last_score !== null ? (
                             <span
-                              className={`font-bold ${
-                                item.last_score < 3.5
-                                  ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-1 py-0.5 rounded"
-                                  : item.last_score < 5.0
-                                    ? "text-rose-500 dark:text-rose-400 font-semibold"
-                                    : item.last_score < 6.5
-                                      ? "text-amber-600 dark:text-amber-400"
-                                      : "text-slate-900 dark:text-slate-100"
-                              }`}
+                              className={`font-bold ${item.last_score < 3.5
+                                ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-1 py-0.5 rounded"
+                                : item.last_score < 5.0
+                                  ? "text-rose-500 dark:text-rose-400 font-semibold"
+                                  : item.last_score < 6.5
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-slate-900 dark:text-slate-100"
+                                }`}
                             >
                               {item.last_score.toFixed(1)}
                             </span>
@@ -832,13 +839,12 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         <div className="text-[11px] mt-0.5">
                           {item.score_slope !== null ? (
                             <span
-                              className={`inline-flex items-center gap-0.5 font-medium ${
-                                item.score_slope < 0
-                                  ? "text-rose-500 dark:text-rose-400 font-semibold"
-                                  : item.score_slope > 0 && (item.last_score ?? 0) >= 5.0
-                                    ? "text-emerald-600 dark:text-emerald-400 font-semibold"
-                                    : "text-slate-500 dark:text-slate-400"
-                              }`}
+                              className={`inline-flex items-center gap-0.5 font-medium ${item.score_slope < 0
+                                ? "text-rose-500 dark:text-rose-400 font-semibold"
+                                : item.score_slope > 0 && (item.last_score ?? 0) >= 5.0
+                                  ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                                  : "text-slate-500 dark:text-slate-400"
+                                }`}
                               title={
                                 item.score_slope > 0 && (item.last_score ?? 0) < 5.0
                                   ? "Điểm có xu hướng tăng nhẹ nhưng vẫn ở mức dưới trung bình (<5.0)"
@@ -847,11 +853,10 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                             >
                               {item.score_slope > 0 ? (
                                 <TrendingUp
-                                  className={`w-3 h-3 ${
-                                    item.last_score !== null && item.last_score < 5.0
-                                      ? "text-slate-400"
-                                      : "text-emerald-500"
-                                  }`}
+                                  className={`w-3 h-3 ${item.last_score !== null && item.last_score < 5.0
+                                    ? "text-slate-400"
+                                    : "text-emerald-500"
+                                    }`}
                                 />
                               ) : item.score_slope < 0 ? (
                                 <TrendingDown className="w-3 h-3 text-rose-500" />
