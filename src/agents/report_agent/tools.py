@@ -6,15 +6,21 @@ from typing import Literal
 import docx
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Inches, Pt, RGBColor
 from langchain_core.tools import tool
 from sqlalchemy import and_, func, select
 
 from src.agents.context import current_user_school_id
+from src.agents.report_agent.chart_generator import generate_chart_for_table
 from src.agents.report_agent.queries import (
     compute_report_data,
     is_valid_int,
     resolve_parameters,
+)
+from src.agents.report_agent.visual_contracts import (
+    ColumnAlignment,
+    detect_cell_alignment,
+    sanitize_delta_value,
 )
 from src.db.session import SessionLocal
 from src.models.tables import User as DBUser
@@ -282,6 +288,7 @@ def render_markdown_to_docx(title: str, content_markdown: str) -> docx.Document:
             table.style = "Table Grid"
             table.alignment = 1  # Center
 
+            headers = parsed_rows[0] if parsed_rows else []
             for r_idx, row_data in enumerate(parsed_rows):
                 row = table.rows[r_idx]
                 is_header = r_idx == 0
@@ -295,13 +302,50 @@ def render_markdown_to_docx(title: str, content_markdown: str) -> docx.Document:
                         if is_header:
                             p.alignment = 1  # Center
                             add_formatted_text(p, val, is_bold_default=True)
-                            shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F2F2F2"/>')
+                            shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F2F4F7"/>')
                             cell._tc.get_or_add_tcPr().append(shading_elm)
                         else:
-                            p.alignment = 0  # Left
+                            header_name = headers[c_idx] if c_idx < len(headers) else ""
+                            align = detect_cell_alignment(header_name, val)
+                            if align == ColumnAlignment.RIGHT:
+                                p.alignment = 2  # Right
+                            elif align == ColumnAlignment.CENTER:
+                                p.alignment = 1  # Center
+                            else:
+                                p.alignment = 0  # Left
+
+                            # Sanitize delta if in delta column
+                            if "chênh lệch" in header_name.lower() or "(δ)" in header_name.lower() or "(delta)" in header_name.lower():
+                                val = sanitize_delta_value(val)
+
                             add_formatted_text(p, val)
 
-            doc.add_paragraph().paragraph_format.space_after = Pt(6)
+            doc.add_paragraph().paragraph_format.space_after = Pt(4)
+
+            # Tự động sinh và nhúng biểu đồ trực quan dưới bảng (nếu bảng có số liệu)
+            if len(parsed_rows) >= 2:
+                data_rows = parsed_rows[1:]
+                chart_res = generate_chart_for_table(headers, data_rows, report_title=title)
+                if chart_res:
+                    chart_path, _ = chart_res
+                    try:
+                        p_img = doc.add_paragraph()
+                        p_img.alignment = 1  # Center
+                        p_img.paragraph_format.space_before = Pt(8)
+                        p_img.paragraph_format.space_after = Pt(2)
+                        p_img.paragraph_format.keep_with_next = True
+                        doc.add_picture(chart_path, width=Inches(6.0))
+
+                        p_cap = doc.add_paragraph()
+                        p_cap.alignment = 1  # Center
+                        p_cap.paragraph_format.space_after = Pt(12)
+                        r_cap = p_cap.add_run("Hình: Biểu đồ trực quan hóa dữ liệu thống kê")
+                        r_cap.font.italic = True
+                        r_cap.font.size = Pt(10)
+                        r_cap.font.name = "Times New Roman"
+                        r_cap.font.color.rgb = RGBColor(100, 116, 139)
+                    except Exception as img_err:
+                        print(f"[DOCX Renderer] Lỗi khi nhúng ảnh biểu đồ: {img_err}")
 
         table_rows = []
         in_table = False
@@ -439,16 +483,38 @@ def render_markdown_to_html(title: str, content_markdown: str) -> str:
                 parsed_rows.append(cols)
 
         if parsed_rows:
+            headers = parsed_rows[0] if parsed_rows else []
             html_body.append('<table class="report-table">')
             for r_idx, row_data in enumerate(parsed_rows):
                 is_header = r_idx == 0
                 html_body.append("<tr>")
-                for val in row_data:
-                    cell_tag = "th" if is_header else "td"
-                    val_html = parse_inline_markdown(val)
-                    html_body.append(f"<{cell_tag}>{val_html}</{cell_tag}>")
+                for c_idx, val in enumerate(row_data):
+                    if is_header:
+                        val_html = parse_inline_markdown(val)
+                        html_body.append(f'<th style="text-align: center;">{val_html}</th>')
+                    else:
+                        header_name = headers[c_idx] if c_idx < len(headers) else ""
+                        align = detect_cell_alignment(header_name, val)
+                        if "chênh lệch" in header_name.lower() or "(δ)" in header_name.lower() or "(delta)" in header_name.lower():
+                            val = sanitize_delta_value(val)
+                        val_html = parse_inline_markdown(val)
+                        html_body.append(f'<td style="text-align: {align.value};">{val_html}</td>')
                 html_body.append("</tr>")
             html_body.append("</table>")
+
+            # Tự động sinh và nhúng biểu đồ trực quan dưới bảng (nếu bảng có số liệu)
+            if len(parsed_rows) >= 2:
+                data_rows = parsed_rows[1:]
+                chart_res = generate_chart_for_table(headers, data_rows, report_title=title)
+                if chart_res:
+                    _, data_uri = chart_res
+                    html_body.append(
+                        f'<div style="text-align: center; margin: 20px 0;">'
+                        f'<img src="{data_uri}" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" />'
+                        f'<p style="font-size: 10pt; color: #64748B; font-style: italic; margin-top: 6px; text-align: center;">Hình: Biểu đồ trực quan hóa dữ liệu thống kê</p>'
+                        f'</div>'
+                    )
+
         table_rows = []
         in_table = False
 

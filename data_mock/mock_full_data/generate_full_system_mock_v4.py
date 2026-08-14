@@ -506,7 +506,7 @@ def seed_teacher_assignments(session):
          "grade_id": None, "class_id": c_6a2, "subject_id": 106},
         {"user_id": users_map.get("teacher_gvbm_math_multi@vinschool.edu.vn"),
          "role_context": "SUBJECT_TEACHER", "academic_year_id": 2025,
-         "grade_id": None, "class_id": c_7a1, "subject_id": 106},
+         "grade_id": None, "class_id": c_7a1, "subject_id": 107},
     ]
     for item in assignments:
         if not item["user_id"]:
@@ -1193,11 +1193,21 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
 
     # Tạo StudentV4 objects
     students = []
+    classes_by_school = {
+        1: [c for c in classes_params if c["so_school_id"] == 1],
+        2: [c for c in classes_params if c["so_school_id"] == 2],
+    }
+    class_map = {c["id"]: c for c in classes_params}
+
     for i in range(n_total):
         s_id = i + 1
         school_id = 1 if i < n_students_per_school else 2
-        class_id = ((i % n_students_per_school) // 10) + 1
-        grade_id = 6 + ((i % n_students_per_school) // 10) % 5
+        idx_in_school = i % n_students_per_school
+        sch_classes = classes_by_school[school_id]
+        target_class = sch_classes[idx_in_school % len(sch_classes)]
+
+        class_id = target_class["id"]
+        grade_id = target_class["grade_id"]
         # Gán profile G1-G9 (trải rộng điểm 0-10) + latent ability tạo đa dạng
         profile = random.choices(PROFILE_LIST, PROFILE_PROB)[0]
         # Đồng bộ với crisis_weeks logic: 8% chung có biến cố + resilience thấp → crisis
@@ -1262,14 +1272,15 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
             "student_code": p.code,
             "so_student_id": p.student_id
         })
+        cls_info = class_map[p.homeroom_class_id]
         students_params.append({
             "id": p.student_id,
             "so_student_id": p.student_id,
             "student_code": p.code,
             "student_name": p.name,
             "homeroom_class_id": p.homeroom_class_id,
-            "class_code": f"CLASS_{p.school_id}_{p.grade_id}A1",
-            "class_name": f"Lớp {p.grade_id}A1 - Trường {p.school_id}",
+            "class_code": cls_info["code"],
+            "class_name": f"Lớp {cls_info['fullname']} - Trường {p.school_id}",
             "so_school_id": p.school_id,
             "school_year_id": 2025,
             "grade_id": p.grade_id,

@@ -60,10 +60,7 @@ export default function DashboardV2Page() {
 
   const isControl =
     user?.role === "ADMIN" ||
-    user?.role === "PRINCIPAL" ||
-    user?.role === "SYSTEM_ADMIN" ||
-    user?.role === "PROVINCE_ADMIN" ||
-    user?.role === "SCHOOL_ADMIN";
+    user?.role === "PRINCIPAL";
 
   const tabs = isControl
     ? [...TABS, { key: "ews-control" as TabKey, label: "Điều khiển EWS", icon: Settings2 }]
