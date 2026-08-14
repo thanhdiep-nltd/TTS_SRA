@@ -718,7 +718,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
                           <span>{item.student_name || item.student_code}</span>
                           {item.llm_risk_level && (
-                            <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(1)}` : ""})`}>
+                            <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(2)}` : ""})`}>
                               <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400/30 shrink-0" />
                             </span>
                           )}
@@ -779,7 +779,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                               color: riskColor,
                             }}
                           >
-                            {displayScore.toFixed(1)}
+                            {displayScore.toFixed(2)}
                           </span>
                         </div>
                         {item.llm_risk_escalated && (

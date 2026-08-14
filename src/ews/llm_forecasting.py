@@ -35,6 +35,8 @@ from sqlalchemy.orm import Session
 
 from src.config import get_settings
 from src.db.session import SessionLocal
+from src.ews.ews_config_service import get_effective_config
+from src.ews.risk_config import RiskConfig, classify_risk_score, load_risk_config
 from src.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -294,7 +296,7 @@ def _build_llm_prompt(
 
     # STATIC PREFIX: Giữ cố định 100% cho mọi lượt gọi -> Kích hoạt DeepSeek Prompt Cache Hit
     static_prefix = """Bạn là chuyên gia phân tích rủi ro học tập và cố vấn tâm lý giáo dục tại trường phổ thông Việt Nam.
-Nhiệm vụ: phân tích rủi ro học tập của 1 học sinh theo môn học, kết hợp dữ liệu định lượng (CatBoost) với dữ liệu định tính (biến cố cuộc sống, bệnh lý) để đưa ra đánh giá tổng hợp (llm_risk_score) và khuyến nghị can thiệp.
+Nhiệm vụ: phân tích rủi ro học tập của 1 học sinh theo môn học, kết hợp dữ liệu định lượng (CatBoost) với dữ liệu định tính (biến cố cuộc sống, bệnh lý) để đưa ra điểm rủi ro tổng hợp (llm_risk_score) và khuyến nghị can thiệp.
 
 === HƯỚNG DẪN ĐÁNH GIÁ ===
 1. Risk_score CatBoost là điểm rủi ro ML [0-100]. Hãy điều chỉnh lên/xuống dựa trên biến cố và bệnh lý:
@@ -307,7 +309,6 @@ Nhiệm vụ: phân tích rủi ro học tập của 1 học sinh theo môn họ
 Trả về CHỈ MỘT JSON object (không thêm text ngoài), đúng schema:
 {
   "llm_risk_score": <float 0-100>,
-  "llm_risk_level": "<LOW|MODERATE|HIGH|CRITICAL>",
   "llm_narrative_summary": "<2 câu ngắn gọn tiếng Việt phân tích nguyên nhân gốc rễ>",
   "llm_forecast_trend": "<1 câu dự báo xu hướng 3-4 tuần tới>",
   "llm_recommended_actions": ["<hành động ngắn 1>", "<hành động ngắn 2>", "<hành động ngắn 3>"]
@@ -337,14 +338,12 @@ Môn học: {subject_name}
     stability_block = ""
     if previous_llm_result is not None:
         prev_score = _safe_float(previous_llm_result.get("llm_risk_score"))
-        prev_level = str(previous_llm_result.get("llm_risk_level", "")).strip().upper() or "không rõ"
         stability_block = f"""
 
 --- ĐÁNH GIÁ TRƯỚC ĐÓ CỦA HỆ THỐNG (ĐIỂM CŨ) ---
-Điểm LLM trước đó: {prev_score:g} (mức {prev_level}).
+Điểm LLM trước đó: {prev_score:g}.
 CHÍNH SÁCH ỔN ĐỊNH: Đây là lần ĐÁNH GIÁ LẠI (re-run) cho cùng học sinh/môn/tuần.
-  • MẶC ĐỊNH GIỮ NGUYÊN điểm cũ: trả llm_risk_score = {prev_score:g} và llm_risk_level =
-    "{prev_level}" TRỪ KHI có lý do THUYẾT PHỤC để thay đổi (dữ liệu điểm/biến cố/bệnh mới).
+  • MẶC ĐỊNH GIỮ NGUYÊN điểm cũ: trả llm_risk_score = {prev_score:g} TRỪ KHI có lý do THUYẾT PHỤC để thay đổi (dữ liệu điểm/biến cố/bệnh mới).
   • NẾU GIỮ NGUYÊN → không cần llm_score_change_reason.
   • NẾU THAY ĐỔI điểm → bắt buộc trả llm_score_change_reason: chuỗi giải thích rõ ràng
     tại sao điểm thay đổi so với lần trước (không được đổi vô cớ)."""
@@ -447,7 +446,7 @@ def _get_previous_llm_result(
     school_year_id: int,
     semester_index: int,
     evaluated_at_week: int,
-    so_school_id: Optional[str] = None,
+    so_school_id: Optional[Any] = None,
     model_version: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Đọc điểm LLM trước đó (nếu có) cho 1 (student, subject, week) — dùng cho re-run.
@@ -458,26 +457,37 @@ def _get_previous_llm_result(
     so_school_id / model_version: bộ lọc cô lập tenant (multi-school) — nếu None thì bỏ qua
     điều kiện tương ứng. Lấy bản ghi mới nhất (ORDER BY created_at DESC) để neo đúng điểm cũ.
     """
-    sql = text("""
+    where_clauses = [
+        "student_code = :sc",
+        "subject_id = :sid",
+        "school_year_id = :sy",
+        "semester_index = :sem",
+        "evaluated_at_week = :wk",
+        "llm_risk_score IS NOT NULL",
+    ]
+    params: Dict[str, Any] = {
+        "sc": student_code,
+        "sid": subject_id,
+        "sy": school_year_id,
+        "sem": semester_index,
+        "wk": evaluated_at_week,
+    }
+    if so_school_id is not None:
+        where_clauses.append("so_school_id = :so_school_id")
+        params["so_school_id"] = so_school_id
+    if model_version is not None:
+        where_clauses.append("model_version = :model_version")
+        params["model_version"] = str(model_version)
+
+    where_sql = " AND ".join(where_clauses)
+    sql = text(f"""
         SELECT llm_risk_score, llm_risk_level
         FROM s360.fact_student_subject_risk_predictions
-        WHERE student_code = :sc AND subject_id = :sid
-          AND school_year_id = :sy AND semester_index = :sem
-          AND evaluated_at_week = :wk
-          AND llm_risk_score IS NOT NULL
-          AND (:so_school_id IS NULL OR so_school_id = :so_school_id)
-          AND (:model_version IS NULL OR model_version = :model_version)
+        WHERE {where_sql}
         ORDER BY created_at DESC
         LIMIT 1
     """)
-    row = session.execute(
-        sql,
-        {
-            "sc": student_code, "sid": subject_id,
-            "sy": school_year_id, "sem": semester_index, "wk": evaluated_at_week,
-            "so_school_id": so_school_id, "model_version": model_version,
-        },
-    ).fetchone()
+    row = session.execute(sql, params).fetchone()
     if row is None:
         return None
     return {"llm_risk_score": row.llm_risk_score, "llm_risk_level": row.llm_risk_level}
@@ -515,8 +525,12 @@ def _normalize_llm_result(
     data: Dict[str, Any],
     cb_score: float,
     previous_llm_result: Optional[Dict[str, Any]] = None,
+    cfg: Optional[RiskConfig] = None,
 ) -> Dict[str, Any]:
     """Chuẩn hoá kết quả LLM về đúng schema cột llm_*.
+
+    llm_risk_level được tự động phân loại từ llm_risk_score dựa theo cấu hình
+    ngưỡng (RiskConfig/thresholds) của trường tại thời điểm chạy.
 
     Khi có `previous_llm_result` (re-run "Chạy Lại Phân Tích"), áp dụng chính sách ổn định:
     - Nếu điểm LLM mới sai lệch không đáng kể (<= LLM_RERUN_STABILITY_DELTA) so với điểm cũ,
@@ -532,18 +546,6 @@ def _normalize_llm_result(
     # Clamp 0-100
     llm_score = max(0.0, min(100.0, llm_score))
 
-    level = str(data.get("llm_risk_level", "")).strip().upper()
-    if level not in VALID_LLM_LEVELS:
-        # Suy level từ score nếu LLM trả level không hợp lệ
-        if llm_score >= 80:
-            level = "CRITICAL"
-        elif llm_score >= 60:
-            level = "HIGH"
-        elif llm_score >= 40:
-            level = "MODERATE"
-        else:
-            level = "LOW"
-
     # --- Chính sách ổn định cho re-run ---
     change_reason: Optional[str] = None
     if prev_score is not None:
@@ -551,10 +553,6 @@ def _normalize_llm_result(
         if delta <= LLM_RERUN_STABILITY_DELTA:
             # Giữ nguyên điểm cũ (ổn định) — không đổi, không lý do
             llm_score = prev_score
-            # Giữ nguyên mức cũ nếu có, để mức khớp điểm
-            prev_level = str(previous_llm_result.get("llm_risk_level", "")).strip().upper()
-            if prev_level in VALID_LLM_LEVELS:
-                level = prev_level
         else:
             # Thay đổi rõ rệt → cần lý do
             raw_reason = str(data.get("llm_score_change_reason", "")).strip()
@@ -566,6 +564,9 @@ def _normalize_llm_result(
                     f"Điểm rủi ro LLM {direction} {prev_score:g} sang {llm_score:g} "
                     f"do dữ liệu biến cố/bệnh/điểm số được cập nhật."
                 )
+
+    # Tự động xếp mức rủi ro theo cấu hình ngưỡng của trường (hoặc baseline)
+    level = classify_risk_score(llm_score, cfg)
 
     actions = data.get("llm_recommended_actions", [])
     if not isinstance(actions, list):
@@ -593,12 +594,15 @@ def forecast_student_risk(
     subject_name: str,
     features: Dict[str, Any],
     previous_llm_result: Optional[Dict[str, Any]] = None,
+    so_school_id: Optional[int] = None,
+    cfg: Optional[RiskConfig] = None,
 ) -> Optional[Dict[str, Any]]:
     """Gọi LLM cho 1 học sinh, trả dict llm_* (hoặc None nếu không trigger/fail).
 
     features: dict chứa risk_score, risk_level + các feature chính (từ result DataFrame).
     previous_llm_result: điểm LLM trước đó (re-run) — nếu có, prompt yêu cầu giữ ổn định
         và _normalize_llm_result sẽ neo điểm cũ + lưu lý do nếu đổi.
+    so_school_id / cfg: cấu hình ngưỡng của trường để tự động xếp llm_risk_level.
     """
     # Load context + kiểm tra trigger
     life_events, medical = _load_context(session, student_code, school_year_id)
@@ -606,6 +610,14 @@ def forecast_student_risk(
     if not _should_trigger(cb_level, life_events, medical):
         logger.debug("[LLM Forecast] %s không thuộc nhóm trigger — bỏ qua", student_code)
         return None
+
+    # Resolve config trường nếu chưa truyền
+    if cfg is None:
+        cfg = (
+            get_effective_config(session, so_school_id)
+            if so_school_id is not None
+            else load_risk_config()
+        )
 
     # Build prompt + gọi LLM
     prompt = _build_llm_prompt(
@@ -624,7 +636,7 @@ def forecast_student_risk(
         return None
 
     cb_score = _safe_float(features.get("risk_score"))
-    result = _normalize_llm_result(data, cb_score, previous_llm_result)
+    result = _normalize_llm_result(data, cb_score, previous_llm_result, cfg=cfg)
 
     # Persist ngay vào DB (cột llm_*)
     _persist_llm_columns(
@@ -736,6 +748,13 @@ def run_llm_forecasting_batch(
     settings = get_settings()
     max_workers = settings.llm_max_concurrency
 
+    # Load effective config theo trường một lần cho cả batch
+    effective_cfg = (
+        get_effective_config(session, so_school_id)
+        if so_school_id is not None
+        else load_risk_config()
+    )
+
     # Pre-filter: lấy danh sách học sinh có biến cố/bệnh ONGOING đáng chú ý từ DB theo đúng trường
     active_context_students = _get_active_context_student_codes(
         session, school_year_id, so_school_id=so_school_id
@@ -799,6 +818,7 @@ def run_llm_forecasting_batch(
     def _worker(task):
         """Chạy forecast cho 1 (student_code, subject_id) với session ngắn 2 đầu."""
         sc, sid, features = task
+        model_version = str(features.get("model_version")) if features.get("model_version") else None
         # 1. Đọc context ngắn + điểm LLM trước đó (re-run) từ DB
         previous_llm_result: Optional[Dict[str, Any]] = None
         with SessionLocal() as s1:
@@ -806,6 +826,7 @@ def run_llm_forecasting_batch(
             previous_llm_result = _get_previous_llm_result(
                 s1, sc, sid, school_year_id, semester_index, evaluated_at_week,
                 so_school_id=so_school_id,
+                model_version=model_version,
             )
 
         cb_level = str(features.get("risk_level", "UNKNOWN"))
@@ -829,7 +850,7 @@ def run_llm_forecasting_batch(
             return sc, sid, None
 
         cb_score = _safe_float(features.get("risk_score"))
-        result = _normalize_llm_result(data, cb_score, previous_llm_result)
+        result = _normalize_llm_result(data, cb_score, previous_llm_result, cfg=effective_cfg)
 
         # 3. Ghi kết quả vào DB nhanh trong session ngắn
         with SessionLocal() as s2:

@@ -294,7 +294,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       color: riskColor,
                     }}
                   >
-                    {item.risk_score.toFixed(1)}
+                    {item.risk_score.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -425,7 +425,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 <div>
                   <span className="text-[11px] font-medium text-slate-400 block">Điểm Rủi Ro (0-100)</span>
                   <span className="text-2xl font-black" style={{ color: riskColor }}>
-                    {item.risk_score.toFixed(1)}
+                    {item.risk_score.toFixed(2)}
                   </span>
                 </div>
                 <div className="group relative">

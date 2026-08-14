@@ -243,14 +243,7 @@ def combine_risk_scores(
     final_score = round(float(np.clip(final_score, 0.0, 100.0)), 2)
 
     # Suy risk_level từ ngưỡng trên final risk_score
-    thr = cfg.threshold_vector()
-    level = RISK_LEVELS[0]
-    for i, t in enumerate(thr):
-        if final_score < t:
-            level = RISK_LEVELS[i]
-            break
-    else:
-        level = RISK_LEVELS[-1]
+    level = classify_risk_score(final_score, cfg)
 
     # weights đầy đủ 4 yếu tố; yếu tố bị loại = 0.0
     weights_full = {k: 0.0 for k in FACTOR_KEYS}
@@ -264,3 +257,14 @@ def combine_risk_scores(
         "alpha": cfg.dynamic.alpha if cfg.dynamic.enabled else {},
         "beta": beta,
     }
+
+
+def classify_risk_score(score: float, cfg: RiskConfig | None = None) -> str:
+    """Phân loại mức rủi ro (LOW, MODERATE, HIGH, CRITICAL) từ điểm số (0-100) theo RiskConfig."""
+    cfg = cfg or load_risk_config()
+    thr = cfg.threshold_vector()
+    for i, t in enumerate(thr):
+        if score < t:
+            return RISK_LEVELS[i]
+    return RISK_LEVELS[-1]
+

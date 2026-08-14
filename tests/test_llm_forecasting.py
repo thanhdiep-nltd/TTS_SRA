@@ -33,23 +33,23 @@ from src.ews.llm_forecasting import (
 
 class TestParseLlmResponse:
     def test_parse_plain_json(self):
-        raw = '{"llm_risk_score": 72.5, "llm_risk_level": "HIGH", "llm_recommended_actions": ["a", "b"]}'
+        raw = '{"llm_risk_score": 72.5, "llm_narrative_summary": "ok", "llm_recommended_actions": ["a", "b"]}'
         data = _parse_llm_response(raw)
         assert data["llm_risk_score"] == 72.5
-        assert data["llm_risk_level"] == "HIGH"
+        assert data["llm_narrative_summary"] == "ok"
         assert data["llm_recommended_actions"] == ["a", "b"]
 
     def test_parse_markdown_fence(self):
-        raw = '```json\n{"llm_risk_score": 55, "llm_risk_level": "MODERATE"}\n```'
+        raw = '```json\n{"llm_risk_score": 55, "llm_narrative_summary": "ghi chú"}\n```'
         data = _parse_llm_response(raw)
         assert data["llm_risk_score"] == 55
-        assert data["llm_risk_level"] == "MODERATE"
+        assert data["llm_narrative_summary"] == "ghi chú"
 
     def test_parse_with_surrounding_text(self):
-        raw = 'Đây là phân tích:\n{"llm_risk_score": 80, "llm_risk_level": "CRITICAL"}\nHy vọng hữu ích.'
+        raw = 'Đây là phân tích:\n{"llm_risk_score": 80, "llm_forecast_trend": "tăng"}\nHy vọng hữu ích.'
         data = _parse_llm_response(raw)
         assert data["llm_risk_score"] == 80
-        assert data["llm_risk_level"] == "CRITICAL"
+        assert data["llm_forecast_trend"] == "tăng"
 
     def test_invalid_json_raises(self):
         with pytest.raises(ValueError):
@@ -108,31 +108,42 @@ class TestShouldTrigger:
 
 
 class TestNormalizeLlmResult:
-    def test_valid_result(self):
+    def test_valid_result_auto_classifies_level(self):
+        """LLM không trả llm_risk_level; hệ thống tự phân loại theo baseline thresholds."""
         data = {
             "llm_risk_score": 70.0,
-            "llm_risk_level": "HIGH",
             "llm_narrative_summary": "abc",
             "llm_forecast_trend": "def",
             "llm_recommended_actions": ["x", "y"],
         }
         out = _normalize_llm_result(data, cb_score=60.0)
         assert out["llm_risk_score"] == 70.0
+        # Default baseline: LOW < 20, MODERATE < 52.5, HIGH < 88.0 -> 70.0 is HIGH
         assert out["llm_risk_level"] == "HIGH"
         assert out["llm_narrative_summary"] == "abc"
         assert out["llm_forecast_trend"] == "def"
         assert json.loads(out["llm_recommended_actions"]) == ["x", "y"]
         assert isinstance(out["llm_evaluated_at"], datetime)
 
+    def test_custom_school_config_thresholds(self):
+        """Kiểm tra phân loại theo cấu hình tùy chỉnh của trường."""
+        from src.ews.risk_config import RiskConfig
+        custom_cfg = RiskConfig(
+            thresholds={"LOW": 15.0, "MODERATE": 40.0, "HIGH": 65.0, "CRITICAL": 100.0}
+        )
+        data = {"llm_risk_score": 70.0}
+        # Với custom config: >= 65.0 là CRITICAL -> 70.0 là CRITICAL
+        out = _normalize_llm_result(data, cb_score=60.0, cfg=custom_cfg)
+        assert out["llm_risk_level"] == "CRITICAL"
+
     def test_score_clamped_0_100(self):
         out = _normalize_llm_result({"llm_risk_score": 150}, cb_score=60)
         assert out["llm_risk_score"] == 100.0
+        assert out["llm_risk_level"] == "CRITICAL"
+
         out2 = _normalize_llm_result({"llm_risk_score": -10}, cb_score=60)
         assert out2["llm_risk_score"] == 0.0
-
-    def test_invalid_level_inferred_from_score(self):
-        out = _normalize_llm_result({"llm_risk_score": 90, "llm_risk_level": "weird"}, cb_score=60)
-        assert out["llm_risk_level"] == "CRITICAL"
+        assert out2["llm_risk_level"] == "LOW"
 
     def test_actions_not_list_becomes_empty(self):
         out = _normalize_llm_result({"llm_recommended_actions": "not-a-list"}, cb_score=60)
@@ -143,9 +154,10 @@ class TestNormalizeLlmResult:
     def test_rerun_keeps_old_score_when_delta_small(self):
         """|mới - cũ| <= 1.0 → giữ nguyên điểm cũ, không có lý do đổi."""
         previous = {"llm_risk_score": 75.0, "llm_risk_level": "HIGH"}
-        data = {"llm_risk_score": 75.5, "llm_risk_level": "HIGH"}
+        data = {"llm_risk_score": 75.5}
         out = _normalize_llm_result(data, cb_score=60.0, previous_llm_result=previous)
         assert out["llm_risk_score"] == 75.0
+        assert out["llm_risk_level"] == "HIGH"
         assert out["llm_previous_score"] == 75.0
         assert out["llm_score_change_reason"] is None
 
@@ -153,24 +165,25 @@ class TestNormalizeLlmResult:
         """|mới - cũ| > 1.0 và có lý do từ LLM → dùng điểm mới + lưu lý do."""
         previous = {"llm_risk_score": 75.0, "llm_risk_level": "HIGH"}
         data = {
-            "llm_risk_score": 85.0,
-            "llm_risk_level": "CRITICAL",
+            "llm_risk_score": 90.0,
             "llm_score_change_reason": "Biến cố gia đình mới nghiêm trọng.",
         }
         out = _normalize_llm_result(data, cb_score=60.0, previous_llm_result=previous)
-        assert out["llm_risk_score"] == 85.0
+        assert out["llm_risk_score"] == 90.0
+        assert out["llm_risk_level"] == "CRITICAL"
         assert out["llm_previous_score"] == 75.0
         assert out["llm_score_change_reason"] == "Biến cố gia đình mới nghiêm trọng."
 
     def test_rerun_fallback_reason_uses_giam_tu_when_score_drops(self):
         """Điểm giảm > 1.0, không có lý do từ LLM → fallback dùng chữ 'giảm từ'."""
         previous = {"llm_risk_score": 80.0, "llm_risk_level": "HIGH"}
-        data = {"llm_risk_score": 60.0, "llm_risk_level": "MODERATE"}
+        data = {"llm_risk_score": 50.0}
         out = _normalize_llm_result(data, cb_score=60.0, previous_llm_result=previous)
-        assert out["llm_risk_score"] == 60.0
+        assert out["llm_risk_score"] == 50.0
+        assert out["llm_risk_level"] == "MODERATE"
         assert out["llm_previous_score"] == 80.0
         assert out["llm_score_change_reason"] is not None
-        assert "giảm từ 80 sang 60" in out["llm_score_change_reason"]
+        assert "giảm từ 80 sang 50" in out["llm_score_change_reason"]
         assert "tăng từ" not in out["llm_score_change_reason"]
 
 
@@ -269,7 +282,6 @@ class TestForecastStudentRisk:
                 msg = MagicMock()
                 msg.content = json.dumps({
                     "llm_risk_score": 75.0,
-                    "llm_risk_level": "HIGH",
                     "llm_narrative_summary": "Học sinh có biến cố gia đình ONGOING.",
                     "llm_forecast_trend": "Rủi ro có thể tăng.",
                     "llm_recommended_actions": ["Hỗ trợ tâm lý", "Trao đổi với phụ huynh"],
