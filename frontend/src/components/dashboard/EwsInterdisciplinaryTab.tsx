@@ -207,11 +207,11 @@ export default function EwsInterdisciplinaryTab({
             }}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
               activeCluster === "STEM"
-                ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/60 dark:border-slate-800"
+                ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm border border-slate-200/60 dark:border-slate-800"
                 : "text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-200/40"
             }`}
           >
-            <Cpu className="w-4 h-4 text-indigo-500" />
+            <Cpu className="w-4 h-4 text-brand-600 dark:text-brand-400" />
             <span>Liên Môn STEM (5 Trụ Cột)</span>
           </button>
 
@@ -244,61 +244,134 @@ export default function EwsInterdisciplinaryTab({
       {overview && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Tổng số học sinh */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-1">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-medium">Quy Mô Học Sinh Cụm</span>
-              <Users className="w-4 h-4 text-indigo-500" />
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Quy Mô Học Sinh</span>
+              <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400">
+                <Users className="w-4 h-4" />
+              </div>
             </div>
-            <div className="text-2xl font-black text-slate-900 dark:text-white">
-              {overview.total_students}
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-slate-900 dark:text-white">
+                {overview.total_students}
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 font-mono">
+                Học sinh
+              </span>
             </div>
-            <span className="text-[11px] text-slate-400">Có kết quả dự báo trong tuần {week}</span>
+            <div className="text-[11px] text-slate-400 font-medium">
+              Có kết quả dự báo trong tuần {week}
+            </div>
           </div>
 
           {/* Card 2: Điểm rủi ro trung bình cụm */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-1">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-medium">Rủi Ro Trung Bình Cụm</span>
-              <Activity className="w-4 h-4 text-amber-500" />
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Rủi Ro Trung Bình</span>
+              <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
+                <Activity className="w-4 h-4" />
+              </div>
             </div>
-            <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-              {overview.avg_cluster_risk.toFixed(1)}
-              <span className="text-xs text-slate-400 font-normal"> / 100</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-brand-600 dark:text-brand-400">
+                {overview.avg_cluster_risk.toFixed(2)}
+              </span>
+              <span className="text-[11px] text-slate-400 font-mono">/ 100</span>
             </div>
-            <span className="text-[11px] text-slate-400">Mức rủi ro tích hợp toàn cụm</span>
+            <div className="w-full">
+              <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, overview.avg_cluster_risk)}%`,
+                    backgroundColor:
+                      overview.avg_cluster_risk >= 70
+                        ? "#ef4444"
+                        : overview.avg_cluster_risk >= 50
+                        ? "#f97316"
+                        : overview.avg_cluster_risk >= 30
+                        ? "#eab308"
+                        : "#10b981",
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Card 3: Số học sinh bị nghẽn Bottleneck */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-1">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-medium">Học Sinh Bị Kẹt Môn Nút Thắt</span>
-              <AlertTriangle className="w-4 h-4 text-rose-500" />
+          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Nút Thắt (Bottleneck)</span>
+              <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
             </div>
-            <div className="text-2xl font-black text-rose-600 dark:text-rose-400">
-              {overview.bottleneck_count}
-              <span className="text-xs text-slate-400 font-normal"> ({overview.bottleneck_ratio}%)</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-rose-600 dark:text-rose-400">
+                {overview.bottleneck_count}
+              </span>
+              <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50">
+                {overview.bottleneck_ratio}% cụm
+              </span>
             </div>
-            <span className="text-[11px] text-slate-400">Có 1 môn kéo tụt cả cụm liên môn</span>
+            <div className="text-[11px] text-slate-400 font-medium">
+              Có 1 môn kéo tụt cả cụm liên môn
+            </div>
           </div>
 
           {/* Card 4: Phân bổ 4 mức rủi ro */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-medium">Phân Bổ 4 Mức Rủi Ro</span>
-              <Layers className="w-4 h-4 text-slate-500" />
-            </div>
-            <div className="flex items-center gap-1.5 text-xs font-mono font-bold">
-              <span className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400">
-                CRIT: {overview.risk_distribution["CRITICAL"] || 0}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400">
-                HIGH: {overview.risk_distribution["HIGH"] || 0}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400">
-                LOW: {overview.risk_distribution["LOW"] || 0}
-              </span>
-            </div>
-          </div>
+          {(() => {
+            const total = overview.total_students || 1;
+            const cCrit = overview.risk_distribution["CRITICAL"] || 0;
+            const cHigh = overview.risk_distribution["HIGH"] || 0;
+            const cMod = overview.risk_distribution["MODERATE"] || 0;
+            const cLow = overview.risk_distribution["LOW"] || 0;
+
+            const pCrit = ((cCrit / total) * 100).toFixed(0);
+            const pHigh = ((cHigh / total) * 100).toFixed(0);
+            const pMod = ((cMod / total) * 100).toFixed(0);
+            const pLow = ((cLow / total) * 100).toFixed(0);
+
+            return (
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-2 hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Phân Bổ 4 Mức Rủi Ro</span>
+                  <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* Thanh phân bố đa sắc thái */}
+                <div className="space-y-1.5">
+                  <div className="flex h-2 w-full rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 p-0.5 gap-0.5 shadow-2xs">
+                    <div style={{ width: `${pCrit}%` }} className="h-full rounded-xs bg-rose-600 transition-all" title={`CRITICAL: ${cCrit}`} />
+                    <div style={{ width: `${pHigh}%` }} className="h-full rounded-xs bg-orange-500 transition-all" title={`HIGH: ${cHigh}`} />
+                    <div style={{ width: `${pMod}%` }} className="h-full rounded-xs bg-amber-500 transition-all" title={`MODERATE: ${cMod}`} />
+                    <div style={{ width: `${pLow}%` }} className="h-full rounded-xs bg-emerald-500 transition-all" title={`LOW: ${cLow}`} />
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1 text-center pt-0.5">
+                    <div className="px-1 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200/60 dark:border-rose-900/40">
+                      <span className="text-[9px] font-bold text-rose-500 uppercase block">Crit</span>
+                      <span className="text-[11px] font-mono font-black text-rose-700 dark:text-rose-300">{cCrit}</span>
+                    </div>
+                    <div className="px-1 py-0.5 rounded bg-orange-50 dark:bg-orange-950/40 border border-orange-200/60 dark:border-orange-900/40">
+                      <span className="text-[9px] font-bold text-orange-500 uppercase block">High</span>
+                      <span className="text-[11px] font-mono font-black text-orange-700 dark:text-orange-300">{cHigh}</span>
+                    </div>
+                    <div className="px-1 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40">
+                      <span className="text-[9px] font-bold text-amber-500 uppercase block">Mod</span>
+                      <span className="text-[11px] font-mono font-black text-amber-700 dark:text-amber-300">{cMod}</span>
+                    </div>
+                    <div className="px-1 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900/40">
+                      <span className="text-[9px] font-bold text-emerald-500 uppercase block">Low</span>
+                      <span className="text-[11px] font-mono font-black text-emerald-700 dark:text-emerald-300">{cLow}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -503,7 +576,7 @@ export default function EwsInterdisciplinaryTab({
                         <button
                           type="button"
                           onClick={() => setSelectedStudent(st as StudentInterdisciplinaryDetail)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-400 transition-all border border-slate-200/60 dark:border-slate-700/60"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-950/50 dark:hover:text-brand-400 transition-all border border-slate-200/60 dark:border-slate-700/60"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Chi Tiết</span>
@@ -552,7 +625,7 @@ export default function EwsInterdisciplinaryTab({
                   onChange={(e) => setPageInput(e.target.value)}
                   onBlur={handlePageJump}
                   onKeyDown={(e) => e.key === "Enter" && handlePageJump()}
-                  className="w-12 text-center py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-12 text-center py-1 px-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
                 <span className="text-slate-400">/ {totalPages}</span>
               </div>

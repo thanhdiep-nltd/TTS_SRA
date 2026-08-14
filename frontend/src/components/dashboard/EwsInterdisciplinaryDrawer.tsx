@@ -13,6 +13,10 @@ import {
   Layers,
   Info,
   ShieldAlert,
+  Brain,
+  Lightbulb,
+  Compass,
+  CheckCircle2,
 } from "lucide-react";
 
 export interface PillarData {
@@ -132,7 +136,7 @@ export default function EwsInterdisciplinaryDrawer({
         {/* HEADER */}
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
+            <div className="w-11 h-11 rounded-2xl bg-brand-50 dark:bg-brand-950/60 border border-brand-100 dark:border-brand-900/50 flex items-center justify-center text-brand-600 dark:text-brand-400 shrink-0 shadow-2xs">
               <User className="w-5 h-5" />
             </div>
             <div className="space-y-1">
@@ -184,7 +188,7 @@ export default function EwsInterdisciplinaryDrawer({
                 </span>
                 <span className="text-slate-300 dark:text-slate-600">•</span>
                 <span>
-                  Cụm: <strong className="text-indigo-600 dark:text-indigo-400">{item.cluster_name}</strong>
+                  Cụm: <strong className="text-brand-600 dark:text-brand-400">{item.cluster_name}</strong>
                 </span>
                 <span className="text-slate-300 dark:text-slate-600">•</span>
                 <span className="text-slate-400 font-medium">Mốc Tuần {week}</span>
@@ -245,11 +249,130 @@ export default function EwsInterdisciplinaryDrawer({
             </div>
           )}
 
+          {/* KHỐI PHÂN TÍCH SƯ PHẠM & KHUYẾN NGHỊ TỪ AI LIÊN MÔN */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-brand-50/70 via-slate-50/40 to-slate-50/50 dark:from-brand-950/30 dark:via-slate-950/20 dark:to-slate-900 border border-brand-200/80 dark:border-brand-900/50 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between border-b border-brand-100 dark:border-brand-900/60 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-brand-600 text-white shadow-xs">
+                  <Brain className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                    Nhận Định Sư Phạm Chuyên Sâu Cụm Liên Môn
+                  </h4>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Phân tích cơ chế lan truyền rủi ro & tương tác đa phân môn
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-600 text-white shadow-2xs flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                AI Synthesis
+              </span>
+            </div>
+
+            {/* NỘI DUNG NHẬN ĐỊNH SƯ PHẠM */}
+            <div className="space-y-3 text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+              <div className="p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-brand-100 dark:border-brand-950 space-y-1.5">
+                <span className="font-bold text-[11px] uppercase tracking-wider text-brand-600 dark:text-brand-400 flex items-center gap-1.5">
+                  <Compass className="w-3.5 h-3.5" />
+                  Đánh Giá Tương Tác Giữa Các Môn:
+                </span>
+                <p>
+                  Học sinh đang có mức rủi ro tích hợp toàn cụm là{" "}
+                  <strong className="font-mono font-bold" style={{ color: riskColor }}>
+                    {item.cluster_risk_score.toFixed(2)} ({item.cluster_risk_level})
+                  </strong>
+                  .
+                  {item.disparity_index >= 15.0 ? (
+                    <span>
+                      {" "}Hệ thống ghi nhận <strong>Độ lệch pha cao ({item.disparity_index.toFixed(2)})</strong>, phản ánh tình trạng học lệch nghiêm trọng hoặc có sự mất cân bằng năng lực rõ rệt giữa các trụ cột trong cụm {item.cluster_name}.
+                    </span>
+                  ) : (
+                    <span>
+                      {" "}Mức độ dao động giữa các môn tương đối đồng đều (Độ lệch pha: {item.disparity_index.toFixed(2)}).
+                    </span>
+                  )}
+                  {item.bottleneck_subject && (
+                    <span className="block mt-1 text-rose-600 dark:text-rose-400">
+                      🚨 <strong>Môn {item.bottleneck_subject}</strong> ({item.bottleneck_risk?.toFixed(2)}/100) đang đóng vai trò là <em>Nút thắt cổ chai</em> làm suy giảm toàn bộ tiến trình học tập của cả cụm.
+                    </span>
+                  )}
+                  {item.anchor_subject && (
+                    <span className="block mt-0.5 text-emerald-600 dark:text-emerald-400">
+                      ⭐ <strong>Môn {item.anchor_subject}</strong> ({item.anchor_risk?.toFixed(2)}/100) là <em>Trụ cột nâng đỡ vững chắc</em>, học sinh có thế mạnh và tâm lý tự tin ở môn học này.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* KHUYẾN NGHỊ KẾ HOẠCH HÀNH ĐỘNG SƯ PHẠM */}
+              <div className="space-y-2">
+                <span className="font-bold text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                  Kế Hoạch Can Thiệp Sư Phạm Liên Môn Khuyến Nghị:
+                </span>
+
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                      1
+                    </div>
+                    <div>
+                      <strong className="text-slate-900 dark:text-white">
+                        {item.bottleneck_subject
+                          ? `Phụ đạo trọng điểm gỡ nút thắt môn ${item.bottleneck_subject}`
+                          : "Tăng cường củng cố chuyên đề yếu"}
+                      </strong>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {item.bottleneck_subject
+                          ? `Giáo viên bộ môn ${item.bottleneck_subject} cần rà soát lại các lỗ hổng kiến thức căn bản của học sinh để phụ đạo kèm 1-1, tránh để môn này tiếp tục kéo tụt kết quả học tập.`
+                          : "Theo dõi sát sao tiến độ làm bài tập trên LMS và điểm kiểm tra định kỳ."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                      2
+                    </div>
+                    <div>
+                      <strong className="text-slate-900 dark:text-white">
+                        {item.anchor_subject
+                          ? `Sử dụng môn ${item.anchor_subject} làm đòn bẩy tâm lý & dự án liên môn`
+                          : "Giao nhiệm vụ dự án nhóm tích hợp"}
+                      </strong>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {item.anchor_subject && item.bottleneck_subject
+                          ? `Xây dựng bài tập hoặc dự án thực hành liên môn kết hợp giữa môn thế mạnh (${item.anchor_subject}) với môn đang gặp khó (${item.bottleneck_subject}) để khơi gợi hứng thú và sự tự tin.`
+                          : "Khuyến khích học sinh tham gia các hoạt động trải nghiệm thực hành liên môn theo nhóm."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800 flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                      3
+                    </div>
+                    <div>
+                      <strong className="text-slate-900 dark:text-white">
+                        Phối hợp liên giáo viên (GVBM & GVCN)
+                      </strong>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        GVCN định kỳ trao đổi hàng tuần với giáo viên các môn trong cụm {item.cluster_name} để cập nhật mức độ cải thiện và điều chỉnh phương pháp kịp thời.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* RADAR CHART NGŨ GIÁC NĂNG LỰC RỦI RO LIÊN MÔN */}
           <div className="p-5 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <Layers className="w-5 h-5 text-brand-600 dark:text-brand-400" />
                 <h4 className="font-bold text-sm text-slate-900 dark:text-white">
                   Biểu Đồ Radar Cân Bằng Rủi Ro ({activePillars.length} Trụ Cột Thực Học)
                 </h4>

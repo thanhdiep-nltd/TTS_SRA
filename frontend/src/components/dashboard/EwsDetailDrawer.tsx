@@ -425,6 +425,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
             <div
               className="p-5 rounded-2xl border shadow-2xs relative overflow-hidden space-y-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
             >
+              {/* HEADER TỔNG HỢP ĐÁNH GIÁ NGUY CƠ */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldAlert className="w-5 h-5" style={{ color: riskColor }} />
@@ -435,39 +436,76 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 bg-white/80 dark:bg-slate-900/80 p-4 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
-                <div>
-                  <span className="text-[11px] font-medium text-slate-400 block">Điểm Rủi Ro (0-100)</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black" style={{ color: riskColor }}>
-                      {displayScore.toFixed(2)}
-                    </span>
-                    {hasLlm && llmChanged && (
-                      <span className="text-xs text-slate-400 font-medium" title="Điểm gốc từ mô hình Machine Learning (CatBoost)">
-                        (ML: {item.risk_score.toFixed(2)})
+              {/* KHỐI 1: RADIAL GAUGE & XÁC SUẤT NGUY CƠ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                {/* CỘT TRÁI: RADIAL GAUGE VÒNG TRÒN */}
+                <div className="flex items-center gap-4">
+                  <div className="relative w-22 h-22 shrink-0 flex items-center justify-center">
+                    <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 96 96">
+                      {/* Vòng nền */}
+                      <circle
+                        cx="48"
+                        cy="48"
+                        r="38"
+                        className="stroke-slate-200/80 dark:stroke-slate-700/80"
+                        strokeWidth="4.5"
+                        fill="none"
+                      />
+                      {/* Vòng tiến trình năng động */}
+                      <circle
+                        cx="48"
+                        cy="48"
+                        r="38"
+                        stroke={riskColor}
+                        strokeWidth="4.5"
+                        strokeDasharray={238.76}
+                        strokeDashoffset={238.76 - (Math.min(100, Math.max(0, displayScore)) / 100) * 238.76}
+                        strokeLinecap="round"
+                        fill="none"
+                        className="transition-all duration-700 ease-out"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span className="text-lg font-mono font-semibold tracking-tight" style={{ color: riskColor }}>
+                        {displayScore.toFixed(1)}
                       </span>
+                      <span className="text-[10px] font-normal text-slate-400">/ 100</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
+                      Điểm Rủi Ro Tổng Hợp
+                    </span>
+                    <div
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold text-white shadow-2xs"
+                      style={{ backgroundColor: riskColor }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                      {displayLevel}
+                    </div>
+                    {hasLlm && llmChanged && (
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        Gốc ML: <strong className="text-slate-600 dark:text-slate-300 font-medium">{item.risk_score.toFixed(2)}</strong>
+                      </p>
                     )}
                   </div>
                 </div>
-                <div className="group relative">
-                  <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 cursor-help">
-                    Xác Suất Nguy Cơ
-                    <Info className="w-3 h-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                  </span>
-                  <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-2xl font-bold text-slate-900 dark:text-white">
-                      {item.risk_probability !== null ? `${(item.risk_probability * 100).toFixed(1)}%` : "—"}
+
+                {/* CỘT PHẢI: XÁC SUẤT & PHÂN BỔ MỨC NGUY CƠ */}
+                <div className="space-y-2 border-t sm:border-t-0 sm:border-l border-slate-200/60 dark:border-slate-700/60 pt-3 sm:pt-0 sm:pl-4 flex flex-col justify-center">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                      Xác Suất Dự Báo
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
-                      ({displayLevel})
+                    <span className="text-base font-mono font-semibold text-slate-900 dark:text-white">
+                      {item.risk_probability !== null ? `${(item.risk_probability * 100).toFixed(1)}%` : "—"}
                     </span>
                   </div>
 
-                  {/* Thanh phân bổ xác suất 4 mức mini mỏng nhẹ */}
                   {(() => {
                     const mainProb = item.risk_probability !== null ? Math.min(0.99, Math.max(0.25, item.risk_probability)) : 0.70;
                     const pRest = 1.0 - mainProb;
-
                     const probs: Record<string, number> = { LOW: 0, MODERATE: 0, HIGH: 0, CRITICAL: 0 };
                     probs[item.risk_level] = mainProb;
 
@@ -490,55 +528,16 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     }
 
                     return (
-                      <div className="mt-1.5 space-y-1">
-                        {/* Dải mini bar 4 màu đại diện 4 mức */}
-                        <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 p-0.5 gap-0.5 shadow-2xs">
+                      <div className="space-y-1.5">
+                        <div className="flex h-2 w-full rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 p-0.5 gap-0.5 shadow-2xs">
                           <div style={{ width: `${(probs.LOW * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-emerald-500" title={`LOW: ${(probs.LOW * 100).toFixed(1)}%`} />
                           <div style={{ width: `${(probs.MODERATE * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-amber-500" title={`MODERATE: ${(probs.MODERATE * 100).toFixed(1)}%`} />
                           <div style={{ width: `${(probs.HIGH * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-orange-500" title={`HIGH: ${(probs.HIGH * 100).toFixed(1)}%`} />
                           <div style={{ width: `${(probs.CRITICAL * 100).toFixed(0)}%` }} className="h-full rounded-xs bg-rose-600" title={`CRITICAL: ${(probs.CRITICAL * 100).toFixed(1)}%`} />
                         </div>
-
-                        {/* Tooltip khi di chuột vào ô Xác suất — hỗ trợ mượt mà cả Light Mode lẫn Dark Mode */}
-                        <div className="hidden group-hover:block absolute left-0 top-full mt-2 w-60 p-3 rounded-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-[11px] shadow-2xl z-50 space-y-2 border border-slate-200/90 dark:border-slate-700/80 backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                            <span className="font-bold text-[10px] uppercase text-slate-500 dark:text-slate-400">
-                              Xác Suất Dự Báo 4 Mức (CatBoost):
-                            </span>
-                          </div>
-                          <div className="space-y-1 font-medium">
-                            <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "LOW" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-500/20" : "text-slate-600 dark:text-slate-300"}`}>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                                <span>Thấp (LOW):</span>
-                              </span>
-                              <span>{(probs.LOW * 100).toFixed(1)}%</span>
-                            </div>
-
-                            <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "MODERATE" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/20" : "text-slate-600 dark:text-slate-300"}`}>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                                <span>Trung Bình (MODERATE):</span>
-                              </span>
-                              <span>{(probs.MODERATE * 100).toFixed(1)}%</span>
-                            </div>
-
-                            <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "HIGH" ? "bg-orange-500/15 text-orange-700 dark:text-orange-300 font-bold border border-orange-500/20" : "text-slate-600 dark:text-slate-300"}`}>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
-                                <span>Cao (HIGH):</span>
-                              </span>
-                              <span>{(probs.HIGH * 100).toFixed(1)}%</span>
-                            </div>
-
-                            <div className={`flex justify-between items-center px-2 py-1.5 rounded-lg transition-colors ${item.risk_level === "CRITICAL" ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 font-bold border border-rose-500/20" : "text-slate-600 dark:text-slate-300"}`}>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                                <span>Rất Nguy Hiểm (CRITICAL):</span>
-                              </span>
-                              <span>{(probs.CRITICAL * 100).toFixed(1)}%</span>
-                            </div>
-                          </div>
+                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">An toàn</span>
+                          <span className="text-rose-600 dark:text-rose-400 font-semibold">Nguy hiểm</span>
                         </div>
                       </div>
                     );
@@ -546,56 +545,95 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 </div>
               </div>
 
-              {/* BREAKDOWN THEO YẾU TỐ */}
-              {item.model_version === "v2_ensemble" || item.model_version === "v1_single" ? (
-                <div className="pt-2 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {item.model_version === "v2_ensemble"
-                        ? "Tỷ trọng & Điểm rủi ro theo 4 nhóm yếu tố:"
-                        : "Mức đóng góp theo 4 nhóm yếu tố:"}
+              {/* KHỐI 2: ĐÓNG GÓP THEO 4 NHÓM YẾU TỐ (TINH GỌN & THOÁNG MẮT) */}
+              {(item.model_version === "v2_ensemble" || item.model_version === "v1_single") && (
+                <div className="pt-1 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-0.5">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">
+                      Đóng góp theo 4 nhóm yếu tố
                     </span>
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      (Điểm rủi ro / Trọng số)
-                    </span>
+                    <span className="text-[11px] font-mono text-slate-400">Điểm rủi ro • Đóng góp</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2.5">
+
+                  <div className="space-y-2.5 bg-slate-50/60 dark:bg-slate-800/30 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
                     {[
-                      { label: "Điểm số", risk: item.score_risk, w: item.weight_score, def: 0.65 },
-                      { label: "LMS", risk: item.lms_risk, w: item.weight_lms, def: 0.15 },
-                      { label: "Chuyên cần", risk: item.attendance_risk, w: item.weight_attendance, def: 0.10 },
-                      { label: "Hạnh kiểm", risk: item.behavior_risk, w: item.weight_behavior, def: 0.10 },
+                      {
+                        label: "Điểm số",
+                        icon: GraduationCap,
+                        risk: item.score_risk,
+                        w: item.weight_score,
+                        def: 0.55,
+                      },
+                      {
+                        label: "Học tập LMS",
+                        icon: Laptop,
+                        risk: item.lms_risk,
+                        w: item.weight_lms,
+                        def: 0.15,
+                      },
+                      {
+                        label: "Chuyên cần",
+                        icon: Clock,
+                        risk: item.attendance_risk,
+                        w: item.weight_attendance,
+                        def: 0.15,
+                      },
+                      {
+                        label: "Kỷ luật & Hạnh kiểm",
+                        icon: ShieldCheck,
+                        risk: item.behavior_risk,
+                        w: item.weight_behavior,
+                        def: 0.15,
+                      },
                     ].map((f) => {
-                      const w = f.w !== null ? f.w : f.def;
-                      const hasData = item.model_version === "v1_single" ? true : f.risk !== null;
+                      const w = f.w !== null && f.w !== undefined ? f.w : f.def;
+                      const rScore = f.risk !== null && f.risk !== undefined ? f.risk : 0;
+                      const contribution = (rScore * w).toFixed(1);
+                      const IconComp = f.icon;
+
+                      const factorColor =
+                        rScore >= 70
+                          ? "#e11d48"
+                          : rScore >= 50
+                          ? "#ea580c"
+                          : rScore >= 30
+                          ? "#ca8a04"
+                          : "#16a34a";
+
                       return (
-                        <div key={f.label} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{f.label}</span>
-                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                              Trọng số: <strong className="text-indigo-600 dark:text-indigo-400">{hasData ? `${(w * 100).toFixed(0)}%` : "—"}</strong>
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${Math.min(100, f.risk ?? 0)}%`,
-                                  backgroundColor: (f.risk ?? 0) >= 70 ? "#ef4444" : (f.risk ?? 0) >= 50 ? "#f97316" : "#22c55e",
-                                }}
-                              />
+                        <div key={f.label} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                              <IconComp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="font-medium">{f.label}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">({(w * 100).toFixed(0)}%)</span>
                             </div>
-                            <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
-                              {f.risk !== null ? f.risk.toFixed(0) : "—"}
-                            </span>
+
+                            <div className="flex items-center gap-3 font-mono text-xs">
+                              <span className="text-slate-500 dark:text-slate-400 text-[11px]">
+                                {f.risk !== null && f.risk !== undefined ? f.risk.toFixed(1) : "—"}
+                              </span>
+                              <span className="font-semibold text-brand-600 dark:text-brand-400 w-14 text-right">
+                                +{contribution} đ
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="h-1 w-full rounded-full bg-slate-200/70 dark:bg-slate-700/70 overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, rScore))}%`,
+                                backgroundColor: factorColor,
+                              }}
+                            />
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
-              ) : null}
+              )}
 
               {/* CỜ NGUYÊN NHÂN BADGES — dùng primary_badge (fallback risk_factors cho backward compat) */}
               {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).length > 0 && (

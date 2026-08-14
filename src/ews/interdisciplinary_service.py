@@ -246,8 +246,14 @@ def calculate_student_cluster_risk(
     bottleneck_risk: Optional[float] = None
     bottleneck_penalty = 0.0
 
-    # Điều kiện kích hoạt Bottleneck: môn điểm rủi ro cao >= 70 và vượt trung bình cụm >= 12 điểm
-    if worst_p["risk_score"] >= 70.0 and (worst_p["risk_score"] - weighted_risk) >= 12.0:
+    # Điều kiện kích hoạt Bottleneck (Nút thắt kéo tụt):
+    # 1. Môn điểm rủi ro cao >= 70 và vượt trung bình cụm >= 12 điểm (nguy cơ cao kéo tụt)
+    # HOẶC 2. Môn bước vào vùng cảnh báo (>= 45.0) và vượt trung bình cụm >= 15 điểm (kéo lệch cả cụm)
+    is_bottleneck = (
+        (worst_p["risk_score"] >= 70.0 and (worst_p["risk_score"] - weighted_risk) >= 12.0)
+        or (worst_p["risk_score"] >= 45.0 and (worst_p["risk_score"] - weighted_risk) >= 15.0)
+    )
+    if is_bottleneck:
         bottleneck_penalty = (worst_p["risk_score"] - weighted_risk) * 0.25
         bottleneck_subject = worst_p["pillar_name"]
         bottleneck_risk = worst_p["risk_score"]
