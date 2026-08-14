@@ -499,9 +499,8 @@ def _should_trigger(
     medical: List[Dict[str, Any]],
 ) -> bool:
     """Kiểm tra trigger condition (xem docstring module)."""
-    # Tạm thời bỏ HIGH để test trước (chỉ giữ CRITICAL)
-    # if risk_level in ("HIGH", "CRITICAL"):
-    if risk_level == "CRITICAL":
+    # Trigger cho mức HIGH hoặc CRITICAL
+    if risk_level in ("HIGH", "CRITICAL"):
         return True
     # Biến cố ONGOING → trigger
     if any(ev.get("status") == "ONGOING" for ev in life_events):
@@ -760,8 +759,8 @@ def run_llm_forecasting_batch(
         session, school_year_id, so_school_id=so_school_id
     )
 
-    # Tạm thời bỏ HIGH để test trước (chỉ giữ CRITICAL)
-    active_risk_levels = {"CRITICAL"}  # {"HIGH", "CRITICAL"}
+    # Trigger cho mức HIGH và CRITICAL
+    active_risk_levels = {"HIGH", "CRITICAL"}
 
     tasks = []
     seen = set()

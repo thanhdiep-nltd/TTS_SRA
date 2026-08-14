@@ -88,7 +88,7 @@ subject_info AS (
         COALESCE(subject_category,
             CASE
                 WHEN code LIKE 'TOAN%' OR code LIKE '%MATH%' OR code IN ('LY', 'HOA', 'SINH', 'KHTN', 'IB_SCI') THEN 'MATH_SCIENCE'
-                WHEN code LIKE '%ENG%' OR code IN ('VAN', 'ANH', 'LS_DL', 'CAM_ENG') THEN 'HUMANITIES'
+                WHEN code LIKE '%ENG%' OR code IN ('VAN', 'ANH', 'LS_DL', 'CAM_ENG', 'GDCD') THEN 'HUMANITIES'
                 WHEN code IN ('TIN', 'ROBOTICS') THEN 'TECHNOLOGY'
                 ELSE 'ARTS_PE'
             END

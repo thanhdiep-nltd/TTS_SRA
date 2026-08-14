@@ -191,24 +191,31 @@ def compute_shap_drivers(
     feature_cols = [c for c in X_shap.columns if c not in meta_cols]
     X_features = X_shap[feature_cols]
 
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_features)
-
-    # Xử lý SHAP output format
-    n_classes = len(RISK_LEVELS)
-
-    if isinstance(shap_values, list):
-        shap_by_class = shap_values
-    elif shap_values.ndim == 3 and shap_values.shape[2] == n_classes:
-        shap_by_class = [shap_values[:, :, i] for i in range(n_classes)]
-    else:
-        shap_by_class = [shap_values]
-
-    # Signed SHAP của class CRITICAL (index 3) — giữ dấu âm/dương thực tế.
-    # (shap_value > 0 = lực kéo TĂNG rủi ro (tăng P(CRITICAL)), < 0 = lực kéo GIẢM rủi ro)
-    # LƯU Ý: dùng class CRITICAL thay vì class 0 (LOW) — với class 0, dấu bị ĐẢO NGƯỢC
-    # (âm = tăng rủi ro) gây hiểu lầm UI. Class CRITICAL cho đúng ngữ nghĩa trực quan.
-    signed_shap = shap_by_class[3].copy()  # (N, F)
+    # Tính SHAP siêu tốc bằng C++ Native của CatBoost (nhanh hơn 100x so với Python shap.TreeExplainer)
+    try:
+        cols = [c for c in getattr(model, "feature_names_", feature_cols) if c in X_features.columns]
+        cats = [c for c in CAT_FEATURES if c in cols]
+        pool = cb.Pool(X_features[cols], cat_features=cats)
+        sv = model.get_feature_importance(pool, type="ShapValues")
+        if sv.ndim == 3:
+            if sv.shape[1] == 4:
+                signed_shap = sv[:, 3, :len(feature_cols)].copy()
+            else:
+                signed_shap = sv[:, :len(feature_cols), 3].copy()
+        else:
+            signed_shap = sv[:, :len(feature_cols)].copy()
+    except Exception as exc:
+        logger.warning("Native CatBoost SHAP failed (%s), fallback to shap.TreeExplainer", exc)
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_features)
+        n_classes = len(RISK_LEVELS)
+        if isinstance(shap_values, list):
+            shap_by_class = shap_values
+        elif shap_values.ndim == 3 and shap_values.shape[2] == n_classes:
+            shap_by_class = [shap_values[:, :, i] for i in range(n_classes)]
+        else:
+            shap_by_class = [shap_values]
+        signed_shap = shap_by_class[3].copy()  # (N, F)
 
     # 🛡️ LỌC NGUYÊN NHÂN ẢO: Nếu học sinh chưa có bài thi hệ số lớn nào (high_weight_score_count == 0)
     # -> Triệt hạ SHAP value của last_high_weight_score về 0.0 để KHÔNG bị trừ điểm oan & KHÔNG bị lọt vào Top 5 Drivers!
@@ -405,22 +412,36 @@ def compute_ensemble_shap_drivers(
     # signed_shap_combined: dict feature -> (N,) signed SHAP có trọng số
     combined: dict[str, np.ndarray] = {}
     for fi, factor in enumerate(FACTOR_KEYS):
-        cols = [c for c in CAT_FEATURES + ENSEMBLE_FACTOR_GROUPS[factor] if c in X_shap.columns]
-        if not cols:
+        sub_model = models[factor]
+        default_cols = [c for c in CAT_FEATURES + ENSEMBLE_FACTOR_GROUPS[factor] if c in X_shap.columns]
+        model_cols = [c for c in getattr(sub_model, "feature_names_", default_cols) if c in X_shap.columns]
+        if not model_cols:
             continue
-        explainer = shap.TreeExplainer(models[factor])
-        sv = explainer.shap_values(X_shap[cols])
-        # Xử lý output: list 4 class hoặc (N, F, 4)
-        # Dùng class CRITICAL (index 3) — dấu đúng ngữ nghĩa: >0 = tăng rủi ro, <0 = giảm rủi ro.
-        # (class 0 = LOW bị đảo dấu: âm = tăng rủi ro → gây hiểu lầm UI)
-        if isinstance(sv, list):
-            signed = sv[3]  # class CRITICAL
-        elif sv.ndim == 3:
-            signed = sv[:, :, 3]
-        else:
-            signed = sv
+        cats = [c for c in CAT_FEATURES if c in model_cols]
+
+        try:
+            pool = cb.Pool(X_shap[model_cols], cat_features=cats)
+            sv = sub_model.get_feature_importance(pool, type="ShapValues")
+            if sv.ndim == 3:
+                if sv.shape[1] == 4:
+                    signed = sv[:, 3, :len(model_cols)]
+                else:
+                    signed = sv[:, :len(model_cols), 3]
+            else:
+                signed = sv[:, :len(model_cols)]
+        except Exception as exc:
+            logger.warning("Native CatBoost SHAP failed on %s (%s), fallback to shap.TreeExplainer", factor, exc)
+            explainer = shap.TreeExplainer(sub_model)
+            sv = explainer.shap_values(X_shap[model_cols])
+            if isinstance(sv, list):
+                signed = sv[3]
+            elif sv.ndim == 3:
+                signed = sv[:, :, 3]
+            else:
+                signed = sv
+
         w = w_shap[:, fi]  # (N,) trọng số động của factor này
-        for ci, col in enumerate(cols):
+        for ci, col in enumerate(model_cols):
             if col in combined:
                 combined[col] = combined[col] + w * signed[:, ci]
             else:

@@ -128,6 +128,7 @@ SUBJECTS_23 = [
     (16, 'THE_DUC', 'Giáo dục thể chất', 'Physical Education', 'REMARK', 'PASS_FAIL', 'ARTS_PE'),
     (17, 'MY_THUAT', 'Mỹ thuật', 'Fine Arts', 'REMARK', 'PASS_FAIL', 'ARTS_PE'),
     (18, 'AM_NHAC', 'Âm nhạc', 'Music', 'REMARK', 'PASS_FAIL', 'ARTS_PE'),
+    (19, 'GDCD', 'Giáo dục công dân', 'Civic Education', 'SCORED', 'SCALE_10', 'HUMANITIES'),
 ]
 
 # ============================================================================
@@ -289,6 +290,8 @@ class StudentV4:
     grade_series: np.ndarray   # (n_weeks,) — điểm thi (0-10)
     has_life_event: bool = False  # có biến cố hoàn cảnh (~12% chung, KHÔNG theo risk tier)
     resilience: float = 0.0       # sức chống chịu (tính từ latents ability[0]+eff[2], nội bộ script)
+    specialization: str = "BALANCED"  # STEM, HUMANITIES, SINGLE_CRASH, BALANCED
+    crash_subject: str = ""           # Tên hoặc mã môn bị sập điểm (Bottleneck)
 
     def get_swb_score_at_week(self, week: int) -> float:
         """SWB score (1.0-5.0) từ latent attend + crisis."""
@@ -297,15 +300,36 @@ class StudentV4:
             base -= 1.5
         return round(float(np.clip(base, 1.0, 5.0)), 2)
 
-    def get_exam_grade(self, week: int, base_ability: float) -> float:
-        """Điểm thi tại tuần week (0-10) = base_ability (từ risk_tier + latent ability)
-        + biến thiên AR(1) quanh base_ability. Tạo đa dạng điểm 0-10 như v2."""
-        # base_ability đã phản ánh risk_tier; cộng thêm latent ability để đa dạng
-        ability = float(np.clip(base_ability + self.latents[0] * 0.8, 0.0, 10.0))
-        # AR(1) persistence quanh ability (grade_series đã chuẩn hóa ~N(0,1) quanh 7)
-        ar1_offset = float(self.grade_series[week-1] - 7.0)  # offset quanh mean 7
+    def get_exam_grade(self, week: int, base_ability: float, subject_category: str = 'MATH_SCIENCE', subject_code: str = '') -> float:
+        """Điểm thi tại tuần week (0-10) phản ánh:
+        1. Năng lực chuyên biệt môn học (STEM vs HUMANITIES)
+        2. Tình trạng học lệch (Skewed Learning) hoặc Khủng hoảng đơn môn (Bottleneck crash)
+        3. Biến thiên AR(1) persistence."""
+        if self.specialization == "SINGLE_CRASH" and self.crash_subject and (self.crash_subject in subject_code or subject_code.startswith(self.crash_subject)):
+            # Học sinh bị sập điểm nghiêm trọng ở đúng môn nút thắt (Bottleneck ~ 1.5 - 3.0)
+            ability = 2.2 + float(self.latents[0] * 0.3)
+        elif self.specialization == "STEM":
+            # Dân chuyên Tự Nhiên / STEM: giỏi Toán/Lý/Tin/Robotics, yếu Xã Hội
+            if subject_category in ('MATH_SCIENCE', 'TECHNOLOGY'):
+                ability = base_ability + 2.5 + float(self.latents[0] * 0.7)
+            else:  # HUMANITIES
+                ability = base_ability - 3.2 + float(self.latents[1] * 0.7)
+        elif self.specialization == "HUMANITIES":
+            # Dân chuyên Xã Hội / Ngôn Ngữ: giỏi Văn/Sử/GDCD/Anh, yếu STEM
+            if subject_category == 'HUMANITIES':
+                ability = base_ability + 2.5 + float(self.latents[1] * 0.7)
+            else:  # MATH_SCIENCE / TECHNOLOGY
+                ability = base_ability - 3.2 + float(self.latents[0] * 0.7)
+        else:  # BALANCED
+            if subject_category == 'HUMANITIES':
+                ability = base_ability + float(self.latents[1] * 0.8)
+            else:
+                ability = base_ability + float(self.latents[0] * 0.8)
+
+        ability = float(np.clip(ability, 1.2, 9.8))
+        ar1_offset = float(self.grade_series[week-1] - 7.0)
         grade = ability + ar1_offset
-        return round(float(np.clip(grade, 0.0, 10.0)), 1)
+        return round(float(np.clip(grade, 0.5, 10.0)), 1)
 
 
 # ============================================================================
@@ -647,6 +671,12 @@ def seed_auxiliary_tables(session, students):
         for s_id, code, name, name_en, atype, scale, cat in SUBJECTS_23:
             if atype == 'REMARK':
                 continue
+            if code.startswith('TOAN_'):
+                try:
+                    if int(code.split('_')[1]) != p.grade_id:
+                        continue
+                except (IndexError, ValueError):
+                    pass
             for sem_idx in [1, 2]:
                 eval_process_params.append({
                     "id": eval_id, "eid": eval_id, "subid": s_id, "scode": p.code,
@@ -739,6 +769,12 @@ def seed_auxiliary_tables(session, students):
             is_unexcused = (p.risk_tier in ['HIGH', 'CRITICAL'] and week >= p.crisis_week)
 
             for sub_id, code, name, name_en, atype, scale, cat in SUBJECTS_23:
+                if code.startswith('TOAN_'):
+                    try:
+                        if int(code.split('_')[1]) != p.grade_id:
+                            continue
+                    except (IndexError, ValueError):
+                        pass
                 c_id = course_map.get((p.school_id, p.grade_id, sub_id))
                 if not c_id:
                     continue
@@ -1167,6 +1203,22 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
         # Đồng bộ với crisis_weeks logic: 8% chung có biến cố + resilience thấp → crisis
         st_has_event = random.random() < 0.08
         st_resilience = float(latents[i][0] * 0.5 + latents[i][2] * 0.5)
+
+        # Gán specialization đa dạng (25% STEM, 25% HUMANITIES, 15% SINGLE_CRASH, 35% BALANCED)
+        spec_rand = random.random()
+        if spec_rand < 0.25:
+            specialization = "STEM"
+            crash_subject = ""
+        elif spec_rand < 0.50:
+            specialization = "HUMANITIES"
+            crash_subject = ""
+        elif spec_rand < 0.65:
+            specialization = "SINGLE_CRASH"
+            crash_subject = random.choice(["TOAN", "LY", "SINH", "VAN", "LS_DL", "GDCD", "TIN"])
+        else:
+            specialization = "BALANCED"
+            crash_subject = ""
+
         st = StudentV4(
             student_id=s_id,
             code=f"HS{s_id:04d}",
@@ -1183,6 +1235,8 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
             ]) if crisis_weeks[i] < 12 else "",
             has_life_event=st_has_event,
             resilience=st_resilience,
+            specialization=specialization,
+            crash_subject=crash_subject,
             latents=latents[i],
             attend_series=attend_series[i],
             lms_series=lms_series[i],
@@ -1401,8 +1455,14 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
         for s_id, code, name, name_en, atype, scale, cat in SUBJECTS_23:
             if atype == 'REMARK':
                 continue  # Môn nhận xét xử lý riêng
-            # Điểm thi từ grade_series (AR(1) + logistic decay) — dùng mốc giữa HK1 (week 5)
-            exam_grade = p.get_exam_grade(week=5, base_ability=base_ability)
+            if code.startswith('TOAN_'):
+                try:
+                    if int(code.split('_')[1]) != p.grade_id:
+                        continue
+                except (IndexError, ValueError):
+                    pass
+            # Điểm thi từ grade_series (AR(1) + logistic decay + specialization) — dùng mốc giữa HK1 (week 5)
+            exam_grade = p.get_exam_grade(week=5, base_ability=base_ability, subject_category=cat, subject_code=code)
             native, score_10, letter, pct = convert_to_scale(exam_grade, scale)
             subject_grades.append(score_10)
 
@@ -1470,6 +1530,12 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
             for s_id, code, name, name_en, atype, scale, cat in SUBJECTS_23:
                 if atype == 'REMARK':
                     continue
+                if code.startswith('TOAN_'):
+                    try:
+                        if int(code.split('_')[1]) != g_id:
+                            continue
+                    except (IndexError, ValueError):
+                        pass
                 for sem_idx in [1, 2]:
                     for w in range(1, 5):  # 4 bài tập mỗi học kỳ
                         due = (SCHOOL_YEAR_START + timedelta(weeks=w)) if sem_idx == 1 else (date(2026, 1, 20) + timedelta(weeks=w))

@@ -229,9 +229,14 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
 
   // Ưu tiên kết quả LLM mới trả về (llmResult), fallback về item (đã load từ list) — item đã non-null ở đây
   const llmRow = llmResult ?? item;
-  const hasLlm = Boolean(llmRow.llm_narrative_summary || llmRow.llm_risk_score !== null);
+  const hasLlm = Boolean(llmRow.llm_risk_score !== null && llmRow.llm_risk_level);
+  const llmChanged =
+    hasLlm &&
+    (llmRow.llm_risk_score !== item.risk_score || llmRow.llm_risk_level !== item.risk_level);
+  const displayLevel = hasLlm ? llmRow.llm_risk_level! : item.risk_level;
+  const displayScore = hasLlm ? llmRow.llm_risk_score! : item.risk_score;
 
-  const riskColor = EWS_RISK_COLORS[item.risk_level] || "#94a3b8";
+  const riskColor = EWS_RISK_COLORS[displayLevel] || "#94a3b8";
 
   const fmtVal = (val: number | null | undefined, suffix: string = "", precision: number = 2): string => {
     if (val === null || val === undefined || isNaN(val)) return "—";
@@ -270,7 +275,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   {item.student_code}
                 </span>
                 {item.llm_risk_level && (
-                  <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level})`}>
+                  <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(2)}` : ""})`}>
                     <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400/30" />
                   </span>
                 )}
@@ -284,8 +289,12 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     className="px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5 leading-normal"
                     style={{ backgroundColor: riskColor }}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    {item.risk_level}
+                    {llmChanged ? (
+                      <Sparkles className="w-3 h-3 text-white" />
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    )}
+                    {displayLevel}
                   </span>
                   <span
                     className="px-2.5 py-0.5 font-mono font-bold text-xs flex items-center justify-center leading-normal"
@@ -294,9 +303,14 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       color: riskColor,
                     }}
                   >
-                    {item.risk_score.toFixed(2)}
+                    {displayScore.toFixed(2)}
                   </span>
                 </div>
+                {llmRow.llm_risk_escalated && (
+                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-0.5 ml-1">
+                    <span>⬆ LLM nâng</span>
+                  </span>
+                )}
               </div>
 
               <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 pt-0.5">
@@ -424,9 +438,16 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
               <div className="grid grid-cols-2 gap-4 bg-white/80 dark:bg-slate-900/80 p-4 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
                 <div>
                   <span className="text-[11px] font-medium text-slate-400 block">Điểm Rủi Ro (0-100)</span>
-                  <span className="text-2xl font-black" style={{ color: riskColor }}>
-                    {item.risk_score.toFixed(2)}
-                  </span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black" style={{ color: riskColor }}>
+                      {displayScore.toFixed(2)}
+                    </span>
+                    {hasLlm && llmChanged && (
+                      <span className="text-xs text-slate-400 font-medium" title="Điểm gốc từ mô hình Machine Learning (CatBoost)">
+                        (ML: {item.risk_score.toFixed(2)})
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="group relative">
                   <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 cursor-help">
@@ -438,7 +459,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       {item.risk_probability !== null ? `${(item.risk_probability * 100).toFixed(1)}%` : "—"}
                     </span>
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
-                      ({item.risk_level})
+                      ({displayLevel})
                     </span>
                   </div>
 

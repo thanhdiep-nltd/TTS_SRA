@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -1921,3 +1921,75 @@ def delete_ews_weights(
     """Xóa override trọng số EWS cho trường (khôi phục baseline YAML)."""
     ews_config_service.clear_override(db, current_user.so_school_id)
     return get_ews_weights(current_user=current_user, db=db)
+
+
+# ============================================================================
+# INTERDISCIPLINARY RISK ENDPOINTS (PHÂN TÍCH RỦI RO LIÊN MÔN: STEM, CHIẾN TRANH & HÒA BÌNH)
+# ============================================================================
+
+@router.get("/interdisciplinary/clusters")
+def get_interdisciplinary_clusters(
+    current_user: CurrentUser,
+):
+    """Danh sách định nghĩa các cụm liên môn hỗ trợ."""
+    from src.ews.interdisciplinary_service import get_clusters_list
+    return get_clusters_list()
+
+
+@router.get("/interdisciplinary/overview")
+def get_interdisciplinary_overview(
+    school_year_id: int = Query(2025, description="ID năm học"),
+    semester_index: int = Query(1, description="Học kỳ 1 hoặc 2"),
+    week: int = Query(..., ge=1, le=52, description="Mốc tuần đánh giá"),
+    cluster_code: str = Query("STEM", description="Mã cụm: STEM, WAR_AND_PEACE"),
+    model_version: Optional[str] = Query(None, description="Phiên bản model"),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Thống kê KPIs tổng quan rủi ro theo cụm liên môn."""
+    from src.ews.interdisciplinary_service import get_cluster_overview_metrics
+    return get_cluster_overview_metrics(
+        session=db,
+        school_year_id=school_year_id,
+        semester_index=semester_index,
+        evaluated_at_week=week,
+        cluster_code=cluster_code,
+        so_school_id=current_user.so_school_id,
+        model_version=model_version,
+    )
+
+
+@router.get("/interdisciplinary/students")
+def get_interdisciplinary_students(
+    school_year_id: int = Query(2025, description="ID năm học"),
+    semester_index: int = Query(1, description="Học kỳ 1 hoặc 2"),
+    week: int = Query(..., ge=1, le=52, description="Mốc tuần đánh giá"),
+    cluster_code: str = Query("STEM", description="Mã cụm: STEM, WAR_AND_PEACE"),
+    risk_level: str = Query("ALL", description="Mức rủi ro cụm: ALL, CRITICAL, HIGH, MODERATE, LOW"),
+    grade_id: Optional[int] = Query(None, description="Lọc theo khối"),
+    class_name: Optional[str] = Query(None, description="Lọc theo lớp"),
+    bottleneck_only: bool = Query(False, description="Chỉ lấy học sinh có môn Nút thắt cổ chai kéo tụt"),
+    page: int = Query(1, ge=1, description="Trang hiện tại"),
+    page_size: int = Query(20, ge=1, le=100, description="Kích thước trang"),
+    model_version: Optional[str] = Query(None, description="Phiên bản model"),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Danh sách phân trang học sinh có nguy cơ liên môn theo cụm."""
+    from src.ews.interdisciplinary_service import get_students_interdisciplinary_paged
+    return get_students_interdisciplinary_paged(
+        session=db,
+        school_year_id=school_year_id,
+        semester_index=semester_index,
+        evaluated_at_week=week,
+        cluster_code=cluster_code,
+        risk_level=risk_level,
+        grade_id=grade_id,
+        class_name=class_name,
+        bottleneck_only=bottleneck_only,
+        page=page,
+        page_size=page_size,
+        so_school_id=current_user.so_school_id,
+        model_version=model_version,
+    )
+

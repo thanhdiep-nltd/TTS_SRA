@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Award, BarChart3, RefreshCw, Settings2, ShieldAlert } from "lucide-react";
+import { Award, BarChart3, Cpu, RefreshCw, Settings2, ShieldAlert } from "lucide-react";
 import EwsWarningTab from "@/components/dashboard/EwsWarningTab";
+import EwsInterdisciplinaryTab from "@/components/dashboard/EwsInterdisciplinaryTab";
 import EwsGoldenSetTab from "@/components/dashboard/EwsGoldenSetTab";
 import EwsSubjectRiskTab from "@/components/dashboard/EwsSubjectRiskTab";
 import EwsControlPanel from "@/components/dashboard/EwsControlPanel";
@@ -11,10 +12,11 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EwsMeta, EwsWeekOption } from "@/lib/types";
 
-type TabKey = "ews" | "subject-risk" | "golden-set" | "ews-control";
+type TabKey = "ews" | "interdisciplinary" | "subject-risk" | "golden-set" | "ews-control";
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "ews", label: "Cảnh báo EWS", icon: ShieldAlert },
+  { key: "interdisciplinary", label: "Rủi Ro Liên Môn (STEM)", icon: Cpu },
   { key: "subject-risk", label: "Phân Tích Môn Học", icon: BarChart3 },
   { key: "golden-set", label: "Golden Set", icon: Award },
 ];
@@ -160,6 +162,15 @@ export default function DashboardV2Page() {
       {/* Tab Content */}
       {tab === "ews" && (
         <EwsWarningTab
+          modelVersion={modelVersion}
+          refreshKey={refreshKey}
+          schoolYearId={schoolYearId}
+          semesterIndex={semesterIndex}
+          week={week}
+        />
+      )}
+      {tab === "interdisciplinary" && (
+        <EwsInterdisciplinaryTab
           modelVersion={modelVersion}
           refreshKey={refreshKey}
           schoolYearId={schoolYearId}
