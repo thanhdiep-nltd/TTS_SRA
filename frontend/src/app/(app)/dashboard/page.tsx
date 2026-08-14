@@ -6,6 +6,7 @@ import EwsWarningTab from "@/components/dashboard/EwsWarningTab";
 import EwsGoldenSetTab from "@/components/dashboard/EwsGoldenSetTab";
 import EwsSubjectRiskTab from "@/components/dashboard/EwsSubjectRiskTab";
 import EwsControlPanel from "@/components/dashboard/EwsControlPanel";
+import CustomDropdownSelect from "@/components/dashboard/CustomDropdownSelect";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import type { EwsMeta, EwsWeekOption } from "@/lib/types";
@@ -16,6 +17,11 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "ews", label: "Cảnh báo EWS", icon: ShieldAlert },
   { key: "subject-risk", label: "Phân Tích Môn Học", icon: BarChart3 },
   { key: "golden-set", label: "Golden Set", icon: Award },
+];
+
+const MODEL_OPTIONS = [
+  { value: "v2_ensemble", label: "Model v2 (Ensemble)" },
+  { value: "v1_single", label: "Model v1 (Đơn)" },
 ];
 
 export default function DashboardV2Page() {
@@ -30,30 +36,41 @@ export default function DashboardV2Page() {
   const [week, setWeek] = useState<number>(8);
   const [weeks, setWeeks] = useState<EwsWeekOption[]>([]);
 
+  // Tải danh sách mốc thời gian EWS
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
     api
       .get<EwsMeta>("/ews/meta")
       .then((res) => {
-        if (!isMounted) return;
+        if (!mounted || !res.weeks || res.weeks.length === 0) return;
         setWeeks(res.weeks);
-        if (res.weeks.length > 0) {
-          const first = res.weeks[0];
-          setSchoolYearId(first.school_year_id);
-          setSemesterIndex(first.semester_index);
-          setWeek(first.evaluated_at_week);
-        }
+        const w0 = res.weeks[0];
+        setSchoolYearId(w0.school_year_id);
+        setSemesterIndex(w0.semester_index);
+        setWeek(w0.evaluated_at_week);
       })
-      .catch(() => {});
+      .catch((err) => console.error("EWS meta load error:", err));
+
     return () => {
-      isMounted = false;
+      mounted = false;
     };
   }, []);
 
-  const isControl = user?.role === "ADMIN" || user?.role === "PRINCIPAL";
+  const isControl =
+    user?.role === "ADMIN" ||
+    user?.role === "PRINCIPAL" ||
+    user?.role === "SYSTEM_ADMIN" ||
+    user?.role === "PROVINCE_ADMIN" ||
+    user?.role === "SCHOOL_ADMIN";
+
   const tabs = isControl
     ? [...TABS, { key: "ews-control" as TabKey, label: "Điều khiển EWS", icon: Settings2 }]
     : TABS;
+
+  const weekOptions = weeks.map((w) => ({
+    value: `${w.school_year_id}-${w.semester_index}-${w.evaluated_at_week}`,
+    label: `${w.school_year_name || `Năm ${w.school_year_id}`} - HK${w.semester_index} (Tuần ${w.evaluated_at_week})`,
+  }));
 
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
@@ -74,36 +91,38 @@ export default function DashboardV2Page() {
         {/* Global Controls */}
         <div className="flex items-center gap-2.5 flex-wrap">
           {/* Mốc Đánh Giá (Tuần / Kỳ) */}
-          <select
-            value={`${schoolYearId}-${semesterIndex}-${week}`}
-            onChange={(e) => {
-              const [sy, sem, wk] = e.target.value.split("-").map(Number);
-              setSchoolYearId(sy);
-              setSemesterIndex(sem);
-              setWeek(wk);
-              setRefreshKey((k) => k + 1);
-            }}
-            className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-indigo-500 shadow-2xs"
-          >
-            {weeks.map((w, idx) => (
-              <option key={idx} value={`${w.school_year_id}-${w.semester_index}-${w.evaluated_at_week}`}>
-                {w.school_year_name || `Năm ${w.school_year_id}`} - HK{w.semester_index} (Tuần {w.evaluated_at_week})
-              </option>
-            ))}
-          </select>
+          <div className="w-64">
+            <CustomDropdownSelect
+              value={`${schoolYearId}-${semesterIndex}-${week}`}
+              onChange={(v) => {
+                const [sy, sem, wk] = v.split("-").map(Number);
+                setSchoolYearId(sy);
+                setSemesterIndex(sem);
+                setWeek(wk);
+                setRefreshKey((k) => k + 1);
+              }}
+              options={weekOptions.length > 0 ? weekOptions : [
+                {
+                  value: `${schoolYearId}-${semesterIndex}-${week}`,
+                  label: `Năm ${schoolYearId} - HK${semesterIndex} (Tuần ${week})`,
+                }
+              ]}
+              placeholder="Chọn mốc đánh giá..."
+            />
+          </div>
 
           {/* Phiên bản Model */}
-          <select
-            value={modelVersion}
-            onChange={(e) => {
-              setModelVersion(e.target.value);
-              setRefreshKey((k) => k + 1);
-            }}
-            className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-indigo-500 shadow-2xs"
-          >
-            <option value="v2_ensemble">Model v2 (Ensemble)</option>
-            <option value="v1_single">Model v1 (Đơn)</option>
-          </select>
+          <div className="w-48">
+            <CustomDropdownSelect
+              value={modelVersion}
+              onChange={(v) => {
+                setModelVersion(v);
+                setRefreshKey((k) => k + 1);
+              }}
+              options={MODEL_OPTIONS}
+              placeholder="Chọn model..."
+            />
+          </div>
 
           {/* Nút Làm mới */}
           <button
@@ -152,6 +171,9 @@ export default function DashboardV2Page() {
         <EwsSubjectRiskTab
           modelVersion={modelVersion}
           refreshKey={refreshKey}
+          schoolYearId={schoolYearId}
+          semesterIndex={semesterIndex}
+          week={week}
         />
       )}
       {tab === "golden-set" && <EwsGoldenSetTab />}

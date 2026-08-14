@@ -584,18 +584,18 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 if (validDrivers.length === 0) return null;
 
                 return (
-                  <div className="p-4 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/20 border-l-4 border-l-indigo-500 space-y-3 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
-                        <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
-                        <span>Top {validDrivers.length} Nhân Tố Tác Động AI Mạnh Nhất (CatBoost SHAP):</span>
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-2 font-bold text-xs text-slate-800 dark:text-slate-200">
+                        <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span>Top Yếu Tố Tác Động Rủi Ro</span>
                       </div>
-                      <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-500/10 px-2 py-0.5 rounded-full">
-                        Xếp theo |SHAP|
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        Ảnh hưởng chính
                       </span>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
                       {validDrivers.map((d, i) => {
                         const isRiskBooster = d.shap_value > 0;
                         const numVal = d.value !== null && d.value !== undefined ? Number(d.value) : NaN;
@@ -627,35 +627,35 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                         return (
                           <div
                             key={i}
-                            className="flex items-center justify-between text-xs px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 shadow-2xs"
+                            className="flex items-center justify-between py-2.5 px-1 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 rounded-lg transition-colors"
                           >
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] flex items-center justify-center shrink-0">
-                                #{i + 1}
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-400 font-mono text-[11px] w-4 shrink-0">
+                                {i + 1}.
                               </span>
-                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              <span className="font-medium text-slate-800 dark:text-slate-200">
                                 {FEATURE_VIETNAMESE_MAP[d.feature] || d.feature}
                               </span>
                               {formattedVal !== "—" && (
-                                <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/50 dark:border-slate-700/50">
-                                  {formattedVal}
+                                <span className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400 ml-1">
+                                  ({formattedVal})
                                 </span>
                               )}
                             </div>
 
-                            <div>
+                            <div className="shrink-0">
                               {isRiskBooster ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
                                   Tăng rủi ro
                                 </span>
                               ) : isSafetyFactor ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                                   Giúp an toàn
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                <span className="text-[11px] text-slate-400">
                                   Tác động nhỏ
                                 </span>
                               )}

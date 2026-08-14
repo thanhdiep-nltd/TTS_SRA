@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import CustomDropdownSelect from "@/components/dashboard/CustomDropdownSelect";
 import type {
   EwsEffectiveConfig,
   EwsJob,
@@ -424,62 +425,58 @@ export default function EwsControlPanel() {
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
           Nhấn dự đoán để tạo job chạy nền. Bạn có thể rời đi; khi xong kết quả sẽ tự cập nhật ở bảng "Lịch sử dự đoán" bên dưới.
         </p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <label className="block">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Năm học</span>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Năm học</label>
             <input
               type="number"
               value={schoolYear}
               onChange={(e) => setSchoolYear(Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Học kỳ</span>
-            <select
-              value={semester}
-              onChange={(e) => {
-                const s = Number(e.target.value);
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Học kỳ</label>
+            <CustomDropdownSelect
+              value={String(semester)}
+              onChange={(v) => {
+                const s = Number(v);
                 setSemester(s);
                 setWeek(s === 1 ? (validWeeks?.semester_1?.[0] ?? 8) : (validWeeks?.semester_2?.[0] ?? 23));
               }}
-              className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            >
-              <option value={1}>Học kỳ 1</option>
-              <option value={2}>Học kỳ 2</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Tuần</span>
-            <select
-              value={week}
-              onChange={(e) => setWeek(Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            >
-              {weeks.map((w) => (
-                <option key={w} value={w}>Tuần {w}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Model</span>
-            <select
+              options={[
+                { value: "1", label: "Học kỳ 1" },
+                { value: "2", label: "Học kỳ 2" },
+              ]}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Tuần</label>
+            <CustomDropdownSelect
+              value={String(week)}
+              onChange={(v) => setWeek(Number(v))}
+              options={weeks.map((w) => ({ value: String(w), label: `Tuần ${w}` }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Model</label>
+            <CustomDropdownSelect
               value={modelVersion}
-              onChange={(e) => setModelVersion(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            >
-              <option value="v2_ensemble">v2 — Factor-Ensemble</option>
-              <option value="v1_single">v1 — Model đơn</option>
-            </select>
-          </label>
-          <div className="flex items-end">
+              onChange={(v) => setModelVersion(v)}
+              options={[
+                { value: "v2_ensemble", label: "v2 — Factor-Ensemble" },
+                { value: "v1_single", label: "v1 — Model đơn" },
+              ]}
+            />
+          </div>
+          <div>
             <button
               onClick={handlePredict}
               disabled={predicting}
-              className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm rounded-xl disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl disabled:opacity-50 transition-all shadow-xs"
             >
               {predicting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-              Dự đoán
+              <span>Dự đoán</span>
             </button>
           </div>
         </div>
