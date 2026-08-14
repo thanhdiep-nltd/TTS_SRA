@@ -17,6 +17,7 @@ import pytest
 
 from src.ews.llm_forecasting import (
     _build_llm_prompt,
+    _get_previous_llm_result,
     _json_safe,
     _normalize_llm_result,
     _parse_llm_response,
@@ -95,6 +96,11 @@ class TestShouldTrigger:
         medical = [{"status": "ONGOING", "is_chronic": False, "severity": "LOW"}]
         assert _should_trigger("LOW", [], medical) is False
 
+    def test_ongoing_critical_severity_medical_triggers(self):
+        """Bệnh ONGOING mức CRITICAL → trigger (kể cả không mãn tính)."""
+        medical = [{"status": "ONGOING", "is_chronic": False, "severity": "CRITICAL"}]
+        assert _should_trigger("LOW", [], medical) is True
+
 
 # ============================================================================
 # _normalize_llm_result
@@ -131,6 +137,41 @@ class TestNormalizeLlmResult:
     def test_actions_not_list_becomes_empty(self):
         out = _normalize_llm_result({"llm_recommended_actions": "not-a-list"}, cb_score=60)
         assert json.loads(out["llm_recommended_actions"]) == []
+
+    # --- Chính sách ổn định khi re-run (previous_llm_result) ---
+
+    def test_rerun_keeps_old_score_when_delta_small(self):
+        """|mới - cũ| <= 1.0 → giữ nguyên điểm cũ, không có lý do đổi."""
+        previous = {"llm_risk_score": 75.0, "llm_risk_level": "HIGH"}
+        data = {"llm_risk_score": 75.5, "llm_risk_level": "HIGH"}
+        out = _normalize_llm_result(data, cb_score=60.0, previous_llm_result=previous)
+        assert out["llm_risk_score"] == 75.0
+        assert out["llm_previous_score"] == 75.0
+        assert out["llm_score_change_reason"] is None
+
+    def test_rerun_uses_new_score_when_delta_large_with_reason(self):
+        """|mới - cũ| > 1.0 và có lý do từ LLM → dùng điểm mới + lưu lý do."""
+        previous = {"llm_risk_score": 75.0, "llm_risk_level": "HIGH"}
+        data = {
+            "llm_risk_score": 85.0,
+            "llm_risk_level": "CRITICAL",
+            "llm_score_change_reason": "Biến cố gia đình mới nghiêm trọng.",
+        }
+        out = _normalize_llm_result(data, cb_score=60.0, previous_llm_result=previous)
+        assert out["llm_risk_score"] == 85.0
+        assert out["llm_previous_score"] == 75.0
+        assert out["llm_score_change_reason"] == "Biến cố gia đình mới nghiêm trọng."
+
+    def test_rerun_fallback_reason_uses_giam_tu_when_score_drops(self):
+        """Điểm giảm > 1.0, không có lý do từ LLM → fallback dùng chữ 'giảm từ'."""
+        previous = {"llm_risk_score": 80.0, "llm_risk_level": "HIGH"}
+        data = {"llm_risk_score": 60.0, "llm_risk_level": "MODERATE"}
+        out = _normalize_llm_result(data, cb_score=60.0, previous_llm_result=previous)
+        assert out["llm_risk_score"] == 60.0
+        assert out["llm_previous_score"] == 80.0
+        assert out["llm_score_change_reason"] is not None
+        assert "giảm từ 80 sang 60" in out["llm_score_change_reason"]
+        assert "tăng từ" not in out["llm_score_change_reason"]
 
 
 # ============================================================================
@@ -279,3 +320,65 @@ class TestForecastStudentRisk:
         assert result["llm_risk_level"] == "HIGH"
         # Đảm bảo _persist_llm_columns được gọi (session.execute UPDATE)
         assert session.commit.called
+
+
+# ============================================================================
+# _get_previous_llm_result (mock session)
+# ============================================================================
+
+
+class TestGetPreviousLlmResult:
+    def test_returns_dict_when_row_found(self):
+        """Mock session trả về row → trả dict llm_risk_score/llm_risk_level."""
+        session = MagicMock()
+        row = MagicMock()
+        row.llm_risk_score = 75.0
+        row.llm_risk_level = "HIGH"
+        session.execute.return_value.fetchone.return_value = row
+
+        result = _get_previous_llm_result(
+            session,
+            student_code="HS0001",
+            subject_id=106,
+            school_year_id=2025,
+            semester_index=1,
+            evaluated_at_week=8,
+        )
+        assert result == {"llm_risk_score": 75.0, "llm_risk_level": "HIGH"}
+
+    def test_returns_none_when_no_row(self):
+        """Mock session trả về None → trả None (lần đánh giá đầu tiên)."""
+        session = MagicMock()
+        session.execute.return_value.fetchone.return_value = None
+
+        result = _get_previous_llm_result(
+            session,
+            student_code="HS0001",
+            subject_id=106,
+            school_year_id=2025,
+            semester_index=1,
+            evaluated_at_week=8,
+        )
+        assert result is None
+
+    def test_passes_tenant_and_model_filters(self):
+        """so_school_id + model_version được truyền vào params của SQL query."""
+        session = MagicMock()
+        session.execute.return_value.fetchone.return_value = None
+
+        _get_previous_llm_result(
+            session,
+            student_code="HS0001",
+            subject_id=106,
+            school_year_id=2025,
+            semester_index=1,
+            evaluated_at_week=8,
+            so_school_id="42",
+            model_version="v2_ensemble",
+        )
+        # Kiểm tra params truyền vào session.execute
+        call_args = session.execute.call_args
+        assert call_args is not None
+        params = call_args[0][1]
+        assert params["so_school_id"] == "42"
+        assert params["model_version"] == "v2_ensemble"

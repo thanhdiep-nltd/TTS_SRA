@@ -1191,6 +1191,8 @@ CREATE TABLE IF NOT EXISTS s360.fact_student_subject_risk_predictions (
     llm_forecast_trend      TEXT,                 -- Dự báo xu hướng 3-4 tuần tới
     llm_recommended_actions JSONB,                -- 2-3 hành động can thiệp khuyến nghị
     llm_evaluated_at        TIMESTAMPTZ,          -- Thời điểm LLM đánh giá (NULL = chưa phân tích)
+    llm_previous_score       DECIMAL(5,2),         -- Điểm LLM trước đó (trước lần re-run "Chạy Lại Phân Tích")
+    llm_score_change_reason  TEXT,                 -- Lý do thay đổi điểm LLM khi re-run (NULL = giữ nguyên điểm cũ)
 
     created_at              TIMESTAMPTZ DEFAULT NOW(),
 
@@ -1223,6 +1225,11 @@ ALTER TABLE s360.fact_student_subject_risk_predictions
 -- M4-SHAP: migration cho DB đã tồn tại — thêm cột shap_drivers (idempotent)
 ALTER TABLE s360.fact_student_subject_risk_predictions
     ADD COLUMN IF NOT EXISTS shap_drivers JSONB;
+
+-- M5-LLM-RERUN-AUDIT: migration cho DB đã tồn tại — thêm cột re-run audit (idempotent)
+ALTER TABLE s360.fact_student_subject_risk_predictions
+    ADD COLUMN IF NOT EXISTS llm_previous_score DECIMAL(5,2),
+    ADD COLUMN IF NOT EXISTS llm_score_change_reason TEXT;
 
 -- M2-ENSEMBLE: backfill model_version cho dữ liệu cũ (idempotent)
 UPDATE s360.fact_student_subject_risk_predictions

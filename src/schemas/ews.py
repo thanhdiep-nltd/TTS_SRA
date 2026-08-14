@@ -105,6 +105,15 @@ class EwsPredictionRow(BaseModel):
         default=None,
         description="True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm_risk_level) > rank(risk_level)). None nếu chưa có llm_risk_level.",
     )
+    # Re-run audit: điểm LLM trước đó + lý do thay đổi (Khi "Chạy Lại Phân Tích")
+    llm_previous_score: Optional[float] = Field(
+        default=None,
+        description="Điểm LLM trước đó (trước lần re-run). None nếu chưa từng đánh giá.",
+    )
+    llm_score_change_reason: Optional[str] = Field(
+        default=None,
+        description="Lý do thay đổi điểm LLM trong lần re-run. None nếu giữ nguyên điểm cũ.",
+    )
 
 
 class EwsOverview(BaseModel):

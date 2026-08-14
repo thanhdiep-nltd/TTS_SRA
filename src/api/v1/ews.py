@@ -17,7 +17,7 @@ from src.core.security.sql_validator import get_user_assignment_constraints
 from src.ews import ews_config_service
 from src.ews.ews_config_service import EwsConfigValidationError
 from src.ews.job_worker import process_next_ews_job
-from src.ews.llm_forecasting import forecast_student_risk
+from src.ews.llm_forecasting import _get_previous_llm_result, forecast_student_risk
 from src.ews.risk_config import load_risk_config
 from src.models import enums
 from src.models.tables import EwsPipelineJob, User
@@ -748,7 +748,8 @@ def get_ews_predictions(
                rp.shap_drivers,
                -- LLM-based Forecasting
                rp.llm_risk_score, rp.llm_risk_level, rp.llm_narrative_summary,
-               rp.llm_forecast_trend, rp.llm_recommended_actions, rp.llm_evaluated_at
+               rp.llm_forecast_trend, rp.llm_recommended_actions, rp.llm_evaluated_at,
+               rp.llm_previous_score, rp.llm_score_change_reason
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN hcs ON rp.student_code = hcs.student_code AND hcs.so_school_id = rp.so_school_id
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
@@ -858,6 +859,8 @@ def get_ews_predictions(
                 llm_forecast_trend=r.llm_forecast_trend,
                 llm_recommended_actions=_parse_shap(r.llm_recommended_actions),
                 llm_evaluated_at=r.llm_evaluated_at,
+                llm_previous_score=_flt(r.llm_previous_score),
+                llm_score_change_reason=r.llm_score_change_reason,
             )
         )
 
@@ -1729,6 +1732,19 @@ def trigger_ews_llm_forecast(
         "severe_sanction_count": row.severe_sanction_count,
     }
 
+    # Đọc điểm LLM trước đó (re-run) để truyền vào prompt + normalize (chính sách ổn định)
+    # Truyền so_school_id + model_version để cô lập tenant và đúng phiên bản model.
+    previous_llm_result = _get_previous_llm_result(
+        db,
+        student_code=payload.student_code,
+        subject_id=payload.subject_id,
+        school_year_id=payload.school_year_id,
+        semester_index=payload.semester_index,
+        evaluated_at_week=payload.evaluated_at_week,
+        so_school_id=str(current_user.so_school_id) if current_user.so_school_id else None,
+        model_version=payload.model_version,
+    )
+
     # Gọi LLM-based forecasting (tự UPDATE cột llm_* trong DB)
     result = forecast_student_risk(
         session=db,
@@ -1739,6 +1755,7 @@ def trigger_ews_llm_forecast(
         evaluated_at_week=payload.evaluated_at_week,
         subject_name=row.subject_name or f"Môn #{payload.subject_id}",
         features=features,
+        previous_llm_result=previous_llm_result,
     )
 
     if result is None:
@@ -1751,9 +1768,10 @@ def trigger_ews_llm_forecast(
         SELECT rp.student_code, rp.subject_id, sub.name AS subject_name,
                rp.evaluated_at_week, rp.risk_score, rp.risk_level, rp.risk_probability,
                rp.evaluated_at_date, rp.cutoff_date, rp.join_date, rp.model_version,
-               rp.shap_drivers,
-               rp.llm_risk_score, rp.llm_risk_level, rp.llm_narrative_summary,
-               rp.llm_forecast_trend, rp.llm_recommended_actions, rp.llm_evaluated_at
+                rp.shap_drivers,
+                rp.llm_risk_score, rp.llm_risk_level, rp.llm_narrative_summary,
+                rp.llm_forecast_trend, rp.llm_recommended_actions, rp.llm_evaluated_at,
+                rp.llm_previous_score, rp.llm_score_change_reason
         FROM s360.fact_student_subject_risk_predictions rp
         LEFT JOIN s360.dim_subject sub ON rp.subject_id = sub.id
         WHERE rp.student_code = :sc AND rp.subject_id = :sid
@@ -1791,6 +1809,8 @@ def trigger_ews_llm_forecast(
         llm_forecast_trend=full_row.llm_forecast_trend,
         llm_recommended_actions=_parse_shap(full_row.llm_recommended_actions),
         llm_evaluated_at=full_row.llm_evaluated_at,
+        llm_previous_score=float(full_row.llm_previous_score) if full_row.llm_previous_score is not None else None,
+        llm_score_change_reason=full_row.llm_score_change_reason,
     )
 
 

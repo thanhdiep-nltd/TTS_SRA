@@ -16,6 +16,7 @@ import {
   Laptop,
   LineChart,
   Loader2,
+  RefreshCw,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -132,10 +133,10 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
     tab === "overview"
       ? "overview"
       : ["score", "lms", "attendance", "behavior"].includes(tab)
-      ? "academic"
-      : ["life_events", "medical"].includes(tab)
-      ? "context"
-      : "llm";
+        ? "academic"
+        : ["life_events", "medical"].includes(tab)
+          ? "context"
+          : "llm";
 
   // ESC key listener to close drawer
   useEffect(() => {
@@ -204,7 +205,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
         school_year_id: schoolYearId ?? 2025,
         semester_index: semesterIndex ?? 1,
         evaluated_at_week: item.evaluated_at_week,
-        model_version: item.model_version || "v1_single",
+        model_version: item.model_version || "v2_ensemble",
       });
       setLlmResult(updated);
     } catch (err) {
@@ -298,11 +299,10 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   else if (g.id === "context") setTab(["life_events", "medical"].includes(tab) ? tab : "life_events");
                   else if (g.id === "llm") setTab("llm");
                 }}
-                className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-t-xl text-xs font-bold transition-all border-b-2 ${
-                  active
-                    ? "text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-white dark:bg-slate-800 shadow-2xs"
-                    : "text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/40"
-                }`}
+                className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-t-xl text-xs font-bold transition-all border-b-2 ${active
+                  ? "text-indigo-600 dark:text-indigo-400 border-indigo-500 bg-white dark:bg-slate-800 shadow-2xs"
+                  : "text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/40"
+                  }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="truncate">{g.label}</span>
@@ -326,11 +326,10 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 <button
                   key={st.id}
                   onClick={() => setTab(st.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    active
-                      ? "bg-indigo-600 text-white shadow-2xs"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${active
+                    ? "bg-indigo-600 text-white shadow-2xs"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+                    }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{st.label}</span>
@@ -349,11 +348,10 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 <button
                   key={st.id}
                   onClick={() => setTab(st.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    active
-                      ? "bg-indigo-600 text-white shadow-2xs"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
-                  }`}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${active
+                    ? "bg-indigo-600 text-white shadow-2xs"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+                    }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{st.label}</span>
@@ -1159,6 +1157,33 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       </div>
                     </div>
                   </div>
+
+                  {/* Đánh giá lại (Chạy Lại Phân Tích) — audit thay đổi điểm LLM giữa các lần */}
+                  {llmRow.llm_previous_score != null && (
+                    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/70 dark:border-amber-500/20">
+                      <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Đánh Giá Lại (Chạy Lại Phân Tích)
+                      </span>
+                      <div className="mt-1 flex items-baseline gap-2 text-xs text-amber-800 dark:text-amber-300">
+                        <span>Điểm trước đó:</span>
+                        <span className="font-bold line-through opacity-70">{fmtVal(llmRow.llm_previous_score)}</span>
+                        <span>→</span>
+                        <span className="font-black text-amber-900 dark:text-amber-100">
+                          {llmRow.llm_risk_score !== null ? fmtVal(llmRow.llm_risk_score) : "—"}
+                        </span>
+                      </div>
+                      {llmRow.llm_score_change_reason ? (
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300/90">
+                          <span className="font-semibold">Lý do thay đổi:</span> {llmRow.llm_score_change_reason}
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-[11px] text-amber-600/80 dark:text-amber-400/70">
+                          Điểm được giữ nguyên so với lần đánh giá trước (ổn định, không có dữ liệu mới đáng kể).
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Narrative — nguyên nhân gốc rễ */}
                   {llmRow.llm_narrative_summary && (

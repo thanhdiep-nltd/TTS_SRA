@@ -1041,6 +1041,9 @@ export interface EwsPredictionRow {
   llm_evaluated_at: string | null;
   // True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm) > rank(base)); null nếu chưa có đánh giá LLM.
   llm_risk_escalated: boolean | null;
+  // Audit khi Chạy Lại Phân Tích (re-run): điểm LLM của lần đánh giá trước + lý do thay đổi (null = giữ nguyên).
+  llm_previous_score: number | null;
+  llm_score_change_reason: string | null;
 }
 
 export interface EwsLevelCount {

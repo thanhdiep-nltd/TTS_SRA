@@ -21,7 +21,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
 export default function DashboardV2Page() {
   const { user } = useAuth();
   const [tab, setTab] = useState<TabKey>("ews");
-  const [modelVersion, setModelVersion] = useState<string>("v1_single");
+  const [modelVersion, setModelVersion] = useState<string>("v2_ensemble");
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
   // Mốc Đánh Giá (Tuần / Kỳ) — nâng state lên header để dùng chung cho các tab
@@ -114,8 +114,8 @@ export default function DashboardV2Page() {
               }}
               className="text-xs bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 font-medium"
             >
-              <option value="v1_single">v1 — Model đơn (hiện tại)</option>
-              <option value="v2_ensemble">v2 — Factor-Ensemble (mới)</option>
+              <option value="v2_ensemble">v2 — Factor-Ensemble (mặc định)</option>
+              <option value="v1_single">v1 — Model đơn</option>
             </select>
           </div>
           <button

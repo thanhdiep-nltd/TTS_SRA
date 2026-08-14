@@ -17,6 +17,7 @@ import {
   Loader2,
   Search,
   ShieldAlert,
+  Sparkles,
   TrendingDown,
   TrendingUp,
   UserX,
@@ -829,21 +830,20 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                           {item.risk_level}
                         </span>
                         {item.llm_risk_level && (
-                          <div className="mt-1">
+                          <div className="mt-1 flex items-center justify-center gap-1">
                             <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-block border"
-                              style={{ backgroundColor: `${EWS_RISK_COLORS[item.llm_risk_level] || "#8b5cf6"}1a`, color: EWS_RISK_COLORS[item.llm_risk_level] || "#8b5cf6", borderColor: `${EWS_RISK_COLORS[item.llm_risk_level] || "#8b5cf6"}40` }}
-                              title="Mức rủi ro theo phân tích AI (LLM)"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/40"
+                              title={`Đã phân tích bởi AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(1)}` : ""})`}
                             >
-                              ✨ LLM: {item.llm_risk_level}
+                              <Sparkles className="w-2.5 h-2.5 text-purple-500 shrink-0" />
+                              <span>AI</span>
                             </span>
                             {item.llm_risk_escalated && (
                               <span
-                                className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-block border ml-1"
-                                style={{ backgroundColor: "#f973161a", color: "#f97316", borderColor: "#f9731640" }}
-                                title="LLM nâng mức rủi ro so với CatBoost (vd MODERATE → HIGH)"
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40"
+                                title="LLM nâng mức rủi ro so với CatBoost"
                               >
-                                ⬆ LLM nâng
+                                ⬆ Nâng
                               </span>
                             )}
                           </div>
