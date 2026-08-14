@@ -8,6 +8,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Clock,
   Filter,
   HeartPulse,
@@ -268,6 +270,11 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
 
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
+  const [jumpPage, setJumpPage] = useState<string>("1");
+
+  useEffect(() => {
+    setJumpPage(String(page));
+  }, [page]);
 
   // 1. Fetch Metadata on Mount
   useEffect(() => {
@@ -743,23 +750,18 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
             <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="py-3.5 px-4">Học Sinh</th>
-                <th className="py-3.5 px-4">Khối / Lớp</th>
+                <th className="py-3.5 px-4">Lớp</th>
                 <th className="py-3.5 px-4">Môn Học</th>
-                <th className="py-3.5 px-4 text-center">Điểm Rủi Ro (0-100)</th>
-                <th className="py-3.5 px-4 text-center">Mức Rủi Ro</th>
+                <th className="py-3.5 px-4 text-center">Đánh Giá Rủi Ro</th>
                 <th className="py-3.5 px-4">Cờ Nguyên Nhân (Risk Badges)</th>
-                <th className="py-3.5 px-4 text-right">Điểm Thi Gần Nhất</th>
-                <th className="py-3.5 px-4 text-right">ĐTB Nửa Đầu</th>
-                <th className="py-3.5 px-4 text-right">ĐTB Nửa Sau</th>
-                <th className="py-3.5 px-4 text-right">Xu Hướng (Slope)</th>
-                <th className="py-3.5 px-4 text-right">ĐTB LMS</th>
-                <th className="py-3.5 px-4 text-right">Tỷ Lệ Nộp LMS</th>
+                <th className="py-3.5 px-4 text-right">Chỉ Số Nổi Bật</th>
+                <th className="py-3.5 px-3 text-right"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loadingPreds ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="flex justify-center items-center gap-2">
                       <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
                       <span>Đang tải danh sách dự báo rủi ro...</span>
@@ -774,26 +776,38 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                       key={idx}
                       onClick={() => setSelectedItem(item)}
                       title="Bấm để xem chi tiết 24 chỉ số EWS"
-                      className="cursor-pointer hover:bg-indigo-50/60 dark:hover:bg-slate-800/80 transition-colors"
+                      className="group cursor-pointer hover:bg-indigo-50/60 dark:hover:bg-slate-800/80 transition-colors"
                     >
                       {/* Học sinh */}
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900 dark:text-slate-100">
-                          {item.student_name || item.student_code}
+                        <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
+                          <span>{item.student_name || item.student_code}</span>
+                          {item.llm_risk_level && (
+                            <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(1)}` : ""})`}>
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400/30 shrink-0" />
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-400 font-mono">{item.student_code}</div>
-                        {item.join_date && item.join_date > semesterStartStr(schoolYearId, semesterIndex) && (
-                          <div className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5">
-                            <span>🏫</span>
-                            <span>Chuyển tới từ {fmtDate(item.join_date)}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-medium text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
+                            {item.student_code}
+                          </span>
+                          {item.join_date && item.join_date > semesterStartStr(schoolYearId, semesterIndex) && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5" title={`Chuyển tới từ ${fmtDate(item.join_date)}`}>
+                              <span>🏫</span>
+                              <span>Mới chuyển tới</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* Khối / Lớp */}
-                      <td className="py-3 px-4">
-                        <div className="text-slate-800 dark:text-slate-200 font-medium">{item.class_name || "—"}</div>
-                        <div className="text-[11px] text-slate-400">{item.grade_name || "—"}</div>
+                      {/* Lớp */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {item.class_name
+                            ? item.class_name.replace(/\s*-\s*Trường\s*\d+/gi, "").replace(/^Lớp\s+/i, "")
+                            : "—"}
+                        </span>
                       </td>
 
                       {/* Môn Học */}
@@ -808,51 +822,40 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         )}
                       </td>
 
-                      {/* Điểm Rủi Ro (0-100) */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="inline-flex items-center gap-1.5 font-bold text-sm" style={{ color: riskColor }}>
-                          {item.risk_score.toFixed(1)}
-                        </div>
-                        <div className="w-16 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${Math.min(item.risk_score, 100)}%`, backgroundColor: riskColor }}
-                          />
-                        </div>
-                      </td>
-
-                      {/* Mức Rủi Ro Badge */}
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className="px-2.5 py-1 rounded-full text-[11px] font-bold text-white shadow-sm inline-block"
-                          style={{ backgroundColor: riskColor }}
+                      {/* Đánh Giá Rủi Ro (2-tone Badge Điểm + Mức) */}
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <div
+                          className="inline-flex items-stretch rounded-full border overflow-hidden shadow-2xs"
+                          style={{
+                            borderColor: `${riskColor}60`,
+                          }}
                         >
-                          {item.risk_level}
-                        </span>
-                        {item.llm_risk_level && (
-                          <div className="mt-1 flex items-center justify-center gap-1">
-                            <span
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/40"
-                              title={`Đã phân tích bởi AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(1)}` : ""})`}
-                            >
-                              <Sparkles className="w-2.5 h-2.5 text-purple-500 shrink-0" />
-                              <span>AI</span>
-                            </span>
-                            {item.llm_risk_escalated && (
-                              <span
-                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/40"
-                                title="LLM nâng mức rủi ro so với CatBoost"
-                              >
-                                ⬆ Nâng
-                              </span>
-                            )}
+                          <span
+                            className="px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider flex items-center justify-center leading-normal"
+                            style={{ backgroundColor: riskColor }}
+                          >
+                            {item.risk_level}
+                          </span>
+                          <span
+                            className="px-2.5 py-0.5 font-mono font-bold text-xs flex items-center justify-center leading-normal"
+                            style={{
+                              backgroundColor: `${riskColor}18`,
+                              color: riskColor,
+                            }}
+                          >
+                            {item.risk_score.toFixed(1)}
+                          </span>
+                        </div>
+                        {item.llm_risk_escalated && (
+                          <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1 flex items-center justify-center gap-0.5">
+                            <span>⬆ LLM nâng</span>
                           </div>
                         )}
                       </td>
 
-                      {/* Risk Factors Badges (dùng primary_badge, fallback risk_factors cho backward compat) */}
+                      {/* Risk Factors Badges (dùng primary_badge, fallback risk_factors) */}
                       <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1.5 max-w-xs">
                           {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).length > 0 ? (
                             (item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).map((f, fIdx) => {
                               const metaF = FACTOR_VI[f] || {
@@ -863,7 +866,7 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                               return (
                                 <span
                                   key={fIdx}
-                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold border shadow-sm transition-all ${metaF.color}`}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border shadow-2xs transition-all ${metaF.color}`}
                                 >
                                   {metaF.icon}
                                   <span>{metaF.label}</span>
@@ -876,60 +879,77 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
                         </div>
                       </td>
 
-                      {/* Điểm thi gần nhất */}
-                      <td className="py-3 px-4 text-right font-medium text-slate-800 dark:text-slate-200">
-                        {item.last_score !== null ? item.last_score.toFixed(1) : "—"}
-                      </td>
-
-                      {/* ĐTB sớm */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.weighted_early_avg !== null ? item.weighted_early_avg.toFixed(1) : "—"}
-                      </td>
-
-                      {/* ĐTB muộn (hiển thị giá trị thật; gạch ngang nếu bị impute) */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.weighted_late_avg_imputed || item.weighted_late_avg === null ? (
-                          <span className="text-slate-300 dark:text-slate-600" title="Chưa có điểm nửa sau kỳ thật (giá trị giả định chỉ dùng cho mô hình)">
-                            —
-                          </span>
-                        ) : (
-                          item.weighted_late_avg.toFixed(1)
-                        )}
-                      </td>
-
-                      {/* Slope */}
-                      <td className="py-3 px-4 text-right">
-                        {item.score_slope !== null ? (
-                          <span
-                            className={`font-semibold ${item.score_slope < 0
-                              ? "text-rose-500"
-                              : item.score_slope > 0
-                                ? "text-emerald-500"
-                                : "text-slate-400"
+                      {/* Chỉ Số Nổi Bật (Điểm thi gần nhất & Slope) */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="font-medium text-slate-700 dark:text-slate-300">
+                          <span>Điểm thi: </span>
+                          {item.last_score !== null ? (
+                            <span
+                              className={`font-bold ${
+                                item.last_score < 3.5
+                                  ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-1 py-0.5 rounded"
+                                  : item.last_score < 5.0
+                                    ? "text-rose-500 dark:text-rose-400 font-semibold"
+                                    : item.last_score < 6.5
+                                      ? "text-amber-600 dark:text-amber-400"
+                                      : "text-slate-900 dark:text-slate-100"
                               }`}
-                          >
-                            {item.score_slope > 0 ? `+${item.score_slope.toFixed(2)}` : item.score_slope.toFixed(2)}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
+                            >
+                              {item.last_score.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] mt-0.5">
+                          {item.score_slope !== null ? (
+                            <span
+                              className={`inline-flex items-center gap-0.5 font-medium ${
+                                item.score_slope < 0
+                                  ? "text-rose-500 dark:text-rose-400 font-semibold"
+                                  : item.score_slope > 0 && (item.last_score ?? 0) >= 5.0
+                                    ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                                    : "text-slate-500 dark:text-slate-400"
+                              }`}
+                              title={
+                                item.score_slope > 0 && (item.last_score ?? 0) < 5.0
+                                  ? "Điểm có xu hướng tăng nhẹ nhưng vẫn ở mức dưới trung bình (<5.0)"
+                                  : undefined
+                              }
+                            >
+                              {item.score_slope > 0 ? (
+                                <TrendingUp
+                                  className={`w-3 h-3 ${
+                                    item.last_score !== null && item.last_score < 5.0
+                                      ? "text-slate-400"
+                                      : "text-emerald-500"
+                                  }`}
+                                />
+                              ) : item.score_slope < 0 ? (
+                                <TrendingDown className="w-3 h-3 text-rose-500" />
+                              ) : null}
+                              <span>
+                                {item.score_slope > 0 ? `+${item.score_slope.toFixed(2)}` : item.score_slope.toFixed(2)}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">Xu hướng: —</span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* ĐTB LMS */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.lms_avg_score !== null ? item.lms_avg_score.toFixed(1) : "—"}
-                      </td>
-
-                      {/* Tỷ lệ nộp LMS */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.lms_submission_rate !== null ? `${(item.lms_submission_rate * 100).toFixed(1)}%` : "—"}
+                      {/* Nút Xem chi tiết */}
+                      <td className="py-3 px-3 text-right">
+                        <div className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-100/60 dark:group-hover:bg-indigo-950/50 transition-all">
+                          <ChevronRight className="w-4 h-4" />
+                        </div>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     Không tìm thấy dữ liệu dự báo rủi ro phù hợp với bộ lọc.
                   </td>
                 </tr>
@@ -944,25 +964,78 @@ export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, 
             Hiển thị {predictionItems.length} trên tổng số {predictions?.total.toLocaleString() || 0} bản ghi
           </span>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            {/* Trang đầu tiên */}
+            <button
+              disabled={page <= 1 || loadingPreds}
+              onClick={() => setPage(1)}
+              title="Về trang đầu tiên (Trang 1)"
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
+            {/* Trang trước */}
             <button
               disabled={page <= 1 || loadingPreds}
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              title="Trang trước"
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <span className="text-xs font-semibold px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300">
-              {page} / {totalPages || 1}
-            </span>
+            {/* Ô nhập số trang trực tiếp */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <span className="text-slate-400 font-normal">Trang</span>
+              <input
+                type="number"
+                min={1}
+                max={totalPages || 1}
+                value={jumpPage}
+                onChange={(e) => setJumpPage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const p = parseInt(jumpPage, 10);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                      setPage(p);
+                    } else {
+                      setJumpPage(String(page));
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  const p = parseInt(jumpPage, 10);
+                  if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                    setPage(p);
+                  } else {
+                    setJumpPage(String(page));
+                  }
+                }}
+                className="w-12 text-center py-0.5 px-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                title="Nhập số trang và nhấn Enter để chuyển nhanh"
+              />
+              <span>/ {totalPages || 1}</span>
+            </div>
 
+            {/* Trang sau */}
             <button
               disabled={page >= totalPages || loadingPreds}
               onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              title="Trang sau"
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Trang cuối cùng */}
+            <button
+              disabled={page >= totalPages || loadingPreds}
+              onClick={() => setPage(totalPages)}
+              title={`Tới trang cuối cùng (Trang ${totalPages || 1})`}
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronsRight className="w-4 h-4" />
             </button>
           </div>
         </div>

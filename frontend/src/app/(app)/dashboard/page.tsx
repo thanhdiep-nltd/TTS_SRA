@@ -57,72 +57,62 @@ export default function DashboardV2Page() {
 
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
+      {/* Header & Controls Toolbar */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Dashboard</h2>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand-600 text-white">BETA</span>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Cảnh Báo Sớm Học Tập (EWS)</h2>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
+              v2 Ensemble
+            </span>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Hệ thống phân tích & cảnh báo sớm học tập (EWS)
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Theo dõi phân loại rủi ro và xu hướng học tập học sinh
           </p>
         </div>
-      </div>
 
-      {/* HEADER SECTION — Hệ Thống Cảnh Báo Rủi Ro Học Tập (CatBoost EWS) */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-lg border border-indigo-500/20">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-7 h-7 text-rose-400 animate-pulse" />
-            <h2 className="text-2xl font-bold tracking-tight">Hệ Thống Cảnh Báo Rủi Ro Học Tập (CatBoost EWS)</h2>
-          </div>
-          <p className="text-sm text-slate-300">
-            Dự báo sớm 4 mức độ rủi ro (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`) từ mô hình GBDT dựa trên 22 chỉ số tiến trình học tập, LMS và nếp sống kỷ luật.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+        {/* Global Controls */}
+        <div className="flex items-center gap-2.5 flex-wrap">
           {/* Mốc Đánh Giá (Tuần / Kỳ) */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-300 whitespace-nowrap">Mốc Đánh Giá</label>
-            <select
-              value={`${schoolYearId}-${semesterIndex}-${week}`}
-              onChange={(e) => {
-                const [sy, sem, wk] = e.target.value.split("-").map(Number);
-                setSchoolYearId(sy);
-                setSemesterIndex(sem);
-                setWeek(wk);
-                setRefreshKey((k) => k + 1);
-              }}
-              className="text-xs bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              {weeks.map((w, idx) => (
-                <option key={idx} value={`${w.school_year_id}-${w.semester_index}-${w.evaluated_at_week}`}>
-                  {w.school_year_name || `Năm ${w.school_year_id}`} - HK{w.semester_index} (Tuần {w.evaluated_at_week})
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={`${schoolYearId}-${semesterIndex}-${week}`}
+            onChange={(e) => {
+              const [sy, sem, wk] = e.target.value.split("-").map(Number);
+              setSchoolYearId(sy);
+              setSemesterIndex(sem);
+              setWeek(wk);
+              setRefreshKey((k) => k + 1);
+            }}
+            className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+          >
+            {weeks.map((w, idx) => (
+              <option key={idx} value={`${w.school_year_id}-${w.semester_index}-${w.evaluated_at_week}`}>
+                {w.school_year_name || `Năm ${w.school_year_id}`} - HK{w.semester_index} (Tuần {w.evaluated_at_week})
+              </option>
+            ))}
+          </select>
+
           {/* Phiên bản Model */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-300 whitespace-nowrap">Phiên bản Model</label>
-            <select
-              value={modelVersion}
-              onChange={(e) => {
-                setModelVersion(e.target.value);
-                setRefreshKey((k) => k + 1);
-              }}
-              className="text-xs bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              <option value="v2_ensemble">v2 — Factor-Ensemble (mặc định)</option>
-              <option value="v1_single">v1 — Model đơn</option>
-            </select>
-          </div>
+          <select
+            value={modelVersion}
+            onChange={(e) => {
+              setModelVersion(e.target.value);
+              setRefreshKey((k) => k + 1);
+            }}
+            className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+          >
+            <option value="v2_ensemble">Model v2 (Ensemble)</option>
+            <option value="v1_single">Model v1 (Đơn)</option>
+          </select>
+
+          {/* Nút Làm mới */}
           <button
             onClick={() => setRefreshKey((k) => k + 1)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium text-sm rounded-xl transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs rounded-xl transition-all shadow-xs"
+            title="Làm mới dữ liệu"
           >
-            <RefreshCw className="w-4 h-4" /> Làm mới
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Làm mới</span>
           </button>
         </div>
       </div>
