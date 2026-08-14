@@ -257,23 +257,66 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
       <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 shadow-2xl h-full flex flex-col border-l border-slate-200 dark:border-slate-800 z-10 animate-in slide-in-from-right duration-300">
         {/* HEADER */}
         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                <User className="w-5 h-5" />
-              </span>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                {item.student_name || item.student_code}
-              </h3>
-              <span className="px-2 py-0.5 text-xs font-mono rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                {item.student_code}
-              </span>
+          <div className="flex items-start gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-2xs">
+              <User className="w-5 h-5" />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-3 pt-1">
-              <span>Lớp: <strong className="text-slate-700 dark:text-slate-200">{item.class_name || "—"}</strong> ({item.grade_name || "—"})</span>
-              <span>•</span>
-              <span>Môn: <strong className="text-indigo-600 dark:text-indigo-400">{item.subject_name || item.subject_code}</strong> ({item.subject_category || "—"})</span>
-            </p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  {item.student_name || item.student_code}
+                </h3>
+                <span className="px-2 py-0.5 text-xs font-mono font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
+                  {item.student_code}
+                </span>
+                {item.llm_risk_level && (
+                  <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level})`}>
+                    <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400/30" />
+                  </span>
+                )}
+
+                {/* 2-Tone Risk Badge Cao Cấp Ngang Hàng Với Tên */}
+                <div
+                  className="inline-flex items-stretch rounded-full border overflow-hidden shadow-xs text-[11px] font-semibold ml-1"
+                  style={{ borderColor: `${riskColor}50` }}
+                >
+                  <span
+                    className="px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5 leading-normal"
+                    style={{ backgroundColor: riskColor }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    {item.risk_level}
+                  </span>
+                  <span
+                    className="px-2.5 py-0.5 font-mono font-bold text-xs flex items-center justify-center leading-normal"
+                    style={{
+                      backgroundColor: `${riskColor}18`,
+                      color: riskColor,
+                    }}
+                  >
+                    {item.risk_score.toFixed(1)}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 pt-0.5">
+                <span>
+                  Lớp:{" "}
+                  <strong className="text-slate-800 dark:text-slate-200">
+                    {item.class_name
+                      ? item.class_name.replace(/\s*-\s*Trường\s*\d+/gi, "").replace(/^Lớp\s+/i, "")
+                      : "—"}
+                  </strong>
+                </span>
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span>
+                  Môn:{" "}
+                  <strong className="text-indigo-600 dark:text-indigo-400">
+                    {item.subject_name || item.subject_code}
+                  </strong>
+                </span>
+              </p>
+            </div>
           </div>
 
           <button
@@ -366,23 +409,19 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
           {/* TAB 1: TỔNG QUAN AI */}
           {tab === "overview" && (
             <div
-              className="p-5 rounded-2xl border shadow-sm relative overflow-hidden space-y-4"
-              style={{ backgroundColor: `${riskColor}0d`, borderColor: `${riskColor}33` }}
+              className="p-5 rounded-2xl border shadow-2xs relative overflow-hidden space-y-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-6 h-6" style={{ color: riskColor }} />
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">Chỉ Số Rủi Ro CatBoost EWS</h4>
+                  <ShieldAlert className="w-5 h-5" style={{ color: riskColor }} />
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">Tổng Hợp Đánh Giá Nguy Cơ</h4>
                 </div>
-                <span
-                  className="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm"
-                  style={{ backgroundColor: riskColor }}
-                >
-                  {EWS_RISK_LABELS[item.risk_level] || item.risk_level} ({item.risk_level})
+                <span className="text-xs font-medium px-2.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60">
+                  Mốc Tuần {item.evaluated_at_week}
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 bg-white/80 dark:bg-slate-900/80 p-4 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
+              <div className="grid grid-cols-2 gap-4 bg-white/80 dark:bg-slate-900/80 p-4 rounded-xl border border-slate-200/50 dark:border-slate-800/50">
                 <div>
                   <span className="text-[11px] font-medium text-slate-400 block">Điểm Rủi Ro (0-100)</span>
                   <span className="text-2xl font-black" style={{ color: riskColor }}>
@@ -484,23 +523,22 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     );
                   })()}
                 </div>
-                <div>
-                  <span className="text-[11px] font-medium text-slate-400 block">Mốc Tuần Đánh Giá</span>
-                  <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-                    Tuần {item.evaluated_at_week}
-                  </span>
-                </div>
               </div>
 
-              {/* BREAKDOWN THEO YẾU TỐ (v1: mức đóng góp học được từ model, chung mọi học sinh; v2: trọng số động theo từng em) */}
+              {/* BREAKDOWN THEO YẾU TỐ */}
               {item.model_version === "v2_ensemble" || item.model_version === "v1_single" ? (
-                <div className="pt-2 space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {item.model_version === "v2_ensemble"
-                      ? "Trọng số quyết định theo từng yếu tố (động, riêng cho từng học sinh):"
-                      : "Mức đóng góp của từng yếu tố vào quyết định (học được từ model, chung cho mọi học sinh):"}
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="pt-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {item.model_version === "v2_ensemble"
+                        ? "Tỷ trọng & Điểm rủi ro theo 4 nhóm yếu tố:"
+                        : "Mức đóng góp theo 4 nhóm yếu tố:"}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      (Điểm rủi ro / Trọng số)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
                     {[
                       { label: "Điểm số", risk: item.score_risk, w: item.weight_score, def: 0.65 },
                       { label: "LMS", risk: item.lms_risk, w: item.weight_lms, def: 0.15 },
@@ -508,28 +546,26 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       { label: "Hạnh kiểm", risk: item.behavior_risk, w: item.weight_behavior, def: 0.10 },
                     ].map((f) => {
                       const w = f.w !== null ? f.w : f.def;
-                      // v1: weight_* luôn có (mức đóng góp học được) dù risk_* = null (model đơn).
-                      // v2: yếu tố không có dữ liệu → risk null → hiển thị "—".
                       const hasData = item.model_version === "v1_single" ? true : f.risk !== null;
                       return (
-                        <div key={f.label} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60">
+                        <div key={f.label} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{f.label}</span>
-                            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
-                              {hasData ? `${(w * 100).toFixed(0)}%` : "—"}
+                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{f.label}</span>
+                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                              Trọng số: <strong className="text-indigo-600 dark:text-indigo-400">{hasData ? `${(w * 100).toFixed(0)}%` : "—"}</strong>
                             </span>
                           </div>
-                          <div className="mt-1 flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                               <div
-                                className="h-full rounded-full"
+                                className="h-full rounded-full transition-all"
                                 style={{
                                   width: `${Math.min(100, f.risk ?? 0)}%`,
                                   backgroundColor: (f.risk ?? 0) >= 70 ? "#ef4444" : (f.risk ?? 0) >= 50 ? "#f97316" : "#22c55e",
                                 }}
                               />
                             </div>
-                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                               {f.risk !== null ? f.risk.toFixed(0) : "—"}
                             </span>
                           </div>
