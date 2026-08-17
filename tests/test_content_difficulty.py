@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from uuid import uuid4
 
 import fitz
 import pytest
@@ -67,12 +66,12 @@ def test_classify_competencies_skips_llm_when_text_too_short(monkeypatch):
 
 
 def _unit(code: str, name: str) -> CurriculumUnit:
-    return CurriculumUnit(code=code, name=name, subject_id=uuid4(), grade_number=6)
+    return CurriculumUnit(code=code, name=name, subject_id=1, grade_number=6)
 
 
-def _catalog_unit(code: str, name: str) -> CurriculumUnit:
+def _catalog_unit(code: str, name: str, unit_id: int = 1) -> CurriculumUnit:
     unit = _unit(code, name)
-    unit.id = uuid4()
+    unit.id = unit_id
     return unit
 
 
@@ -195,7 +194,7 @@ def test_resolve_units_uses_catalog_match_without_touching_db():
     fake_db = MagicMock()
     unit = _unit("TOAN6-SONGUYEN", "Số nguyên")
     ctx = content_difficulty.AnalysisContext(
-        subject_id=uuid4(), subject_code="TOAN", grade_number=6, catalog={"TOAN6-SONGUYEN": unit}
+        subject_id=1, subject_code="TOAN", grade_number=6, catalog={"TOAN6-SONGUYEN": unit}
     )
     guess = content_difficulty.CompetencyGuess(
         topic="Số nguyên", bloom_level=2, weight=1.0, unit_code="TOAN6-SONGUYEN"
@@ -212,7 +211,7 @@ def test_resolve_units_uses_catalog_match_without_touching_db():
 def test_resolve_units_falls_back_to_topic_when_no_catalog_match():
     fake_db = MagicMock()
     fake_db.execute.return_value.scalar_one_or_none.return_value = None
-    ctx = content_difficulty.AnalysisContext(subject_id=uuid4(), subject_code="TOAN", grade_number=6, catalog={})
+    ctx = content_difficulty.AnalysisContext(subject_id=1, subject_code="TOAN", grade_number=6, catalog={})
     guess = content_difficulty.CompetencyGuess(topic="Đại số", bloom_level=2, weight=1.0)
 
     resolved = content_difficulty._resolve_units(fake_db, ctx, [guess])
@@ -223,7 +222,7 @@ def test_resolve_units_falls_back_to_topic_when_no_catalog_match():
 
 def test_resolve_units_returns_none_unit_when_grade_unknown():
     fake_db = MagicMock()
-    ctx = content_difficulty.AnalysisContext(subject_id=uuid4(), subject_code="TOAN", grade_number=None, catalog={})
+    ctx = content_difficulty.AnalysisContext(subject_id=1, subject_code="TOAN", grade_number=None, catalog={})
     guess = content_difficulty.CompetencyGuess(topic="Đại số", bloom_level=2, weight=1.0)
 
     resolved = content_difficulty._resolve_units(fake_db, ctx, [guess])
@@ -234,7 +233,7 @@ def test_resolve_units_returns_none_unit_when_grade_unknown():
 
 
 def test_merge_by_unit_sums_weight_and_weighted_rounds_bloom():
-    unit_id = uuid4()
+    unit_id = 1
     items = [_resolved(2, 0.3, unit_id), _resolved(4, 0.1, unit_id)]
 
     bloom, weight = content_difficulty.merge_by_unit(items)[unit_id]
@@ -244,7 +243,7 @@ def test_merge_by_unit_sums_weight_and_weighted_rounds_bloom():
 
 
 def test_merge_by_unit_zero_total_weight_uses_simple_mean():
-    unit_id = uuid4()
+    unit_id = 1
     items = [_resolved(2, 0.0, unit_id), _resolved(4, 0.0, unit_id)]
 
     bloom, weight = content_difficulty.merge_by_unit(items)[unit_id]
@@ -313,7 +312,7 @@ def test_collect_evidence_builds_query_from_topic_and_excerpt(monkeypatch):
 
 
 def test_attach_evidence_marks_on_curriculum_false_when_evidence_found():
-    item = _resolved(2, 1.0, unit_id=uuid4())
+    item = _resolved(2, 1.0, unit_id=1)
     evidence = EvidenceRef(score=0.7, heading="Bài 1", source_md="toan6.md")
 
     attached = content_difficulty._attach_evidence([item], [evidence], rag_available=True)
@@ -323,7 +322,7 @@ def test_attach_evidence_marks_on_curriculum_false_when_evidence_found():
 
 
 def test_attach_evidence_marks_off_curriculum_true_when_no_evidence_found():
-    item = _resolved(2, 1.0, unit_id=uuid4())
+    item = _resolved(2, 1.0, unit_id=1)
 
     attached = content_difficulty._attach_evidence([item], [None], rag_available=True)
 
@@ -331,7 +330,7 @@ def test_attach_evidence_marks_off_curriculum_true_when_no_evidence_found():
 
 
 def test_attach_evidence_marks_none_when_rag_unavailable():
-    item = _resolved(2, 1.0, unit_id=uuid4())
+    item = _resolved(2, 1.0, unit_id=1)
 
     attached = content_difficulty._attach_evidence([item], [None], rag_available=False)
 
@@ -340,9 +339,9 @@ def test_attach_evidence_marks_none_when_rag_unavailable():
 
 def test_build_content_analysis_coverage_and_ratio():
     catalog = [
-        _catalog_unit("TOAN6-A", "Tap hop"),
-        _catalog_unit("TOAN6-B", "So nguyen"),
-        _catalog_unit("TOAN6-C", "Phan so"),
+        _catalog_unit("TOAN6-A", "Tap hop", 1),
+        _catalog_unit("TOAN6-B", "So nguyen", 2),
+        _catalog_unit("TOAN6-C", "Phan so", 3),
     ]
     items = [_analysis_item(catalog[0], 0.25), _analysis_item(catalog[1], 0.5)]
 
@@ -361,8 +360,8 @@ def test_build_content_analysis_coverage_and_ratio():
 
 
 def test_build_content_analysis_flags_concentration_above_threshold():
-    unit_a = _catalog_unit("TOAN6-A", "Tap hop")
-    unit_b = _catalog_unit("TOAN6-B", "So nguyen")
+    unit_a = _catalog_unit("TOAN6-A", "Tap hop", 1)
+    unit_b = _catalog_unit("TOAN6-B", "So nguyen", 2)
 
     concentrated = content_difficulty.build_content_analysis(
         content_difficulty.AnalysisBuildInput(
@@ -389,7 +388,7 @@ def test_build_content_analysis_flags_concentration_above_threshold():
 
 
 def test_build_content_analysis_off_curriculum_weight_none_when_rag_unavailable():
-    unit = _catalog_unit("TOAN6-A", "Tap hop")
+    unit = _catalog_unit("TOAN6-A", "Tap hop", 1)
 
     analysis = content_difficulty.build_content_analysis(
         content_difficulty.AnalysisBuildInput(
@@ -405,10 +404,10 @@ def test_build_content_analysis_off_curriculum_weight_none_when_rag_unavailable(
 
 
 def test_analyze_exam_paper_preserves_existing_ai_analysis_keys(monkeypatch):
-    paper = ExamPaper(id=uuid4(), subject_id=uuid4(), file_url="exam.pdf", file_type=FileType.PDF)
+    paper = ExamPaper(id=1, subject_id=1, so_school_id=1, semester_id=1, title="Test", file_url="exam.pdf", file_type=FileType.PDF, uploaded_by=1)
     paper.ai_analysis = {"source": "exam_generation"}
     subject = Subject(id=paper.subject_id, code="TOAN", name="Toan")
-    catalog_unit = _catalog_unit("TOAN6-A", "Tap hop")
+    catalog_unit = _catalog_unit("TOAN6-A", "Tap hop", 1)
     fake_session = MagicMock()
     fake_session.get.side_effect = lambda model, _id: {
         ExamPaper: paper,
@@ -451,7 +450,81 @@ def test_analyze_exam_paper_skips_when_paper_not_found(monkeypatch):
     fake_session.get.return_value = None
     monkeypatch.setattr(content_difficulty, "SessionLocal", lambda: fake_session)
 
-    content_difficulty.analyze_exam_paper(uuid4())
+    content_difficulty.analyze_exam_paper(1)
 
     fake_session.commit.assert_not_called()
     fake_session.close.assert_called_once()
+
+
+def test_bloom_distribution_and_alignment():
+    # 40% Nhớ (Bloom 1), 30% Hiểu (Bloom 2), 20% Vận dụng (Bloom 3), 10% Phân tích/Đánh giá/Sáng tạo (Bloom 4-6)
+    items = [
+        content_difficulty.ResolvedCompetency(
+            topic="T1", bloom_level=1, weight=0.4, unit_code="U1", unit_name="Unit 1", matched_catalog=True, unit_id=1
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T2", bloom_level=2, weight=0.3, unit_code="U2", unit_name="Unit 2", matched_catalog=True, unit_id=2
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T3", bloom_level=3, weight=0.2, unit_code="U3", unit_name="Unit 3", matched_catalog=True, unit_id=3
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T4", bloom_level=4, weight=0.1, unit_code="U4", unit_name="Unit 4", matched_catalog=True, unit_id=4
+        ),
+    ]
+    dist, alignment = content_difficulty._bloom_distribution_and_alignment(items)
+    assert dist["remember"] == 40.0
+    assert dist["understand"] == 30.0
+    assert dist["apply"] == 20.0
+    assert dist["analyze"] == 10.0
+    assert alignment == "ALIGNED"
+
+
+def test_bloom_mapping_correctness():
+    """Verify mapping 6 bậc Bloom: 1=Nhớ, 2=Hiểu, 3=Vận dụng, 4-6=Phân tích+."""
+    items = [
+        content_difficulty.ResolvedCompetency(
+            topic="T1", bloom_level=1, weight=0.25, unit_code="U1", unit_name="Unit 1", matched_catalog=True, unit_id=1
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T2", bloom_level=2, weight=0.25, unit_code="U2", unit_name="Unit 2", matched_catalog=True, unit_id=2
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T3", bloom_level=3, weight=0.25, unit_code="U3", unit_name="Unit 3", matched_catalog=True, unit_id=3
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T4", bloom_level=5, weight=0.25, unit_code="U4", unit_name="Unit 4", matched_catalog=True, unit_id=4
+        ),
+    ]
+    dist, _ = content_difficulty._bloom_distribution_and_alignment(items)
+    assert dist["remember"] == 25.0
+    assert dist["understand"] == 25.0
+    assert dist["apply"] == 25.0
+    assert dist["analyze"] == 25.0
+
+
+def test_avg_retrieval_distance():
+    items = [
+        content_difficulty.ResolvedCompetency(
+            topic="T1",
+            bloom_level=1,
+            weight=0.5,
+            unit_code="U1",
+            unit_name="Unit 1",
+            matched_catalog=True,
+            unit_id=1,
+            evidence=EvidenceRef(score=0.8, heading="H1"),
+        ),
+        content_difficulty.ResolvedCompetency(
+            topic="T2",
+            bloom_level=3,
+            weight=0.5,
+            unit_code="U2",
+            unit_name="Unit 2",
+            matched_catalog=True,
+            unit_id=2,
+            evidence=EvidenceRef(score=0.6, heading="H2"),
+        ),
+    ]
+    # score tb = 0.7 -> distance = 0.3
+    assert content_difficulty._avg_retrieval_distance(items) == 0.3

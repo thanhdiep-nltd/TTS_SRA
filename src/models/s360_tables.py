@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     text,
@@ -208,3 +209,56 @@ class FactSubjectAcademicRecords(Base):
     final_grade_after_summer = Column(Numeric(10, 1))
     created_at = Column(DateTime(timezone=True), server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), server_default=_NOW)
+
+
+class DimSoAssignment(Base):
+    """Danh mục bài tập / nhiệm vụ học tập LMS (s360.dim_so_assignment)."""
+
+    __tablename__ = "dim_so_assignment"
+    __table_args__ = {"schema": "s360"}
+
+    assignment_id = Column(BigInteger, primary_key=True)
+    so_school_id = Column(Integer, nullable=False)
+    grade_id = Column(Integer, nullable=False)
+    semester_index = Column(Integer)
+    subject_id = Column(Integer, ForeignKey("s360.dim_subject.id"), nullable=False)
+    code = Column(String(50))
+    fullname = Column(String(255), nullable=False)
+    max_grade = Column(Numeric(10, 1), default=10.0)
+    due_date = Column(Date)
+    date_assigned = Column(Date)
+    gradebook_type_item_id = Column(BigInteger)
+    # M0.1: bổ sung cấu hình thời gian cho lọc nhiễu off-task/rapid-guess.
+    allow_attempts = Column(Integer, default=1)
+    time_limit_sec = Column(Integer)
+    created_at = Column(DateTime(timezone=True), server_default=_NOW)
+    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
+    source_system = Column(String(50), default="LMS")
+
+
+class FactSoAssignmentGrade(Base):
+    """Điểm bài tập LMS chi tiết (s360.fact_so_assignment_grade)."""
+
+    __tablename__ = "fact_so_assignment_grade"
+    __table_args__ = {"schema": "s360"}
+
+    id = Column(BigInteger, primary_key=True)
+    so_school_id = Column(Integer, nullable=False)
+    assignment_id = Column(BigInteger, ForeignKey("s360.dim_so_assignment.assignment_id"), nullable=False)
+    user_id = Column(BigInteger)
+    student_code = Column(String(50), nullable=False)
+    final_grade = Column(Numeric(10, 1))
+    comment = Column(Text)
+    is_locked = Column(Integer, default=0)
+    # M0.1: hành vi làm bài LMS (lọc nhiễu off-task/rapid-guess).
+    started_at = Column(DateTime(timezone=True))
+    submitted_at = Column(DateTime(timezone=True))
+    attempt_count = Column(Integer, default=1)
+    time_spent_sec = Column(Integer)  # tổng thời gian (thô)
+    active_time_sec = Column(Integer)  # thời gian tương tác THỰC (đã loại treo máy)
+    tab_hidden_count = Column(Integer, default=0)
+    idle_sec = Column(Integer, default=0)
+    rte = Column(SmallInteger)  # Response Time Effort: 1=effortful, 0=rapid-guess/off-task
+    created_at = Column(DateTime(timezone=True), server_default=_NOW)
+    updated_at = Column(DateTime(timezone=True), server_default=_NOW)
+    source_system = Column(String(50), default="LMS")

@@ -31,6 +31,7 @@ import {
   type EwsRawDetail,
   type EwsRiskLevel,
 } from "@/lib/types";
+import LmsEvidenceBlock from "./LmsEvidenceBlock";
 
 interface Props {
   item: EwsPredictionRow | null;
@@ -900,6 +901,11 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                   </div>
                 )}
 
+              {/* BẰNG CHỨNG HÀNH VI LMS (M3) */}
+              {raw?.lms_evidence && raw.lms_evidence.length > 0 && (
+                <LmsEvidenceBlock evidence={raw.lms_evidence} />
+              )}
+
               {/* DỮ LIỆU GỐC (RAW): BÀI TẬP LMS */}
               <div className="pt-4 space-y-2 border-t border-slate-100 dark:border-slate-800">
                 <h5 className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
@@ -1278,6 +1284,11 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                         </p>
                       )}
                     </div>
+                  )}
+
+                  {/* BẰNG CHỨNG HÀNH VI LMS (M3) ĐỐI CHIẾU NARRATIVE */}
+                  {raw?.lms_evidence && raw.lms_evidence.length > 0 && (
+                    <LmsEvidenceBlock evidence={raw.lms_evidence} />
                   )}
 
                   {/* Narrative — nguyên nhân gốc rễ */}

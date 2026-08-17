@@ -249,6 +249,10 @@ class EwsRawDetail(BaseModel):
     lms: List[EwsRawLmsItem] = Field(default_factory=list)
     lms_expected: int = 0
     lms_submitted: int = 0
+    lms_evidence: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Bằng chứng hành vi LMS (pattern + explanation) — từ classify_lms_behavior (M3).",
+    )
     attendance: List[EwsRawAttendanceItem] = Field(default_factory=list)
     behavior: List[EwsRawBehaviorItem] = Field(default_factory=list)
     life_events: List[EwsRawLifeEventItem] = Field(default_factory=list)

@@ -6,8 +6,6 @@ khi tạo đề vì mang tính chủ quan, không phải nguồn đối chiếu 
 Xem docs/exam_triangulation_design.md cho mô hình toán đầy đủ.
 """
 
-from uuid import UUID
-
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -20,14 +18,11 @@ _MIN_SAMPLE = 30
 _ABILITY_K = 3.0
 
 _BASE_SELECT = """
-SELECT v.exam_paper_id, v.subject_id, s.name AS subject_name, v.semester_id, v.score_category,
-       v.grade_id, g.name AS grade_name, v.n, v.mean_score, v.edi, v.cdi, v.divergence, v.flag,
-       m.column_index
+SELECT v.exam_paper_id, v.subject_id, v.subject_name, v.semester_id, v.score_category,
+       v.grade_id, v.grade_name, v.n, v.mean_score, v.edi, v.cdi, v.divergence, v.flag,
+       NULL AS column_index
 FROM v_exam_validity v
-JOIN subjects s ON s.id = v.subject_id
-JOIN grades g ON g.id = v.grade_id
-JOIN exam_column_mappings m ON m.exam_paper_id = v.exam_paper_id AND m.subject_id = v.subject_id AND m.semester_id = v.semester_id AND m.score_category = v.score_category
-WHERE v.school_id = :school_id
+WHERE v.so_school_id = :so_school_id
 """
 
 
@@ -52,17 +47,17 @@ def _row_to_read(row) -> ExamValidityRead:
         divergence=float(row.divergence) if row.divergence is not None else None,
         flag=row.flag,
         confidence=_confidence(row.n, row.cdi),
-        column_index=row.column_index,
+        column_index=row.column_index if hasattr(row, "column_index") else None,
     )
 
 
 def compute_validity(
     db: Session,
-    school_id: UUID,
-    semester_id: UUID,
-    subject_id: UUID | None = None,
+    so_school_id: int,
+    semester_id: int,
+    subject_id: int | None = None,
     score_category: enums.ScoreCategory | None = None,
-    grade_id: UUID | None = None,
+    grade_id: int | None = None,
     flagged_only: bool = False,
 ) -> list[ExamValidityRead]:
     """Trả các dòng tam giác hóa khớp bộ lọc.
@@ -74,15 +69,15 @@ def compute_validity(
     sql = (
         _BASE_SELECT
         + " AND v.semester_id = :semester_id"
-        + " AND (CAST(:subject_id AS uuid) IS NULL OR v.subject_id = CAST(:subject_id AS uuid))"
-        + " AND (CAST(:cat AS text) IS NULL OR v.score_category::text = CAST(:cat AS text))"
-        + " AND (CAST(:grade_id AS uuid) IS NULL OR v.grade_id = CAST(:grade_id AS uuid))"
+        + " AND (:subject_id IS NULL OR v.subject_id = :subject_id)"
+        + " AND (:cat IS NULL OR v.score_category::text = :cat)"
+        + " AND (:grade_id IS NULL OR v.grade_id = :grade_id)"
     )
     if flagged_only:
         sql += " AND v.flag NOT IN ('VALID', 'NO_CONTENT')"
-    sql += " ORDER BY s.name, g.name"
+    sql += " ORDER BY v.subject_name, v.grade_name"
     params = {
-        "school_id": school_id,
+        "so_school_id": so_school_id,
         "semester_id": semester_id,
         "subject_id": subject_id,
         "cat": score_category.value if score_category is not None else None,
@@ -92,10 +87,10 @@ def compute_validity(
     return [_row_to_read(r) for r in rows]
 
 
-def school_overview(db: Session, school_id: UUID, semester_id: UUID) -> SchoolValidityOverview:
+def school_overview(db: Session, so_school_id: int, semester_id: int) -> SchoolValidityOverview:
     """Tổng hợp toàn trường: đếm cờ theo loại + xếp các đề đáng rà soát nhất lên đầu."""
     sql = _BASE_SELECT + " AND v.semester_id = :semester_id"
-    rows = db.execute(text(sql), {"school_id": school_id, "semester_id": semester_id}).all()
+    rows = db.execute(text(sql), {"so_school_id": so_school_id, "semester_id": semester_id}).all()
     items = [_row_to_read(r) for r in rows]
 
     flags_count: dict[str, int] = {}
@@ -121,10 +116,10 @@ def school_overview(db: Session, school_id: UUID, semester_id: UUID) -> SchoolVa
 
 def content_adjusted_ranking(
     db: Session,
-    school_id: UUID,
-    grade_id: UUID,
-    semester_id: UUID,
-    subject_id: UUID,
+    so_school_id: int,
+    grade_id: int,
+    semester_id: int,
+    subject_id: int,
     score_category: enums.ScoreCategory = enums.ScoreCategory.FINAL,
 ) -> list[ContentAdjustedRankRow]:
     """Xếp hạng các lớp trong khối theo thực lực neo-nội-dung (độc lập TB cohort).
@@ -137,7 +132,7 @@ def content_adjusted_ranking(
             " AND v.score_category = :cat AND v.grade_id = :grade_id"
         ),
         {
-            "school_id": school_id,
+            "so_school_id": so_school_id,
             "subject_id": subject_id,
             "semester_id": semester_id,
             "cat": score_category.value,

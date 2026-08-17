@@ -11,7 +11,6 @@ import re
 import sys
 import time
 from pathlib import Path
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
@@ -203,7 +202,7 @@ def _resolve_grade_number(db, paper: ExamPaper) -> int | None:
     return grade.grade_number if grade else None
 
 
-def _get_or_create_unit(db, subject_id: UUID, grade_number: int, code: str, name: str) -> CurriculumUnit:
+def _get_or_create_unit(db, subject_id: int, grade_number: int, code: str, name: str) -> CurriculumUnit:
     unit = db.execute(
         select(CurriculumUnit).where(
             CurriculumUnit.subject_id == subject_id,
@@ -218,7 +217,7 @@ def _get_or_create_unit(db, subject_id: UUID, grade_number: int, code: str, name
     return unit
 
 
-def _load_catalog(db, subject_id: UUID, grade_number: int | None) -> list[CurriculumUnit]:
+def _load_catalog(db, subject_id: int, grade_number: int | None) -> list[CurriculumUnit]:
     """Chuẩn CT (chương/bài) đã seed sẵn cho (môn, khối) — rỗng nếu chưa seed hoặc chưa rõ khối."""
     if grade_number is None:
         return []
@@ -235,13 +234,13 @@ class ResolvedCompetency(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     topic: str
-    excerpt: str | None
+    excerpt: str | None = None
     bloom_level: int
     weight: float
-    unit_id: UUID | None
-    unit_code: str | None
-    unit_name: str | None
-    matched_catalog: bool
+    unit_id: int | None = None
+    unit_code: str | None = None
+    unit_name: str | None = None
+    matched_catalog: bool = False
     evidence: EvidenceRef | None = None
     off_curriculum: bool | None = None
 
@@ -251,7 +250,7 @@ class AnalysisContext(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    subject_id: UUID
+    subject_id: int
     subject_code: str
     grade_number: int | None
     catalog: dict[str, CurriculumUnit]
@@ -294,17 +293,17 @@ def _resolve_units(db, ctx: AnalysisContext, guesses: list[CompetencyGuess]) -> 
     return resolved
 
 
-def merge_by_unit(items: list[ResolvedCompetency]) -> dict[UUID, tuple[int, float]]:
+def merge_by_unit(items: list[ResolvedCompetency]) -> dict[int, tuple[int, float]]:
     """Gộp các ý cùng unit trước khi ghi exam_competencies (PK = exam_paper_id + unit_id, và nhiều ý
     thường map cùng 1 unit khi taxonomy neo theo catalog nhỏ): weight = TỔNG; bloom_level = trung
     bình có trọng số làm tròn half-up (Σweight=0 trong nhóm -> mean đơn giản). Bỏ ý không có unit_id."""
-    groups: dict[UUID, list[ResolvedCompetency]] = {}
+    groups: dict[int, list[ResolvedCompetency]] = {}
     for it in items:
         if it.unit_id is None:
             continue
         groups.setdefault(it.unit_id, []).append(it)
 
-    merged: dict[UUID, tuple[int, float]] = {}
+    merged: dict[int, tuple[int, float]] = {}
     for unit_id, group in groups.items():
         total_weight = sum(it.weight for it in group)
         if total_weight > 0:
@@ -400,6 +399,43 @@ def _concentration(items: list[ResolvedCompetency]) -> ConcentrationRead:
     )
 
 
+def _bloom_distribution_and_alignment(items: list[ResolvedCompetency]) -> tuple[dict[str, float], str]:
+    """Tính phân bố Bloom (chuẩn tham chiếu 40/30/20/10) và đánh giá độ lệch."""
+    total_w = sum(it.weight for it in items)
+    if total_w <= 0:
+        return {"remember": 0.0, "understand": 0.0, "apply": 0.0, "analyze": 0.0}, "ALIGNED"
+
+    rem_w = sum(it.weight for it in items if it.bloom_level == 1)
+    und_w = sum(it.weight for it in items if it.bloom_level == 2)
+    app_w = sum(it.weight for it in items if it.bloom_level == 3)
+    anz_w = sum(it.weight for it in items if it.bloom_level >= 4)
+
+    rem_pct = round(rem_w / total_w * 100, 1)
+    und_pct = round(und_w / total_w * 100, 1)
+    app_pct = round(app_w / total_w * 100, 1)
+    anz_pct = round(anz_w / total_w * 100, 1)
+
+    dist = {"remember": rem_pct, "understand": und_pct, "apply": app_pct, "analyze": anz_pct}
+    hard_score = app_pct + anz_pct
+    if hard_score > 45.0:
+        alignment = "BIASED_HARD"
+    elif hard_score < 15.0:
+        alignment = "BIASED_EASY"
+    else:
+        alignment = "ALIGNED"
+
+    return dist, alignment
+
+
+def _avg_retrieval_distance(items: list[ResolvedCompetency]) -> float | None:
+    """Khoảng cách ngữ nghĩa trung bình đến SGK (1 - similarity score)."""
+    valid_scores = [it.evidence.score for it in items if it.evidence and it.evidence.score is not None]
+    if not valid_scores:
+        return None
+    avg_score = sum(valid_scores) / len(valid_scores)
+    return round(max(0.0, 1.0 - avg_score), 3)
+
+
 def build_content_analysis(inp: AnalysisBuildInput) -> ExamContentAnalysis:
     """Dựng JSON phân tích nội dung v1.
 
@@ -411,6 +447,10 @@ def build_content_analysis(inp: AnalysisBuildInput) -> ExamContentAnalysis:
     off_weight = None
     if inp.rag_available:
         off_weight = round(sum(item.weight for item in inp.items if item.off_curriculum), 3)
+
+    bloom_dist, bloom_align = _bloom_distribution_and_alignment(inp.items)
+    avg_dist = _avg_retrieval_distance(inp.items) if inp.rag_available else None
+
     return ExamContentAnalysis(
         model=inp.model,
         cdi=inp.cdi,
@@ -420,6 +460,9 @@ def build_content_analysis(inp: AnalysisBuildInput) -> ExamContentAnalysis:
         coverage_units=coverage_units,
         concentration=_concentration(inp.items),
         off_curriculum_weight=off_weight,
+        bloom_distribution=bloom_dist,
+        bloom_alignment=bloom_align,
+        avg_retrieval_distance=avg_dist,
     )
 
 
@@ -442,7 +485,7 @@ def _attach_evidence(
     ]
 
 
-def _persist_competencies(db, paper_id: UUID, merged: dict[UUID, tuple[int, float]]) -> None:
+def _persist_competencies(db, paper_id: int, merged: dict[int, tuple[int, float]]) -> None:
     """Ghi exam_competencies từ kết quả merge_by_unit — xóa hết rồi insert lại (đề không quá nhiều
     ý nên không cần diff, và PK exam_paper_id+unit_id đã được merge_by_unit khử trùng trước đó)."""
     db.execute(ExamCompetency.__table__.delete().where(ExamCompetency.exam_paper_id == paper_id))
@@ -450,7 +493,7 @@ def _persist_competencies(db, paper_id: UUID, merged: dict[UUID, tuple[int, floa
         db.add(ExamCompetency(exam_paper_id=paper_id, unit_id=unit_id, weight=weight, bloom_level=bloom_level))
 
 
-def analyze_exam_paper(exam_paper_id: UUID) -> None:
+def analyze_exam_paper(exam_paper_id: int) -> None:
     """Phân tích nội dung 1 đề thi và lưu CDI — chạy nền qua BackgroundTasks, không raise ra ngoài."""
     db = SessionLocal()
     t_start = time.monotonic()

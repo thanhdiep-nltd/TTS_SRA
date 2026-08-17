@@ -1,5 +1,4 @@
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -10,6 +9,7 @@ from src.api.deps import CurrentUser, get_db, require_roles
 from src.models import enums
 from src.models.tables import ExamPaper
 from src.schemas.exam import ExamPaperDetailRead, ExamPaperRead
+from src.schemas.exam_analysis import ExamContentAnalysis
 from src.services import content_difficulty, rbac, storage
 
 _ANALYSIS_ROLES = (enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL)
@@ -20,13 +20,13 @@ router = APIRouter(prefix="/exam-papers", tags=["Exam Papers"])
 @router.post("", response_model=ExamPaperRead, status_code=201)
 def upload_exam(
     user: CurrentUser,
-    subject_id: Annotated[UUID, Form()],
-    semester_id: Annotated[UUID, Form()],
+    subject_id: Annotated[int, Form()],
+    semester_id: Annotated[int, Form()],
     title: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     db: Annotated[Session, Depends(get_db)],
     background_tasks: BackgroundTasks,
-    grade_id: Annotated[UUID | None, Form()] = None,
+    grade_id: Annotated[int | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
 ):
     """Tải lên file đề thi (PDF/DOC/ảnh) — bất kỳ user đã đăng nhập. Tự động phân tích CDI ở nền."""
@@ -35,7 +35,7 @@ def upload_exam(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     paper = ExamPaper(
-        school_id=user.school_id,
+        so_school_id=user.so_school_id,
         subject_id=subject_id,
         semester_id=semester_id,
         grade_id=grade_id,
@@ -57,10 +57,10 @@ def upload_exam(
 def list_exams(
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
-    subject_id: UUID | None = None,
-    semester_id: UUID | None = None,
+    subject_id: int | None = None,
+    semester_id: int | None = None,
 ):
-    stmt = select(ExamPaper).where(ExamPaper.school_id == user.school_id)
+    stmt = select(ExamPaper).where(ExamPaper.so_school_id == user.so_school_id)
     if subject_id is not None:
         stmt = stmt.where(ExamPaper.subject_id == subject_id)
     if semester_id is not None:
@@ -68,21 +68,21 @@ def list_exams(
     return list(db.execute(stmt.order_by(ExamPaper.created_at.desc()).limit(500)).scalars().all())
 
 
-def _get_exam_in_school(db: Session, paper_id: UUID, user) -> ExamPaper:
+def _get_exam_in_school(db: Session, paper_id: int, user) -> ExamPaper:
     paper = db.get(ExamPaper, paper_id)
-    if paper is None or paper.school_id != user.school_id:
+    if paper is None or paper.so_school_id != user.so_school_id:
         raise HTTPException(status_code=404, detail="Đề thi không tồn tại")
     return paper
 
 
-def _can_view_analysis(db: Session, user, subject_id: UUID) -> bool:
+def _can_view_analysis(db: Session, user, subject_id: int) -> bool:
     """Chỉ ADMIN/PRINCIPAL hoặc GV/Trưởng bộ môn phụ trách đúng môn được xem ai_analysis (chứa
     trích đoạn nguyên văn đề + nguồn SGK) — tránh lộ nội dung đề cho GV môn khác cùng trường."""
     return user.role in _ANALYSIS_ROLES or rbac.can_manage_question_bank(db, user, subject_id)
 
 
 @router.get("/{paper_id}", response_model=ExamPaperDetailRead)
-def get_exam(paper_id: UUID, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+def get_exam(paper_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
     paper = _get_exam_in_school(db, paper_id, user)
     detail = ExamPaperDetailRead.model_validate(paper)
     if not _can_view_analysis(db, user, paper.subject_id):
@@ -90,8 +90,20 @@ def get_exam(paper_id: UUID, user: CurrentUser, db: Annotated[Session, Depends(g
     return detail
 
 
+@router.get("/{paper_id}/content-analysis", response_model=ExamContentAnalysis)
+def get_exam_content_analysis(paper_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+    """Lấy kết quả phân tích nội dung đề thi (CDI, Bloom distribution, Coverage, RAG evidence)."""
+    paper = _get_exam_in_school(db, paper_id, user)
+    if not _can_view_analysis(db, user, paper.subject_id):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem phân tích đề thi này")
+    analysis_dict = (paper.ai_analysis or {}).get("content_analysis")
+    if not analysis_dict:
+        raise HTTPException(status_code=404, detail="Đề thi chưa có kết quả phân tích nội dung")
+    return ExamContentAnalysis.model_validate(analysis_dict)
+
+
 @router.get("/{paper_id}/file")
-def download_exam(paper_id: UUID, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+def download_exam(paper_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
     """Xem/tải file đề (preview)."""
     paper = _get_exam_in_school(db, paper_id, user)
     if not paper.file_url:
@@ -104,7 +116,7 @@ def download_exam(paper_id: UUID, user: CurrentUser, db: Annotated[Session, Depe
 
 @router.post("/{paper_id}/analyze", status_code=202)
 def trigger_analyze(
-    paper_id: UUID,
+    paper_id: int,
     user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     background_tasks: BackgroundTasks,
@@ -116,7 +128,7 @@ def trigger_analyze(
 
 
 @router.delete("/{paper_id}", status_code=204, dependencies=[Depends(require_roles(enums.UserRole.ADMIN))])
-def delete_exam(paper_id: UUID, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
+def delete_exam(paper_id: int, user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
     paper = _get_exam_in_school(db, paper_id, user)
     if paper.file_url:
         storage.delete_exam_file(paper.file_url)

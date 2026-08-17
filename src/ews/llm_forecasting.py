@@ -224,6 +224,28 @@ def _format_duration(quantity: Optional[int], unit: Optional[str]) -> str:
     return f"{quantity} {unit_vn}"
 
 
+def _lms_evidence_block(lms_evidence: Optional[List[Dict[str, Any]]]) -> str:
+    """Dựng khối 'Bằng chứng LMS' cho prompt (M3.2).
+
+    lms_evidence: danh sách dict {unit_name, pattern, explanation} (từ classify_lms_behavior).
+    Trả chuỗi rỗng nếu không có bằng chứng.
+    """
+    if not lms_evidence:
+        return ""
+
+    lines = ["--- Bằng chứng học tập LMS ---"]
+    for ev in lms_evidence:
+        unit = ev.get("unit_name", "?")
+        pattern = ev.get("pattern", "?")
+        explanation = ev.get("explanation", "")
+        lines.append(f"- [{pattern}] {unit}: {explanation}")
+    lines.append(
+        "HƯỚNG DẪN: Hãy viện dẫn các bằng chứng LMS cụ thể này vào llm_narrative_summary "
+        "(vd 'học tệ chương X', 'làm qua loa', 'nỗ lực nhưng không hiểu') thay vì nói chung."
+    )
+    return "\n".join(lines)
+
+
 def _build_llm_prompt(
     student_code: str,
     subject_name: str,
@@ -231,6 +253,7 @@ def _build_llm_prompt(
     life_events: List[Dict[str, Any]],
     medical: List[Dict[str, Any]],
     previous_llm_result: Optional[Dict[str, Any]] = None,
+    lms_evidence: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Tạo prompt structured (tiếng Việt) cho LLM.
 
@@ -332,7 +355,8 @@ Môn học: {subject_name}
 {le_str}
 
 --- Bệnh lý / tiền sử y tế ---
-{med_str}"""
+{med_str}
+{_lms_evidence_block(lms_evidence)}"""
 
     # Khối "Điểm trước đó & chính sách ổn định" — chỉ chèn khi re-run (đã có điểm LLM cũ)
     stability_block = ""

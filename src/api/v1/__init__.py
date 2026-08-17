@@ -11,8 +11,10 @@ from src.api.v1 import (
     exams,
     gradebook,
     knowledge,
+    knowledge_gap,
     mappings,
     notifications,
+    pass_fail_forecast,
     question_bank,
     recordings,
     reports,
@@ -46,5 +48,7 @@ api_router.include_router(exams.router)
 api_router.include_router(notifications.router)
 api_router.include_router(chat.router)
 api_router.include_router(recordings.router)
+api_router.include_router(knowledge_gap.router)
+api_router.include_router(pass_fail_forecast.router)
 
 __all__ = ["api_router"]

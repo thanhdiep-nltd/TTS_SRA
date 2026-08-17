@@ -60,3 +60,6 @@ class ExamContentAnalysis(BaseModel):
     coverage_units: list[CoverageUnitRead]
     concentration: ConcentrationRead
     off_curriculum_weight: float | None
+    bloom_distribution: dict[str, float] | None = None
+    bloom_alignment: str | None = None
+    avg_retrieval_distance: float | None = None

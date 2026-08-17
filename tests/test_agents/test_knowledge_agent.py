@@ -24,16 +24,27 @@ def _fake_resp(payload: dict) -> MagicMock:
 
 
 def test_build_filter_none():
-    assert retrieval._build_filter(None, None) is None
+    assert retrieval._build_filter(None, None, include_lesson_plans=True) is None
+    assert retrieval._build_filter(None, None, include_lesson_plans=False) == {
+        "must_not": [{"key": "source", "match": {"value": "giao_an"}}]
+    }
 
 
 def test_build_filter_mon_and_lop():
-    flt = retrieval._build_filter("toan", 8)
+    flt = retrieval._build_filter("toan", 8, include_lesson_plans=True)
     assert flt == {
         "must": [
             {"key": "mon", "match": {"value": "toan"}},
             {"key": "lop", "match": {"value": "8"}},  # lop ép về chuỗi (khớp payload)
         ]
+    }
+    flt_with_filter = retrieval._build_filter("toan", 8, include_lesson_plans=False)
+    assert flt_with_filter == {
+        "must": [
+            {"key": "mon", "match": {"value": "toan"}},
+            {"key": "lop", "match": {"value": "8"}},
+        ],
+        "must_not": [{"key": "source", "match": {"value": "giao_an"}}],
     }
 
 

@@ -1326,3 +1326,80 @@ export interface EwsValidWeeks {
   semester_2: number[];
 }
 
+// ============================================================================
+// LỖ HỔNG KIẾN THỨC (M2) & DỰ ĐOÁN PASS/FAIL (M4)
+// ============================================================================
+
+export interface LmsEvidencePattern {
+  unit_name: string;
+  pattern: string; // SKIPPED | RUSHED | OFF_TASK | EFFORT_BUT_LOST | WEAK_CHAPTER | MISSING_IN_EXAM
+  explanation: string;
+}
+
+export interface KnowledgeGapItem {
+  unit_id: number;
+  unit_name: string | null;
+  gap_score: number; // 0..1, cao = hổng nặng
+  mastery: number; // 0..1
+  evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR
+  evidence_detail: Record<string, unknown> | null;
+}
+
+export interface StudentKnowledgeGaps {
+  student_code: string;
+  subject_id: number;
+  school_year_id: number;
+  semester_index: number;
+  gaps: KnowledgeGapItem[];
+}
+
+export interface ClassKnowledgeGaps {
+  class_id: number;
+  subject_id: number;
+  school_year_id: number;
+  semester_index: number;
+  gaps: KnowledgeGapItem[];
+}
+
+export interface StudentForecastRow {
+  student_code: string;
+  student_name: string | null;
+  predicted_score: number;
+  verdict: "PASS" | "FAIL" | "BORDERLINE";
+}
+
+export interface PassFailForecastResult {
+  exam_paper_id: number | null;
+  cdi: number | null;
+  total: number;
+  pass_count: number;
+  fail_count: number;
+  borderline_count: number;
+  fail_rate: number;
+  students: StudentForecastRow[];
+}
+
+export interface ExamValidityRow {
+  exam_paper_id: string;
+  subject_id: string;
+  subject_name: string;
+  semester_id: string;
+  score_category: string;
+  grade_id: string | null;
+  grade_name: string;
+  n: number;
+  mean_score: number;
+  edi: number;
+  cdi: number | null;
+  divergence: number | null;
+  flag: string; // 'NORMAL' | 'INFLATION_OR_LEAK' | 'LEARNING_GAP'
+  confidence: string; // 'HIGH' | 'MEDIUM' | 'LOW'
+  column_index?: number | null;
+}
+
+export interface SchoolValidityOverview {
+  total_checked: number;
+  flags_count: Record<string, number>;
+  flagged_items: ExamValidityRow[];
+}
+

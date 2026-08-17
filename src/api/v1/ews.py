@@ -1141,6 +1141,50 @@ def get_ews_raw(
         for r in med_rows
     ]
 
+    # 8. Bằng chứng hành vi LMS (M3) — phân loại từ lms_evidence service.
+    #    Chỉ tính khi có dữ liệu thời gian (active_time_sec/time_spent_sec) từ fact_so_assignment_grade.
+    lms_evidence: list[dict] = []
+    try:
+        from src.ews.lms_evidence import LmsAssignmentEvidence, classify_lms_behavior
+
+        ev_rows = db.execute(
+            text("""
+                SELECT dsa.fullname, fag.final_grade, fag.active_time_sec,
+                       fag.time_spent_sec, dsa.time_limit_sec, fag.attempt_count,
+                       fag.tab_hidden_count, fag.rte, (fag.id IS NOT NULL) AS submitted
+                FROM s360.dim_so_assignment dsa
+                LEFT JOIN s360.fact_so_assignment_grade fag
+                    ON fag.assignment_id = dsa.assignment_id
+                   AND fag.student_code = :sc
+                WHERE dsa.subject_id = :sid
+                  AND dsa.semester_index = :sem
+                  AND dsa.so_school_id = :school_id
+                  AND dsa.grade_id = :gid
+                  AND dsa.due_date <= CAST(:cutoff AS DATE)
+                  AND dsa.due_date >= CAST(:jdate AS DATE)
+                ORDER BY dsa.due_date, dsa.assignment_id
+            """),
+            {"sc": student_code, "sid": subject_id, "sem": semester_index,
+             "school_id": so_school_id, "gid": grade_id, "cutoff": cutoff, "jdate": join_date},
+        ).fetchall()
+        assignments = [
+            LmsAssignmentEvidence(
+                unit_name=r.fullname or f"Bài #{i}",
+                final_grade=float(r.final_grade) if r.final_grade is not None else None,
+                active_time_sec=r.active_time_sec,
+                time_spent_sec=r.time_spent_sec,
+                time_limit_sec=r.time_limit_sec,
+                attempt_count=r.attempt_count or 1,
+                tab_hidden_count=r.tab_hidden_count or 0,
+                rte=r.rte,
+                submitted=bool(r.submitted),
+            )
+            for i, r in enumerate(ev_rows, start=1)
+        ]
+        lms_evidence = [p.model_dump() for p in classify_lms_behavior(assignments)]
+    except Exception:  # noqa: BLE001 — lọc nhiễu không được làm sập endpoint
+        logger.warning("Không tính được lms_evidence cho %s: %s", student_code, exc_info=True)
+
     return EwsRawDetail(
         student_code=student_code,
         subject_id=subject_id,
@@ -1152,6 +1196,7 @@ def get_ews_raw(
         lms=lms,
         lms_expected=lms_expected,
         lms_submitted=lms_submitted,
+        lms_evidence=lms_evidence,
         attendance=attendance,
         behavior=behavior,
         life_events=life_events,

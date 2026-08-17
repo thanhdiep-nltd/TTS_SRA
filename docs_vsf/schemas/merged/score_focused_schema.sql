@@ -65,6 +65,15 @@ DROP TABLE IF EXISTS s360.dim_homeroom_class_student CASCADE;
 DROP TABLE IF EXISTS s360.dim_homeroom_class CASCADE;
 DROP TABLE IF EXISTS s360.dim_school_year CASCADE;
 
+-- Hệ thống Soạn Giáo Án (cm_*) — 8 bảng
+DROP TABLE IF EXISTS s360.cm_courseassessmentunit CASCADE;
+DROP TABLE IF EXISTS s360.cm_courseassessment CASCADE;
+DROP TABLE IF EXISTS s360.cm_lessontarget CASCADE;
+DROP TABLE IF EXISTS s360.cm_lessonplan CASCADE;
+DROP TABLE IF EXISTS s360.cm_lesson CASCADE;
+DROP TABLE IF EXISTS s360.cm_unit CASCADE;
+DROP TABLE IF EXISTS s360.cm_course CASCADE;
+
 -- ============================================================
 -- ENUMS & TYPES (Schema: public)
 -- ============================================================
@@ -208,6 +217,14 @@ CREATE TABLE public.exam_papers (
     title           VARCHAR(500) NOT NULL,
     description     TEXT,
     file_url        TEXT,
+    file_type       public.file_type_enum DEFAULT 'PDF',
+    file_size_bytes BIGINT,
+    topics          TEXT[],
+    ai_analysis     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    content_difficulty NUMERIC(4,3),
+    content_analyzed_at TIMESTAMPTZ,
+    content_source  public.file_type_enum,
     difficulty      public.difficulty_enum,
     difficulty_coefficient NUMERIC(3,2) NOT NULL DEFAULT 1.00 CHECK (difficulty_coefficient BETWEEN 0.50 AND 1.50),
     num_questions   SMALLINT,
@@ -501,6 +518,9 @@ CREATE TABLE s360.dim_so_assignment (
     due_date            DATE,
     date_assigned       DATE,
     gradebook_type_item_id BIGINT REFERENCES s360.dim_exam_moet(gradebook_type_item_id),
+    -- M0.1: cấu hình thời gian cho lọc nhiễu off-task/rapid-guess.
+    allow_attempts      INTEGER DEFAULT 1,
+    time_limit_sec      INTEGER,
     created_at          TIMESTAMPTZ DEFAULT NOW(),
     updated_at          TIMESTAMPTZ DEFAULT NOW(),
     source_system       VARCHAR(50) DEFAULT 'LMS'
@@ -589,6 +609,15 @@ CREATE TABLE s360.fact_so_assignment_grade (
     final_grade         DECIMAL(10,1), -- Điểm bài tập được giao trên LMS
     comment             TEXT,
     is_locked           INTEGER DEFAULT 0,
+    -- M0.1: hành vi làm bài LMS (lọc nhiễu off-task/rapid-guess).
+    started_at          TIMESTAMPTZ,
+    submitted_at        TIMESTAMPTZ,
+    attempt_count       INTEGER DEFAULT 1,
+    time_spent_sec      INTEGER,   -- tổng thời gian (giây, thô)
+    active_time_sec     INTEGER,   -- thời gian tương tác THỰC (đã loại treo máy)
+    tab_hidden_count    INTEGER DEFAULT 0,
+    idle_sec            INTEGER DEFAULT 0,
+    rte                 SMALLINT,  -- Response Time Effort: 1=effortful, 0=rapid-guess/off-task
     created_at          TIMESTAMPTZ DEFAULT NOW(),
     updated_at          TIMESTAMPTZ DEFAULT NOW(),
     source_system       VARCHAR(50) DEFAULT 'LMS'
@@ -1369,5 +1398,268 @@ CREATE INDEX IF NOT EXISTS idx_tssrd_risk_label
     ON s360.train_student_subject_risk_dataset(actual_risk_level);
 
 COMMENT ON TABLE s360.train_student_subject_risk_dataset IS 'Bảng chứa Dữ liệu Mock / Lịch sử có Nhãn (Ground Truth Labels) phục vụ Huấn luyện Mô hình EWS';
+
+-- ============================================================
+-- M0.2: Map bài LMS ↔ chuẩn chương trình (assignment_competencies)
+-- M0.3: Bảng kết quả lỗ hổng kiến thức (student_knowledge_gaps)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.assignment_competencies (
+    assignment_id  BIGINT NOT NULL,          -- s360.dim_so_assignment.assignment_id
+    unit_id        BIGINT NOT NULL REFERENCES public.curriculum_units(id) ON DELETE RESTRICT,
+    weight         NUMERIC(4,3) NOT NULL DEFAULT 0 CHECK (weight BETWEEN 0 AND 1),
+    bloom_level    SMALLINT CHECK (bloom_level BETWEEN 1 AND 6),
+    PRIMARY KEY (assignment_id, unit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ac_unit ON public.assignment_competencies(unit_id);
+
+CREATE TABLE IF NOT EXISTS public.student_knowledge_gaps (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    so_school_id     INTEGER NOT NULL,
+    student_code     VARCHAR(50) NOT NULL,
+    subject_id       INTEGER NOT NULL,       -- s360.dim_subject.id
+    school_year_id   INTEGER NOT NULL,
+    semester_index   INTEGER NOT NULL CHECK (semester_index IN (1,2)),
+    unit_id          BIGINT NOT NULL REFERENCES public.curriculum_units(id) ON DELETE RESTRICT,
+    gap_score        NUMERIC(5,2),           -- 0..1, cao = hổng nặng
+    evidence_source  VARCHAR(20),            -- 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR'
+    evidence_detail  JSONB,
+    status           VARCHAR(20) NOT NULL DEFAULT 'active',
+    detected_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_student_knowledge_gap UNIQUE (so_school_id, student_code, subject_id, school_year_id, semester_index, unit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_skg_student ON public.student_knowledge_gaps(student_code, subject_id);
+CREATE INDEX IF NOT EXISTS idx_skg_unit ON public.student_knowledge_gaps(unit_id);
+
+-- ============================================================
+-- HỆ THỐNG SOẠN GIÁO ÁN (cm_*) — 8 bảng
+-- Nguồn: docs_vsf/schemas/new/Schema Hệ thống Soạn Giáo Án.csv
+-- Cấu trúc phân cấp: cm_course → cm_unit → cm_lesson → cm_lessonplan/cm_lessontarget
+--                    cm_course → cm_courseassessment → cm_courseassessmentunit
+-- ============================================================
+
+-- 1. Khóa học / môn học trong hệ soạn giáo án
+CREATE TABLE s360.cm_course (
+    id              BIGINT PRIMARY KEY,
+    content1        VARCHAR,
+    content2        VARCHAR,
+    subject_id      INTEGER REFERENCES s360.dim_subject(id),
+    grade_id        INTEGER,
+    period          DOUBLE PRECISION,
+    is_subcourse    BOOLEAN DEFAULT FALSE,
+    subcode         VARCHAR(50),
+    subname         VARCHAR(255),
+    main_course_id  BIGINT REFERENCES s360.cm_course(id),
+    code            VARCHAR(50),
+    name            VARCHAR(255),
+    description     TEXT,
+    order_number    INTEGER,
+    status          INTEGER DEFAULT 1,
+    created_by_id   VARCHAR(50),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    modified_by_id  VARCHAR(50),
+    modified_at     TIMESTAMPTZ,
+    is_deleted      BOOLEAN DEFAULT FALSE,
+    school_year_id  VARCHAR(50),
+    _processed_at   INTEGER,
+    ingest_date     INTEGER
+);
+COMMENT ON TABLE s360.cm_course IS 'Khóa học / môn học trong hệ thống soạn giáo án';
+
+-- 2. Chương / bài trong khóa học
+CREATE TABLE s360.cm_unit (
+    id              BIGINT PRIMARY KEY,
+    start_date      DATE,
+    end_date        DATE,
+    color           VARCHAR(20),
+    content1        VARCHAR,
+    content2        VARCHAR,
+    course_id       BIGINT REFERENCES s360.cm_course(id),
+    code            VARCHAR(50),
+    name            VARCHAR(255),
+    description     TEXT,
+    order_number    INTEGER,
+    period          DOUBLE PRECISION,
+    status          INTEGER DEFAULT 1,
+    created_by_id   VARCHAR(50),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    modified_by_id  VARCHAR(50),
+    modified_at     TIMESTAMPTZ,
+    is_deleted      BOOLEAN DEFAULT FALSE,
+    school_year_id  VARCHAR(50),
+    _processed_at   INTEGER,
+    ingest_date     INTEGER
+);
+CREATE INDEX idx_cm_unit_course ON s360.cm_unit(course_id);
+COMMENT ON TABLE s360.cm_unit IS 'Chương / bài học trong khóa học của hệ soạn giáo án';
+
+-- 3. Bài học
+CREATE TABLE s360.cm_lesson (
+    id              BIGINT PRIMARY KEY,
+    start_date      DATE,
+    end_date        DATE,
+    color           VARCHAR(20),
+    content1        VARCHAR,
+    unit_id         BIGINT REFERENCES s360.cm_unit(id),
+    code            VARCHAR(50),
+    name            VARCHAR(255),
+    description     TEXT,
+    order_number    INTEGER,
+    period          DOUBLE PRECISION,
+    status          INTEGER DEFAULT 1,
+    created_by_id   VARCHAR(50),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    modified_by_id  VARCHAR(50),
+    modified_at     TIMESTAMPTZ,
+    is_deleted      BOOLEAN DEFAULT FALSE,
+    school_year_id  VARCHAR(50),
+    _processed_at   INTEGER,
+    ingest_date     INTEGER
+);
+CREATE INDEX idx_cm_lesson_unit ON s360.cm_lesson(unit_id);
+COMMENT ON TABLE s360.cm_lesson IS 'Bài học thuộc chương/bài (cm_unit) của hệ soạn giáo án';
+
+-- 4. Giáo án (bỏ cột trùng schoolyearid1)
+CREATE TABLE s360.cm_lessonplan (
+    id                      BIGINT PRIMARY KEY,
+    lesson_id               BIGINT REFERENCES s360.cm_lesson(id),
+    school_id               INTEGER,
+    school_year_id          VARCHAR(50),
+    lesson_plan_activity_types VARCHAR(255),
+    start_date              DATE,
+    end_date                DATE,
+    has_custom_date_range   BOOLEAN DEFAULT FALSE,
+    approved_by_id          VARCHAR(50),
+    approved_at             TIMESTAMPTZ,
+    code                    VARCHAR(50),
+    name                    VARCHAR(255),
+    description             TEXT,
+    order_number            INTEGER,
+    status                  INTEGER DEFAULT 1,
+    created_by_id           VARCHAR(50),
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    reject_by_id            VARCHAR(50),
+    reject_at               TIMESTAMPTZ,
+    modified_by_id          VARCHAR(50),
+    modified_at             TIMESTAMPTZ,
+    is_deleted              BOOLEAN DEFAULT FALSE,
+    content_own             TEXT,
+    period                  DOUBLE PRECISION,
+    period_lesson           DOUBLE PRECISION,
+    _processed_at           INTEGER,
+    ingest_date             INTEGER
+);
+CREATE INDEX idx_cm_lessonplan_lesson ON s360.cm_lessonplan(lesson_id);
+COMMENT ON TABLE s360.cm_lessonplan IS 'Giáo án của bài học (cm_lesson) trong hệ soạn giáo án';
+
+-- 5. Mục tiêu bài học
+CREATE TABLE s360.cm_lessontarget (
+    id              BIGINT PRIMARY KEY,
+    lesson_id       BIGINT REFERENCES s360.cm_lesson(id),
+    code            VARCHAR(50),
+    name            VARCHAR(255),
+    description     TEXT,
+    order_number    INTEGER,
+    status          INTEGER DEFAULT 1,
+    created_by_id   VARCHAR(50),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    modified_by_id  VARCHAR(50),
+    modified_at     TIMESTAMPTZ,
+    is_deleted      BOOLEAN DEFAULT FALSE,
+    school_year_id  VARCHAR(50),
+    _processed_at   INTEGER,
+    ingest_date     INTEGER
+);
+CREATE INDEX idx_cm_lessontarget_lesson ON s360.cm_lessontarget(lesson_id);
+COMMENT ON TABLE s360.cm_lessontarget IS 'Mục tiêu của bài học (cm_lesson) trong hệ soạn giáo án';
+
+-- 6. Đánh giá khóa học
+CREATE TABLE s360.cm_courseassessment (
+    id                      BIGINT PRIMARY KEY,
+    course_id               BIGINT REFERENCES s360.cm_course(id),
+    period                  DOUBLE PRECISION,
+    start_date              DATE,
+    end_date                DATE,
+    content1                VARCHAR,
+    organization_method     VARCHAR(255),
+    evaluate_method         VARCHAR(255),
+    scale                   VARCHAR(50),
+    objective_subjective    DECIMAL(5,4),
+    personal_group          DECIMAL(5,4),
+    code                    VARCHAR(50),
+    name                    VARCHAR(255),
+    description             TEXT,
+    order_number            INTEGER,
+    status                  INTEGER DEFAULT 1,
+    created_by_id           VARCHAR(50),
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    modified_by_id          VARCHAR(50),
+    modified_at             TIMESTAMPTZ,
+    is_deleted              BOOLEAN DEFAULT FALSE,
+    school_year_id          VARCHAR(50),
+    upload_time             TIMESTAMPTZ,
+    publish_time            TIMESTAMPTZ,
+    phase                   VARCHAR(50),
+    testspecs_filename      VARCHAR(255),
+    testspecs_url           TEXT,
+    _processed_at           INTEGER,
+    ingest_date             INTEGER
+);
+CREATE INDEX idx_cm_courseassessment_course ON s360.cm_courseassessment(course_id);
+COMMENT ON TABLE s360.cm_courseassessment IS 'Đánh giá khóa học (cm_course) trong hệ soạn giáo án';
+
+-- 7. Liên kết đánh giá ↔ unit (composite PK)
+CREATE TABLE s360.cm_courseassessmentunit (
+    course_assessment_id    BIGINT NOT NULL REFERENCES s360.cm_courseassessment(id),
+    unit_id                 BIGINT NOT NULL REFERENCES s360.cm_unit(id),
+    _processed_at           INTEGER,
+    ingest_date             INTEGER,
+    PRIMARY KEY (course_assessment_id, unit_id)
+);
+COMMENT ON TABLE s360.cm_courseassessmentunit IS 'Liên kết giữa đánh giá khóa học và chương/bài (cm_unit)';
+
+-- ============================================================
+-- VIEWS: TAM GIÁC HÓA ĐỘ KHÓ (TEVI)
+-- ============================================================
+
+CREATE OR REPLACE VIEW public.v_exam_validity AS
+SELECT
+    ep.id AS exam_paper_id,
+    ep.so_school_id,
+    ep.subject_id,
+    s.name AS subject_name,
+    ep.semester_id,
+    ep.score_category,
+    ep.grade_id,
+    concat('Khối ', ep.grade_id) AS grade_name,
+    COALESCE(sub.n, 0) AS n,
+    COALESCE(sub.mean_score, 0.0) AS mean_score,
+    COALESCE(sub.edi, 0.0) AS edi,
+    ep.content_difficulty AS cdi,
+    CASE WHEN ep.content_difficulty IS NOT NULL AND sub.edi IS NOT NULL
+         THEN round((sub.edi - ep.content_difficulty)::numeric, 3)
+         ELSE NULL END AS divergence,
+    CASE
+        WHEN ep.content_difficulty IS NULL THEN 'NO_CONTENT'
+        WHEN COALESCE(sub.n, 0) < 30 THEN 'LOW_SAMPLE'
+        WHEN (sub.edi - ep.content_difficulty) <= -0.25 THEN 'INFLATION_OR_LEAK'
+        WHEN (sub.edi - ep.content_difficulty) >= 0.25 THEN 'LEARNING_GAP'
+        ELSE 'VALID'
+    END AS flag,
+    ep.title
+FROM public.exam_papers ep
+JOIN s360.dim_subject s ON s.id = ep.subject_id
+LEFT JOIN (
+    SELECT
+        fg.so_school_id,
+        fg.subject_id,
+        fg.semester_index AS semester_id,
+        COUNT(*)::integer AS n,
+        ROUND(AVG(fg.final_grade)::numeric, 2) AS mean_score,
+        ROUND((1.0 - (AVG(fg.final_grade) / 10.0))::numeric, 3) AS edi
+    FROM s360.fact_gradebooks fg
+    WHERE fg.final_grade IS NOT NULL
+    GROUP BY fg.so_school_id, fg.subject_id, fg.semester_index
+) sub ON sub.so_school_id = ep.so_school_id AND sub.subject_id = ep.subject_id AND sub.semester_id = ep.semester_id;
 
 -- End of score_focused_schema.sql DDL

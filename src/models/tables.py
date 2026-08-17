@@ -293,10 +293,10 @@ class ExamPaper(Base):
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False)
-    semester_id = Column(UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="RESTRICT"), nullable=False)
-    grade_id = Column(UUID(as_uuid=True), ForeignKey("grades.id"))
+    so_school_id = Column(Integer, nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    semester_id = Column(Integer, nullable=False)
+    grade_id = Column(Integer)
     score_type = Column(
         pg_enum(enums.ScoreType, "score_type_enum")
     )  # (legacy, nullable) — binding thật ở exam_column_mappings
@@ -333,7 +333,7 @@ class CurriculumUnit(Base):
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    subject_id = Column(Integer, nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
     parent_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"))
     code = Column(String(50), nullable=False)
@@ -359,6 +359,52 @@ class ExamCompetency(Base):
     unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
     weight = Column(Numeric(4, 3), nullable=False, server_default=text("0"))
     bloom_level = Column(SmallInteger)
+
+
+class AssignmentCompetency(Base):
+    """Map bài LMS (dim_so_assignment.assignment_id) vào chuẩn chương trình (curriculum_units).
+
+    Tương tự ExamCompetency nhưng cho bài tập LMS — cầu nối để M2/M3 biết bài LMS thuộc chương nào.
+    """
+
+    __tablename__ = "assignment_competencies"
+    __table_args__ = (
+        CheckConstraint("weight BETWEEN 0 AND 1", name="ac_weight_range"),
+        CheckConstraint("bloom_level BETWEEN 1 AND 6", name="ac_bloom_level_range"),
+        Index("idx_ac_unit", "unit_id"),
+    )
+
+    assignment_id = Column(BigInteger, primary_key=True)  # s360.dim_so_assignment.assignment_id
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
+    weight = Column(Numeric(4, 3), nullable=False, server_default=text("0"))
+    bloom_level = Column(SmallInteger)
+
+
+class StudentKnowledgeGap(Base):
+    """Kết quả phát hiện lỗ hổng kiến thức của học sinh theo unit (M2)."""
+
+    __tablename__ = "student_knowledge_gaps"
+    __table_args__ = (
+        UniqueConstraint(
+            "so_school_id", "student_code", "subject_id", "school_year_id", "semester_index", "unit_id",
+            name="uq_student_knowledge_gap",
+        ),
+        Index("idx_skg_student", "student_code", "subject_id"),
+        Index("idx_skg_unit", "unit_id"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    student_code = Column(String(50), nullable=False)
+    subject_id = Column(Integer, nullable=False)  # s360.dim_subject.id
+    school_year_id = Column(Integer, nullable=False)
+    semester_index = Column(Integer, nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), nullable=False)
+    gap_score = Column(Numeric(5, 2))  # 0..1, cao = hổng nặng
+    evidence_source = Column(String(20))  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR'
+    evidence_detail = Column(JSONB)
+    status = Column(String(20), nullable=False, server_default=text("'active'"))
+    detected_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
 # ============================================================

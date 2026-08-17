@@ -1,7 +1,6 @@
 """Test offline (không chạm DB) cho công thức tam giác hóa EDI/CDI."""
 
 from types import SimpleNamespace
-from uuid import uuid4
 
 from src.models import enums
 from src.services import exam_validity
@@ -42,12 +41,12 @@ class _SequentialFakeSession:
 
 def _row(**overrides):
     base = {
-        "exam_paper_id": uuid4(),
-        "subject_id": uuid4(),
+        "exam_paper_id": 1,
+        "subject_id": 1,
         "subject_name": "Toán",
-        "semester_id": uuid4(),
+        "semester_id": 1,
         "score_category": enums.ScoreCategory.FINAL,
-        "grade_id": uuid4(),
+        "grade_id": 8,
         "grade_name": "Khối 8",
         "n": 35,
         "mean_score": 4.8,
@@ -91,15 +90,15 @@ def test_learning_gap_flag_example_from_design_doc():
 def test_compute_validity_filters_by_school_and_subject(monkeypatch):
     rows = [_row()]
     fake_db = _FakeSession(rows)
-    school_id, subject_id, semester_id = uuid4(), uuid4(), uuid4()
-    result = exam_validity.compute_validity(fake_db, school_id, semester_id, subject_id, enums.ScoreCategory.FINAL)
+    so_school_id, subject_id, semester_id = 101, 1, 1
+    result = exam_validity.compute_validity(fake_db, so_school_id, semester_id, subject_id, enums.ScoreCategory.FINAL)
     assert len(result) == 1
     assert result[0].flag == "LEARNING_GAP"
 
 
 def test_compute_validity_scans_whole_school_when_subject_omitted():
     fake_db = _FakeSession([])
-    exam_validity.compute_validity(fake_db, uuid4(), uuid4())
+    exam_validity.compute_validity(fake_db, 101, 1)
     assert fake_db.last_params["subject_id"] is None
     assert fake_db.last_params["cat"] is None
 
@@ -112,7 +111,7 @@ def test_school_overview_excludes_valid_and_no_content_from_flagged_items():
         _row(flag="INFLATION_OR_LEAK", divergence=-0.4),
     ]
     fake_db = _FakeSession(rows)
-    overview = exam_validity.school_overview(fake_db, uuid4(), uuid4())
+    overview = exam_validity.school_overview(fake_db, 101, 1)
     assert overview.total_checked == 4
     assert overview.flags_count == {"VALID": 1, "NO_CONTENT": 1, "LEARNING_GAP": 1, "INFLATION_OR_LEAK": 1}
     # Chỉ cờ bất thường, sắp xếp theo |divergence| giảm dần -> INFLATION_OR_LEAK (0.4) trước LEARNING_GAP (0.3)
@@ -124,11 +123,11 @@ def test_content_adjusted_ability_diverges_from_raw_average_when_cdi_high():
     "TB cohort" cũ — hai lớp cùng raw_average nhưng đề khác độ khó nội dung sẽ KHÔNG cùng ability).
     """
     cdi_row = _row(cdi=0.8)
-    class_rows = [SimpleNamespace(class_id=uuid4(), class_name="8A1", raw_average=6.0)]
+    class_rows = [SimpleNamespace(class_id=1, class_name="8A1", raw_average=6.0)]
     fake_db = _SequentialFakeSession([[cdi_row], class_rows])
 
     result = exam_validity.content_adjusted_ranking(
-        fake_db, uuid4(), uuid4(), uuid4(), uuid4(), enums.ScoreCategory.FINAL
+        fake_db, 101, 8, 1, 1, enums.ScoreCategory.FINAL
     )
 
     assert len(result) == 1
@@ -143,11 +142,11 @@ def test_content_adjusted_ability_diverges_from_raw_average_when_cdi_high():
 def test_content_adjusted_ability_equals_raw_when_cdi_neutral():
     """CDI=0.5 (trung tính) -> không cộng/trừ gì -> ability == raw_average, đúng như §2.5."""
     cdi_row = _row(cdi=0.5)
-    class_rows = [SimpleNamespace(class_id=uuid4(), class_name="8A2", raw_average=7.0)]
+    class_rows = [SimpleNamespace(class_id=2, class_name="8A2", raw_average=7.0)]
     fake_db = _SequentialFakeSession([[cdi_row], class_rows])
 
     result = exam_validity.content_adjusted_ranking(
-        fake_db, uuid4(), uuid4(), uuid4(), uuid4(), enums.ScoreCategory.FINAL
+        fake_db, 101, 8, 1, 1, enums.ScoreCategory.FINAL
     )
 
     assert result[0].content_adjusted_ability == result[0].raw_average == 7.0
@@ -155,10 +154,10 @@ def test_content_adjusted_ability_equals_raw_when_cdi_neutral():
 
 def test_content_adjusted_ability_falls_back_to_raw_when_no_cdi():
     """Chưa có CDI (đề chưa được phân tích nội dung) -> không cộng bù, ability == raw_average."""
-    fake_db = _SequentialFakeSession([[], [SimpleNamespace(class_id=uuid4(), class_name="8A3", raw_average=5.5)]])
+    fake_db = _SequentialFakeSession([[], [SimpleNamespace(class_id=3, class_name="8A3", raw_average=5.5)]])
 
     result = exam_validity.content_adjusted_ranking(
-        fake_db, uuid4(), uuid4(), uuid4(), uuid4(), enums.ScoreCategory.FINAL
+        fake_db, 101, 8, 1, 1, enums.ScoreCategory.FINAL
     )
 
     assert result[0].content_adjusted_ability == result[0].raw_average == 5.5

@@ -1572,6 +1572,8 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
 
     # Điểm LMS: mỗi học sinh nộp bài với xác suất theo profile + lms_series AR(1).
     # CHỈ lấy assignments KHỚP (so_school_id, grade_id) của học sinh — mirror feature_extractor.
+    # M0.1: seed thêm cột hành vi làm bài (active_time_sec, tab_hidden_count, idle_sec, rte)
+    # để M3 (lms_evidence) demo được các nhóm: effortful-but-lost / rapid-guess / off-task.
     lms_grade_params = []
     lms_id = 1
     for p in students:
@@ -1593,20 +1595,59 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
             # Điểm LMS: lms_base + biến thiên AR(1) theo tuần
             week_idx = a["semester_index"] * 4 + a["due_date"].isocalendar()[1] % 4
             lms_score = float(np.clip(lms_base + (p.lms_series[week_idx % 12] - 0.85) * 3.0, 0.0, 10.0))
+            # M0.1: hành vi làm bài LMS (time_limit mặc định 30 phút = 1800s).
+            time_limit = 1800
+            if lms_score < 5.0 and p.latents[4] > 0.5:
+                # Nỗ lực nhưng không hiểu: làm lâu, nhiều lần thử.
+                active_sec = random.randint(1500, time_limit)
+                attempts = random.randint(2, 4)
+                tab_hidden = 0
+                rte = 1
+            elif lms_score < 5.0 and random.random() < 0.4:
+                # Làm qua loa / đoán mò.
+                active_sec = random.randint(30, 150)
+                attempts = 1
+                tab_hidden = 0
+                rte = 0
+            elif random.random() < 0.05:
+                # Treo máy: tổng thời gian dài nhưng active thấp + rời tab nhiều.
+                active_sec = random.randint(200, 500)
+                tab_hidden = random.randint(3, 6)
+                attempts = 1
+                rte = 0
+            else:
+                # Làm bài bình thường.
+                active_sec = random.randint(400, 1400)
+                attempts = 1
+                tab_hidden = 0
+                rte = 1
+            submitted_at = datetime.combine(a["due_date"], datetime.min.time()) - timedelta(hours=random.randint(1, 24))
             lms_grade_params.append({
                 "id": lms_id,
                 "so_school_id": p.school_id,
                 "assignment_id": a["assignment_id"],
                 "student_code": p.code,
                 "final_grade": round(lms_score, 1),
-                "is_locked": 1
+                "is_locked": 1,
+                "started_at": submitted_at - timedelta(minutes=random.randint(5, 60)),
+                "submitted_at": submitted_at,
+                "attempt_count": attempts,
+                "time_spent_sec": active_sec + tab_hidden * 300 + random.randint(0, 200),
+                "active_time_sec": active_sec,
+                "tab_hidden_count": tab_hidden,
+                "idle_sec": tab_hidden * 300,
+                "rte": rte,
             })
             lms_id += 1
 
     execute_batch(session, """
         INSERT INTO s360.fact_so_assignment_grade 
-        (id, so_school_id, assignment_id, student_code, final_grade, is_locked)
-        VALUES (:id, :so_school_id, :assignment_id, :student_code, :final_grade, :is_locked);
+        (id, so_school_id, assignment_id, student_code, final_grade, is_locked,
+         started_at, submitted_at, attempt_count, time_spent_sec, active_time_sec,
+         tab_hidden_count, idle_sec, rte)
+        VALUES (:id, :so_school_id, :assignment_id, :student_code, :final_grade, :is_locked,
+                :started_at, :submitted_at, :attempt_count, :time_spent_sec, :active_time_sec,
+                :tab_hidden_count, :idle_sec, :rte);
     """, lms_grade_params)
     logger.info(f"Seeded {len(lms_grade_params)} LMS assignment grades (dim_so_assignment={len(assignments_params)})")
 

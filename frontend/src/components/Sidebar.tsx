@@ -25,6 +25,10 @@ import {
   Network,
   Mic,
   Presentation,
+  AlertTriangle,
+  TrendingUp,
+  Gauge,
+  Database,
 } from "lucide-react";
 
 import PresentationModal from "./PresentationModal";
@@ -36,6 +40,9 @@ import NotificationBell from "./NotificationBell";
 const MENU = [
   { name: "Tổng quan Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Bảng điểm", path: "/gradebook", icon: Table2 },
+  { name: "Phân tích độ khó đề", path: "/exam-difficulty", icon: Gauge },
+  { name: "Lỗ hổng kiến thức", path: "/knowledge-gaps", icon: AlertTriangle },
+  { name: "Dự đoán pass/fail", path: "/pass-fail-forecast", icon: TrendingUp },
   { name: "Đánh giá tiết dạy", path: "/recordings", icon: Mic },
   { name: "Xuất báo cáo", path: "/reports", icon: FileText },
   { name: "Trợ lý AI (Chatbot)", path: "/chat", icon: MessageSquare },
@@ -50,6 +57,7 @@ const ADMIN_MENU = [
   { name: "Cơ cấu trường", path: "/admin/school", icon: Building2 },
   { name: "Học sinh", path: "/admin/students", icon: Users },
   { name: "Tài khoản & Phân công", path: "/admin/users", icon: UserCog },
+  { name: "Kho tri thức & SGK", path: "/admin/knowledge", icon: Database },
   { name: "Đánh giá & Thống kê AI", path: "/admin/ai-metrics", icon: BarChart3 },
   { name: "Giám sát Multi-Agent", path: "/dashboard/agents", icon: Network },
 ];
@@ -111,15 +119,13 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`shrink-0 flex flex-col h-screen border-r bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-elastic rounded-tr-2xl rounded-br-2xl relative z-20 ${
-        isCollapsed ? "w-[72px]" : "w-64"
-      }`}
+      className={`shrink-0 flex flex-col h-screen border-r bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 transition-elastic rounded-tr-2xl rounded-br-2xl relative z-20 ${isCollapsed ? "w-[72px]" : "w-64"
+        }`}
     >
       {/* Brand */}
       <div
-        className={`border-b border-slate-200 dark:border-slate-800 flex items-center justify-between h-[72px] shrink-0 transition-elastic ${
-          isCollapsed ? "px-4 py-4 justify-center" : "p-6 gap-3"
-        }`}
+        className={`border-b border-slate-200 dark:border-slate-800 flex items-center justify-between h-[72px] shrink-0 transition-elastic ${isCollapsed ? "px-4 py-4 justify-center" : "p-6 gap-3"
+          }`}
       >
         {isCollapsed ? (
           /* Collapsed State: Morphing Logo Toggle */
@@ -181,13 +187,11 @@ export default function Sidebar() {
               href={item.path}
               onMouseEnter={(e) => handleMouseEnter(item.name, e)}
               onMouseLeave={handleMouseLeave}
-              className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-elastic group relative ${
-                isCollapsed ? "px-0 justify-center hover:scale-[1.15] transition-transform" : "px-3"
-              } ${
-                active
+              className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-elastic group relative ${isCollapsed ? "px-0 justify-center hover:scale-[1.15] transition-transform" : "px-3"
+                } ${active
                   ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
                   : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-              }`}
+                }`}
             >
               <Icon className={`w-5 h-5 shrink-0 ${active ? "text-white" : "text-slate-400 group-hover:text-brand-500"}`} />
               {!isCollapsed && (
@@ -215,13 +219,11 @@ export default function Sidebar() {
                   href={item.path}
                   onMouseEnter={(e) => handleMouseEnter(item.name, e)}
                   onMouseLeave={handleMouseLeave}
-                  className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-elastic group relative ${
-                    isCollapsed ? "px-0 justify-center hover:scale-[1.15] transition-transform" : "px-3"
-                  } ${
-                    active
+                  className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-elastic group relative ${isCollapsed ? "px-0 justify-center hover:scale-[1.15] transition-transform" : "px-3"
+                    } ${active
                       ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
                       : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-                  }`}
+                    }`}
                 >
                   <Icon className={`w-5 h-5 shrink-0 ${active ? "text-white" : "text-slate-400 group-hover:text-brand-500"}`} />
                   {!isCollapsed && (
@@ -242,32 +244,30 @@ export default function Sidebar() {
             ) : (
               <div className="h-6 border-t border-slate-100 dark:border-slate-800/80 my-4" />
             )}
-             {ADMIN_MENU
+            {ADMIN_MENU
               .filter((item) => user?.role === "ADMIN" || (item.path !== "/admin/ai-metrics" && item.path !== "/dashboard/agents"))
               .map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  onMouseEnter={(e) => handleMouseEnter(item.name, e)}
-                  onMouseLeave={handleMouseLeave}
-                  className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-elastic group relative ${
-                    isCollapsed ? "px-0 justify-center hover:scale-[1.15] transition-transform" : "px-3"
-                  } ${
-                    active
-                      ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
-                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-                  }`}
-                >
-                  <Icon className={`w-5 h-5 shrink-0 ${active ? "text-white" : "text-slate-400 group-hover:text-brand-500"}`} />
-                  {!isCollapsed && (
-                    <span className="animate-in fade-in duration-250">{item.name}</span>
-                  )}
-                </Link>
-              );
-            })}
+                const Icon = item.icon;
+                const active = pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    href={item.path}
+                    onMouseEnter={(e) => handleMouseEnter(item.name, e)}
+                    onMouseLeave={handleMouseLeave}
+                    className={`flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-elastic group relative ${isCollapsed ? "px-0 justify-center hover:scale-[1.15] transition-transform" : "px-3"
+                      } ${active
+                        ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+                      }`}
+                  >
+                    <Icon className={`w-5 h-5 shrink-0 ${active ? "text-white" : "text-slate-400 group-hover:text-brand-500"}`} />
+                    {!isCollapsed && (
+                      <span className="animate-in fade-in duration-250">{item.name}</span>
+                    )}
+                  </Link>
+                );
+              })}
           </>
         )}
 
@@ -279,13 +279,12 @@ export default function Sidebar() {
         {/* Settings Popover Dropdown */}
         {showSettingsPopover && (
           <>
-            <div 
-              className="fixed inset-0 z-30" 
-              onClick={() => setShowSettingsPopover(false)} 
+            <div
+              className="fixed inset-0 z-30"
+              onClick={() => setShowSettingsPopover(false)}
             />
-            <div className={`absolute bottom-[80px] mb-1 bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl py-2 min-w-[200px] flex flex-col z-40 animate-in slide-in-from-bottom-2 duration-150 ${
-              isCollapsed ? "left-2" : "right-4"
-            }`}>
+            <div className={`absolute bottom-[80px] mb-1 bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl py-2 min-w-[200px] flex flex-col z-40 animate-in slide-in-from-bottom-2 duration-150 ${isCollapsed ? "left-2" : "right-4"
+              }`}>
               {/* Item 1: Tài liệu hướng dẫn */}
               <a
                 href="https://phoenix.note.transformerlabs.ai/technical-book"
@@ -380,9 +379,8 @@ export default function Sidebar() {
             onClick={() => setShowSettingsPopover(!showSettingsPopover)}
             onMouseEnter={(e) => handleMouseEnter("Cài đặt & Tài khoản", e)}
             onMouseLeave={handleMouseLeave}
-            className={`p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 transition-colors shrink-0 ${
-              isCollapsed ? "absolute inset-0 opacity-0 cursor-pointer w-full h-full" : "ml-2"
-            }`}
+            className={`p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 transition-colors shrink-0 ${isCollapsed ? "absolute inset-0 opacity-0 cursor-pointer w-full h-full" : "ml-2"
+              }`}
             title={!isCollapsed ? "Cài đặt & Tài khoản" : undefined}
           >
             <Settings className="w-5 h-5" />
@@ -392,7 +390,7 @@ export default function Sidebar() {
 
       {/* Floating Tooltip outside nav scroll container */}
       {hoveredItem && isCollapsed && (
-        <div 
+        <div
           className="fixed bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 border border-slate-200/60 dark:border-slate-700/50 px-3 py-1.5 rounded-2xl text-[12.5px] font-semibold shadow-2xl z-[999] pointer-events-none transition-all flex items-center"
           style={{
             top: hoveredItem.top + hoveredItem.height / 2,
@@ -406,9 +404,9 @@ export default function Sidebar() {
         </div>
       )}
 
-      <PresentationModal 
-        isOpen={showPresentation} 
-        onClose={() => setShowPresentation(false)} 
+      <PresentationModal
+        isOpen={showPresentation}
+        onClose={() => setShowPresentation(false)}
         theme={theme}
       />
     </aside>
