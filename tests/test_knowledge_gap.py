@@ -1,6 +1,22 @@
 """Unit test cho src/services/knowledge_gap.py — phát hiện lỗ hổng kiến thức (M2)."""
 
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from src.api.v1.knowledge_gap import _unit_meta
 from src.services.knowledge_gap import UnitWeight, aggregate_class_gaps, compute_unit_mastery
+
+
+def test_unit_meta_maps_chapter_and_lesson():
+    fake = MagicMock()
+    fake.execute.return_value.fetchall.return_value = [
+        SimpleNamespace(id=1, name="Nguyên hàm", parent_id=101, chapter_name="Nguyên hàm – Tích phân"),
+        SimpleNamespace(id=2, name="Chương X", parent_id=None, chapter_name=None),
+    ]
+    meta = _unit_meta(fake, [1, 2])
+    assert meta[1] == ("Nguyên hàm", "Nguyên hàm – Tích phân", "Nguyên hàm")
+    assert meta[2] == ("Chương X", "Chương X", None)
+    assert _unit_meta(fake, []) == {}
 
 
 def test_uniform_units_mastery_equals_score_ratio():

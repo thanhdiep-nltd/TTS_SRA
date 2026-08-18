@@ -520,11 +520,11 @@ export interface ExamValidityRow {
   confidence: "HIGH" | "LOW";
 }
 
-// ===== Phân tích nội dung đề (RAG-anchored CDI, ai_analysis.content_analysis v1) =====
-export interface ExamEvidenceRef {
-  score: number;
-  heading: string | null;
-  source_md: string | null;
+// ===== Phân tích nội dung đề (5 trục — KG phẳng, ai_analysis.content_analysis v1) =====
+export interface ExamContentNodeRef {
+  node_id: number;
+  chapter: string | null;
+  lesson: string | null;
 }
 
 export interface ExamAnalysisItem {
@@ -535,8 +535,9 @@ export interface ExamAnalysisItem {
   matched_catalog: boolean;
   bloom_level: number;
   weight: number;
-  evidence: ExamEvidenceRef | null;
+  node_ref: ExamContentNodeRef | null;
   off_curriculum: boolean | null;
+  off_curriculum_weight: number;
 }
 
 export interface ExamCoverageUnit {
@@ -549,7 +550,6 @@ export interface ExamContentAnalysis {
   version: number;
   model: string | null;
   cdi: number;
-  rag_available: boolean;
   items: ExamAnalysisItem[];
   coverage: { catalog_total: number; matched: number; ratio: number | null };
   coverage_units: ExamCoverageUnit[];
@@ -560,6 +560,8 @@ export interface ExamContentAnalysis {
     is_concentrated: boolean;
   };
   off_curriculum_weight: number | null;
+  bloom_distribution: Record<string, number> | null;
+  bloom_alignment: string | null;
 }
 
 export interface ExamPaperDetail extends ExamPaper {

@@ -29,6 +29,7 @@ import {
   TrendingUp,
   Gauge,
   Database,
+  FolderTree,
 } from "lucide-react";
 
 import PresentationModal from "./PresentationModal";
@@ -58,6 +59,7 @@ const ADMIN_MENU = [
   { name: "Học sinh", path: "/admin/students", icon: Users },
   { name: "Tài khoản & Phân công", path: "/admin/users", icon: UserCog },
   { name: "Kho tri thức & SGK", path: "/admin/knowledge", icon: Database },
+  { name: "Chương trình (catalog)", path: "/admin/curriculum", icon: FolderTree },
   { name: "Đánh giá & Thống kê AI", path: "/admin/ai-metrics", icon: BarChart3 },
   { name: "Giám sát Multi-Agent", path: "/dashboard/agents", icon: Network },
 ];

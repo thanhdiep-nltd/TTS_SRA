@@ -214,6 +214,7 @@ CREATE TABLE public.exam_papers (
     semester_id     INTEGER NOT NULL,
     grade_id        INTEGER,
     score_category  public.score_category_enum,
+    score_type      public.score_type_enum, -- legacy (nullable) — binding thật ở exam_column_mappings
     title           VARCHAR(500) NOT NULL,
     description     TEXT,
     file_url        TEXT,
@@ -243,9 +244,13 @@ CREATE TABLE public.curriculum_units (
     code            VARCHAR(50) NOT NULL,
     name            VARCHAR(255) NOT NULL,
     description     TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    semester_number SMALLINT CHECK (semester_number IN (1, 2)), -- NULL = dạy cả năm; 1/2 = học kỳ (SGK tập 1/tập 2)
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,              -- FALSE = ẩn khỏi picker (node rác cũ)
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_curriculum_subject_grade_code UNIQUE (subject_id, grade_number, code)
 );
 CREATE INDEX idx_curri_subject ON public.curriculum_units(subject_id, grade_number);
+CREATE INDEX idx_curri_parent ON public.curriculum_units(parent_id);
 
 -- 5. Ánh xạ Trọng số Chuẩn đầu ra Bloom với Đề thi (Exam Competencies)
 CREATE TABLE public.exam_competencies (

@@ -58,15 +58,33 @@ def _load_exam_units(
     ]
 
 
-def _unit_names(db: Session, unit_ids: list[int]) -> dict[int, str]:
-    """Map unit_id → unit name."""
+def _unit_meta(db: Session, unit_ids: list[int]) -> dict[int, tuple[str | None, str | None, str | None]]:
+    """Map unit_id → (name, chapter, lesson).
+
+    chapter = tên node cha (parent_id) nếu unit là bài con, ngược lại chính tên unit (node chương);
+    lesson = tên unit nếu là bài con, None nếu là chương.
+    """
     if not unit_ids:
         return {}
     rows = db.execute(
-        text("SELECT id, name FROM public.curriculum_units WHERE id = ANY(:ids)"),
+        text(
+            """
+            SELECT cu.id, cu.name, cu.parent_id, p.name AS chapter_name
+            FROM public.curriculum_units cu
+            LEFT JOIN public.curriculum_units p ON p.id = cu.parent_id
+            WHERE cu.id = ANY(:ids)
+            """
+        ),
         {"ids": unit_ids},
     ).fetchall()
-    return {r.id: r.name for r in rows}
+    return {
+        r.id: (
+            r.name,
+            (r.chapter_name if r.chapter_name else r.name) if r.parent_id else r.name,
+            r.name if r.parent_id else None,
+        )
+        for r in rows
+    }
 
 
 @router.get("/students/{student_code}", response_model=StudentKnowledgeGaps)
@@ -125,11 +143,13 @@ def get_student_knowledge_gaps(
     max_score = float(score_row.max_grade) if score_row.max_grade else 10.0
     mastery = compute_unit_mastery(total_score, max_score, units)
 
-    names = _unit_names(db, [m.unit_id for m in mastery])
+    meta = _unit_meta(db, [m.unit_id for m in mastery])
     gaps = [
         KnowledgeGapItem(
             unit_id=m.unit_id,
-            unit_name=names.get(m.unit_id),
+            unit_name=meta.get(m.unit_id, (None, None, None))[0],
+            chapter=meta.get(m.unit_id, (None, None, None))[1],
+            lesson=meta.get(m.unit_id, (None, None, None))[2],
             gap_score=m.gap_score,
             mastery=m.mastery,
             evidence_source="EXAM",
@@ -206,11 +226,13 @@ def get_class_knowledge_gaps(
             if m.gap_score > 0:
                 acc.setdefault(m.unit_id, []).append(m.gap_score)
 
-    names = _unit_names(db, list(acc.keys()))
+    meta = _unit_meta(db, list(acc.keys()))
     gaps = [
         KnowledgeGapItem(
             unit_id=uid,
-            unit_name=names.get(uid),
+            unit_name=meta.get(uid, (None, None, None))[0],
+            chapter=meta.get(uid, (None, None, None))[1],
+            lesson=meta.get(uid, (None, None, None))[2],
             gap_score=round(sum(v) / len(v), 3),
             mastery=round(1.0 - sum(v) / len(v), 3),
             evidence_source="EXAM",

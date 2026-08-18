@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # thật sự (cần cấu hình API key tương ứng).
     judge_llm_provider: Literal["same", "openai", "deepseek"] = "same"
 
+    # VLM đọc đề thi (M1 — plan_cdi_kg_anchored): Qwen3-VL-Flash qua API OpenAI-compatible.
+    # User sẽ cấu hình API key sau; khi thiếu key, pipeline fallback OCR (không chặn code).
+    vlm_model: str = "qwen3-vl-flash"
+    vlm_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    vlm_api_key: str = ""
+    vlm_timeout_s: float = Field(default=60.0, gt=0.0)
+
     # Database
     database_url: str = "sqlite:///./data/app.db"
 

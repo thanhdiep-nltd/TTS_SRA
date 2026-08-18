@@ -1,9 +1,15 @@
-"""Pipeline tự động tính CDI (Content Difficulty Index) cho TEVI.
+"""Pipeline tự động phân tích nội dung đề thi (M1+M2+M3 — docs_vsf/plan_cdi_kg_anchored.md).
 
-Chạy nền (FastAPI BackgroundTasks) sau khi GV upload đề thi: OCR nội dung đề -> LLM gán Bloom level
-theo từng chủ đề -> lưu `exam_papers.content_difficulty` + `curriculum_units`/`exam_competencies`,
-để `v_exam_validity` (tam giác hóa EDI/CDI/DDI) có dữ liệu thật thay vì luôn NO_CONTENT.
+Chạy nền (FastAPI BackgroundTasks) sau khi GV upload đề thi:
+  VLM đọc đề (giữ LaTeX) → LLM decompose + map mỗi ý vào 1–3 node của catalog phẳng
+  (curriculum_units, lọc môn/khối/học kỳ) → ghi exam_competencies → tính 5 trục
+  (CDI/Bloom, Coverage, Concentration, Off-curriculum, Evidence = chương/bài từ cây).
+
+KHÔNG còn full-text RAG làm thẩm phán (bỏ cosine/evidence SGK) — off-curriculum do LLM
+map null quyết định; trích dẫn đọc tĩnh từ cây (parent_id).
 """
+
+from __future__ import annotations
 
 import json
 import logging
@@ -11,22 +17,23 @@ import re
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from src.db.session import SessionLocal
 from src.models.enums import FileType
-from src.models.tables import Class, CurriculumUnit, ExamColumnMapping, ExamCompetency, ExamPaper, Grade, Subject
+from src.models.tables import Class, CurriculumUnit, ExamColumnMapping, ExamCompetency, ExamPaper, Grade
 from src.schemas.exam_analysis import (
     AnalysisItemRead,
     ConcentrationRead,
     CoverageRead,
     CoverageUnitRead,
-    EvidenceRef,
     ExamContentAnalysis,
+    NodeRef,
 )
-from src.services import retrieval, storage
+from src.services import storage, vlm
 from src.services.llm import get_llm
 
 logger = logging.getLogger(__name__)
@@ -38,55 +45,65 @@ if str(_PLUGINS_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGINS_DIR))
 
 _MIN_TEXT_LAYER_CHARS = 200
-_MIN_CLASSIFY_CHARS = 50
+# Chặn text rác/trống nhưng KHÔNG chặn câu hỏi ngắn hợp lệ (vd "Tính 2/3 + 1/4." = 16 ký tự) —
+# guard 50 trước đây khiến câu ngắn bị bỏ sót (eval null-rate giả tạo cao).
+_MIN_CLASSIFY_CHARS = 10
 _MAX_EXCERPT_CHARS = 300
+_MAX_NODES_PER_ITEM = 3
 _CONCENTRATION_SHARE = 0.6
+_MAX_SHORTLIST = 60
 _ANALYSIS_KEY = "content_analysis"
 
-_CLASSIFY_HEADER_LINES = [
-    "Bạn là chuyên gia phân tích đề thi. Đây là nội dung 1 đề kiểm tra (tiếng Việt). Hãy tách đề thành "
-    "các câu hỏi/ý lớn, với mỗi ý xác định:",
-    "- topic: tên chủ đề kiến thức ngắn (vài từ)",
-    "- bloom_level: mức độ theo thang Bloom, số nguyên 1-6 "
-    "(1=Nhớ, 2=Hiểu, 3=Vận dụng, 4=Phân tích, 5=Đánh giá, 6=Sáng tạo)",
-    "- weight: tỉ trọng điểm số của ý đó trên tổng đề (số thực 0-1, tổng các ý xấp xỉ 1)",
-    "- excerpt: TRÍCH NGUYÊN VĂN 1-2 câu tiêu biểu của ý đó từ đề (không diễn đạt lại)",
-]
-_CLASSIFY_EXAMPLE_NO_CODE = '{"topic": "...", "bloom_level": 2, "weight": 0.3, "excerpt": "..."}'
-_CLASSIFY_EXAMPLE_WITH_CODE = (
-    '{"topic": "...", "bloom_level": 2, "weight": 0.3, "unit_code": "MA01" hoặc null, "excerpt": "..."}'
-)
+
+class NodeWeight(BaseModel):
+    """1 node kiến thức + tỉ trọng điểm trong 1 ý."""
+
+    node_id: int
+    weight: float = Field(ge=0.0, le=1.0)
 
 
-def build_classify_prompt(text: str, catalog: list[CurriculumUnit] | None = None) -> str:
-    """Dựng prompt phân loại đề: luôn yêu cầu `excerpt` (trích nguyên văn, làm query RAG tốt hơn chỉ
-    dùng topic); nếu có `catalog` (chuẩn CT đã seed cho môn+khối) thì ép LLM chọn `unit_code` từ danh
-    sách (constrained classification) thay vì tự đặt tên chủ đề tự do -> chống phân mảnh taxonomy.
-    """
-    lines = list(_CLASSIFY_HEADER_LINES)
-    example = _CLASSIFY_EXAMPLE_NO_CODE
-    if catalog:
-        catalog_lines = "\n".join(f"{u.code} — {u.name}" for u in catalog)
-        lines.append(
-            "- unit_code: chọn ĐÚNG 1 mã từ DANH SÁCH CHỦ ĐỀ dưới đây nếu ý thuộc chủ đề đó; nếu KHÔNG "
-            f"khớp mã nào thì để null (đừng gượng ép)\n\nDANH SÁCH CHỦ ĐỀ (mã — tên):\n{catalog_lines}"
-        )
-        example = _CLASSIFY_EXAMPLE_WITH_CODE
-    header = "\n".join(lines)
-    return (
-        f"{header}\n\n"
-        "CHỈ trả về 1 JSON array, không giải thích, không markdown, theo đúng dạng:\n"
-        f"[{example}, ...]\n\n"
-        f"Nội dung đề:\n{text}"
-    )
+class MappedItem(BaseModel):
+    """1 ý của đề sau khi LLM map: 1–3 node kèm weight; off_curriculum_weight = phần không map được."""
 
-
-class CompetencyGuess(BaseModel):
     topic: str
+    nodes: list[NodeWeight] = []
     bloom_level: int = Field(ge=1, le=6)
-    weight: float = Field(ge=0, le=1)
-    unit_code: str | None = None
+    off_curriculum_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     excerpt: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    reason: str | None = None
+    candidates: list[int] = []  # node_id gợi ý cho GV chốt khi nodes rỗng
+
+
+class ResolvedCompetency(BaseModel):
+    """1 ý sau khi neo vào node + thông tin cây (chương/bài) — input dựng ai_analysis."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    topic: str
+    excerpt: str | None = None
+    bloom_level: int
+    weight: float
+    unit_id: int | None = None
+    unit_code: str | None = None
+    unit_name: str | None = None
+    matched_catalog: bool = False
+    off_curriculum: bool | None = None
+    off_curriculum_weight: float = 0.0
+    chapter: str | None = None
+    lesson: str | None = None
+    candidates: list[int] = []
+
+
+class AnalysisBuildInput(BaseModel):
+    """Input thuần để dựng ai_analysis.content_analysis (5 trục)."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    items: list[ResolvedCompetency]
+    catalog: list[CurriculumUnit]
+    cdi: float
+    model: str | None
 
 
 def cdi_from_bloom_mix(mix: list[tuple[int, float]]) -> float:
@@ -102,15 +119,12 @@ def cdi_from_bloom_mix(mix: list[tuple[int, float]]) -> float:
     return round(sum(b * w for b, w in mix) / total_weight / 6, 3)
 
 
-def _slugify(text: str) -> str:
-    """Chuyển chuỗi tiếng Việt thành code ngắn (a-z0-9-), dùng làm CurriculumUnit.code."""
-    text = text.strip().lower()
-    text = re.sub(r"[^a-z0-9À-ỹ]+", "-", text)
-    return re.sub(r"-+", "-", text).strip("-")
-
-
 def extract_exam_text(path: Path, file_type: FileType | None) -> str:
-    """Trích text từ file đề: ưu tiên lớp text PDF (free), fallback OCR Tesseract (free) nếu quá ngắn."""
+    """Trích text từ file đề: lớp text PDF (free) → VLM đọc trang/ảnh (giữ LaTeX) → fallback OCR.
+
+    M1 trong plan_cdi_kg_anchored.md: VLM (Qwen3-VL-Flash) thay OCR thô cho phần công thức.
+    Khi VLM chưa có key/lỗi → fallback OCR cũ (không chặn pipeline).
+    """
     try:
         data = path.read_bytes()
     except OSError:
@@ -121,10 +135,16 @@ def extract_exam_text(path: Path, file_type: FileType | None) -> str:
         text = _try_extract(lambda: _pdf_extract().extract_text_layer(data))
         if len(text) >= _MIN_TEXT_LAYER_CHARS:
             return text
+        vlm_text = _try_extract(lambda: vlm.read_pdf_pages(path))
+        if len(vlm_text) > len(text):
+            return vlm_text
         ocr_text = _try_extract(lambda: _pdf_extract().extract_with_tesseract(data, lang="vie"))
         return ocr_text if len(ocr_text) > len(text) else text
 
     if file_type == FileType.IMAGE:
+        vlm_text = _try_extract(lambda: vlm.read_image_bytes(data))
+        if vlm_text:
+            return vlm_text
         return _try_extract(lambda: _ocr_image_bytes(data))
 
     return ""
@@ -148,44 +168,9 @@ def _ocr_image_bytes(data: bytes) -> str:
 def _try_extract(fn) -> str:
     try:
         return fn()
-    except Exception:  # noqa: BLE001 - OCR phụ thuộc binary/thư viện ngoài, lỗi không được crash request
+    except Exception:  # noqa: BLE001 - OCR/VLM phụ thuộc binary/thư viện ngoài, lỗi không được crash request
         logger.warning("Trích xuất nội dung đề thất bại, bỏ qua.", exc_info=True)
         return ""
-
-
-def classify_competencies(text: str, catalog: list[CurriculumUnit] | None = None) -> list[CompetencyGuess]:
-    """Gọi LLM tách đề thành các (chủ đề, mức Bloom, tỉ trọng, unit_code, excerpt); trả [] nếu text
-    rỗng/lỗi. `catalog` (nếu có) ép LLM chọn unit_code từ chuẩn CT đã seed thay vì tự đặt tên."""
-    if len(text.strip()) < _MIN_CLASSIFY_CHARS:
-        return []
-    try:
-        response = get_llm().invoke(build_classify_prompt(text[:8000], catalog))
-    except Exception:  # noqa: BLE001 - lỗi gọi LLM (auth/network/rate-limit) không được kéo sập cả pipeline
-        logger.warning("Gọi LLM phân loại đề thất bại.", exc_info=True)
-        return []
-
-    try:
-        raw = response.content if isinstance(response.content, str) else str(response.content)
-        raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-        items = json.loads(raw)
-        guesses = [CompetencyGuess(**item) for item in items]
-    except (json.JSONDecodeError, ValidationError, TypeError):
-        logger.warning("Không parse được JSON phân loại đề từ LLM.", exc_info=True)
-        return []
-
-    valid_codes = {u.code for u in catalog} if catalog else set()
-    for g in guesses:
-        if g.unit_code is not None and g.unit_code not in valid_codes:
-            logger.warning("LLM trả unit_code không có trong catalog, bỏ qua: %s", g.unit_code)
-            g.unit_code = None
-        if g.excerpt:
-            g.excerpt = g.excerpt.strip()[:_MAX_EXCERPT_CHARS]
-
-    total_weight = sum(g.weight for g in guesses)
-    if guesses and total_weight > 0:
-        for g in guesses:
-            g.weight = g.weight / total_weight
-    return guesses
 
 
 def _resolve_grade_number(db, paper: ExamPaper) -> int | None:
@@ -202,101 +187,186 @@ def _resolve_grade_number(db, paper: ExamPaper) -> int | None:
     return grade.grade_number if grade else None
 
 
-def _get_or_create_unit(db, subject_id: int, grade_number: int, code: str, name: str) -> CurriculumUnit:
-    unit = db.execute(
-        select(CurriculumUnit).where(
-            CurriculumUnit.subject_id == subject_id,
-            CurriculumUnit.grade_number == grade_number,
-            CurriculumUnit.code == code,
-        )
-    ).scalar_one_or_none()
-    if unit is None:
-        unit = CurriculumUnit(subject_id=subject_id, grade_number=grade_number, code=code, name=name)
-        db.add(unit)
-        db.flush()
-    return unit
-
-
-def _load_catalog(db, subject_id: int, grade_number: int | None) -> list[CurriculumUnit]:
-    """Chuẩn CT (chương/bài) đã seed sẵn cho (môn, khối) — rỗng nếu chưa seed hoặc chưa rõ khối."""
-    if grade_number is None:
-        return []
+def build_shortlist(db, subject_id: int, grade_number: int | None, semester_number: int | None) -> list[CurriculumUnit]:
+    """Lọc catalog phẳng active theo (môn, khối, học kỳ) → shortlist node cho LLM map."""
     stmt = select(CurriculumUnit).where(
         CurriculumUnit.subject_id == subject_id,
-        CurriculumUnit.grade_number == grade_number,
+        CurriculumUnit.is_active.is_(True),
     )
-    return list(db.execute(stmt).scalars().all())
-
-
-class ResolvedCompetency(BaseModel):
-    """1 ý của đề sau khi neo taxonomy (+ bằng chứng SGK nếu có ở bước sau) — input dựng ai_analysis."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    topic: str
-    excerpt: str | None = None
-    bloom_level: int
-    weight: float
-    unit_id: int | None = None
-    unit_code: str | None = None
-    unit_name: str | None = None
-    matched_catalog: bool = False
-    evidence: EvidenceRef | None = None
-    off_curriculum: bool | None = None
-
-
-class AnalysisContext(BaseModel):
-    """Gom tham số cho _resolve_units (giữ quy ước ≤3 tham số/hàm)."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    subject_id: int
-    subject_code: str
-    grade_number: int | None
-    catalog: dict[str, CurriculumUnit]
-
-
-class AnalysisBuildInput(BaseModel):
-    """Input thuần để dựng `ai_analysis.content_analysis` v1."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    items: list[ResolvedCompetency]
-    catalog: list[CurriculumUnit]
-    rag_available: bool
-    cdi: float
-    model: str | None
-
-
-def _resolve_units(db, ctx: AnalysisContext, guesses: list[CompetencyGuess]) -> list[ResolvedCompetency]:
-    """Neo mỗi ý vào CurriculumUnit: unit_code khớp catalog -> lookup trực tiếp (không query thêm);
-    không khớp + biết khối -> fallback tạo unit từ topic (hành vi cũ, chấp nhận phân mảnh cho
-    môn/khối chưa seed catalog); không biết khối -> unit_id=None (không ghi exam_competencies)."""
-    resolved: list[ResolvedCompetency] = []
-    for g in guesses:
-        unit = ctx.catalog.get(g.unit_code) if g.unit_code else None
-        matched = unit is not None
-        if unit is None and ctx.grade_number is not None:
-            unit = _get_or_create_unit(db, ctx.subject_id, ctx.grade_number, _slugify(g.topic)[:50], g.topic)
-        resolved.append(
-            ResolvedCompetency(
-                topic=g.topic,
-                excerpt=g.excerpt,
-                bloom_level=g.bloom_level,
-                weight=g.weight,
-                unit_id=unit.id if unit else None,
-                unit_code=unit.code if unit else None,
-                unit_name=unit.name if unit else None,
-                matched_catalog=matched,
-            )
+    if grade_number is not None:
+        stmt = stmt.where(CurriculumUnit.grade_number == grade_number)
+    if semester_number in (1, 2):
+        stmt = stmt.where(
+            or_(CurriculumUnit.semester_number.is_(None), CurriculumUnit.semester_number == semester_number)
         )
+    units = list(db.execute(stmt.order_by(CurriculumUnit.grade_number, CurriculumUnit.code)).scalars().all())
+    if len(units) > _MAX_SHORTLIST:
+        logger.warning("shortlist_wide: %d node subject=%s grade=%s", len(units), subject_id, grade_number)
+    return units
+
+
+def build_node_listing(shortlist: list[CurriculumUnit]) -> str:
+    """Danh sách node dạng "id: tên (khối, HK)" cho prompt — LLM chọn node_id từ đây."""
+    return "\n".join(
+        f"- {unit.id}: {unit.name} (khối {unit.grade_number}"
+        + (f", HK{unit.semester_number}" if unit.semester_number else "")
+        + ")"
+        for unit in shortlist
+    )
+
+
+_MAP_HEADER_LINES = [
+    "Bạn là chuyên gia phân tích đề thi. Tách đề dưới đây thành các câu hỏi/ý lớn, với MỖI Ý xác định:",
+    "- nodes: chọn 1–3 node kiến thức từ DANH SÁCH (node_id) mà ý kiểm tra; mỗi node kèm weight (0..1) là tỉ trọng điểm của phần kiến thức đó trong ý",
+    "- off_curriculum_weight: tỉ trọng phần kiến thức của ý KHÔNG nằm trong danh sách (0..1). Toàn bộ ngoài danh sách → nodes = [] và off_curriculum_weight = 1",
+    "- bloom_level: mức Bloom CỦA CẢ Ý (1=Nhớ, 2=Hiểu, 3=Vận dụng, 4=Phân tích, 5=Đánh giá, 6=Sáng tạo)",
+    "- excerpt: TRÍCH NGUYÊN VĂN 1–2 câu tiêu biểu của ý từ đề (không diễn đạt lại)",
+    "- confidence: 0..1 mức tự tin; reason: 1 câu giải thích vì sao chọn node đó",
+]
+
+
+def build_map_prompt(text: str, shortlist: list[CurriculumUnit]) -> str:
+    """Dựng prompt constrained: LLM chọn node_id TỪ shortlist (không tự đặt tên chủ đề)."""
+    lines = list(_MAP_HEADER_LINES)
+    if shortlist:
+        lines.append(f"\nDANH SÁCH NODE:\n{build_node_listing(shortlist)}")
+    example = (
+        '[{"topic": "...", "nodes": [{"node_id": 1, "weight": 0.6}, {"node_id": 2, "weight": 0.4}], '
+        '"bloom_level": 3, "off_curriculum_weight": 0.0, "excerpt": "...", "confidence": 0.8, "reason": "..."}]'
+    )
+    return "\n".join(lines) + f"\n\nCHỈ trả về 1 JSON array, không giải thích, không markdown:\n{example}\n\nNội dung đề:\n{text}"
+
+
+def parse_mapped_items(raw: str, valid_ids: set[int]) -> list[MappedItem]:
+    """Parse JSON array → MappedItem; bỏ node ngoài shortlist (chuyển trọng số sang off); chuẩn hóa Σ=1."""
+    try:
+        cleaned = re.sub(r"^\`\`\`(?:json)?|\`\`\`$", "", raw.strip(), flags=re.MULTILINE).strip()
+        parsed = [MappedItem(**item) for item in json.loads(cleaned)]
+    except (json.JSONDecodeError, ValidationError, TypeError):
+        logger.warning("Không parse được JSON map đề từ LLM.", exc_info=True)
+        return []
+
+    result: list[MappedItem] = []
+    for item in parsed:
+        kept = [node for node in item.nodes if node.node_id in valid_ids]
+        off = item.off_curriculum_weight + sum(n.weight for n in item.nodes if n.node_id not in valid_ids)
+        if len(kept) > _MAX_NODES_PER_ITEM:
+            off += sum(n.weight for n in kept[_MAX_NODES_PER_ITEM:])
+            kept = kept[:_MAX_NODES_PER_ITEM]
+        total = sum(n.weight for n in kept) + off
+        if total > 0 and abs(total - 1.0) > 1e-6:
+            kept = [NodeWeight(node_id=n.node_id, weight=round(n.weight / total, 4)) for n in kept]
+            off = round(off / total, 4)
+        result.append(item.model_copy(update={"nodes": kept, "off_curriculum_weight": round(off, 4)}))
+    return result
+
+
+def _invoke_map(model: Any, text: str, shortlist: list[CurriculumUnit]) -> str:
+    """Gọi LLM 1 lần trả raw JSON; lỗi → "" (không crash pipeline nền)."""
+    try:
+        response = model.invoke(build_map_prompt(text[:8000], shortlist))
+    except Exception:  # noqa: BLE001 - lỗi LLM (auth/network/rate-limit) không kéo sập pipeline
+        logger.warning("Gọi LLM map đề thất bại.", exc_info=True)
+        return ""
+    return response.content if isinstance(response.content, str) else str(response.content)
+
+
+def map_items(text: str, shortlist: list[CurriculumUnit], llm: Any | None = None) -> list[MappedItem]:
+    """LLM decompose đề + map mỗi ý vào 1–3 node trong shortlist; retry 1 lần khi parse hỏng."""
+    if len(text.strip()) < _MIN_CLASSIFY_CHARS:
+        return []
+    model = llm or get_llm()
+    valid_ids = {unit.id for unit in shortlist}
+    items = parse_mapped_items(_invoke_map(model, text, shortlist), valid_ids)
+    if not items:
+        items = parse_mapped_items(_invoke_map(model, text, shortlist), valid_ids)
+    return items
+
+
+def rejudge_null_items(
+    items: list[MappedItem], shortlist: list[CurriculumUnit], llm: Any | None = None
+) -> list[MappedItem]:
+    """Vòng 2 cho ý không map được node nào: LLM xem lại kèm lý do; vẫn null → candidates cho GV chốt."""
+    nulls = [item for item in items if not item.nodes]
+    if not nulls:
+        return items
+    model = llm or get_llm()
+    valid_ids = {unit.id for unit in shortlist}
+    prompt = (
+        "Các ý sau bị đánh giá 'ngoài chương trình' (không khớp node nào trong danh sách). "
+        "Xem lại THẬT KỸ: nếu ý thực chất thuộc node nào đó (dù diễn đạt khác / đổi ngữ cảnh đời thực) "
+        "thì map lại đúng format JSON array như trước; nếu thật sự ngoài chương trình thì giữ nodes = [] "
+        f"và off_curriculum_weight = 1.\n\nDANH SÁCH NODE:\n{build_node_listing(shortlist)}\n\nCác ý cần xem lại:\n"
+        + "\n".join(f"- {item.topic}: {item.excerpt or ''} ({item.reason or 'không có lý do'})" for item in nulls)
+    )
+    second = parse_mapped_items(_invoke_map(model, prompt, shortlist), valid_ids)
+    by_topic = {item.topic: item for item in second}
+    result: list[MappedItem] = []
+    for item in items:
+        if item.nodes:
+            result.append(item)
+            continue
+        replacement = by_topic.get(item.topic)
+        if replacement is not None and replacement.nodes:
+            result.append(replacement)
+        else:
+            result.append(item.model_copy(update={"candidates": [unit.id for unit in shortlist[:3]]}))
+    return result
+
+
+def _normalize_resolved(
+    resolved: list[ResolvedCompetency], items: list[MappedItem]
+) -> tuple[list[ResolvedCompetency], list[MappedItem]]:
+    """Chuẩn hóa weight về tổng đề = 1 (weight trong prompt là tỉ trọng TRONG ý, Σ/ý ≈ 1).
+
+    Cần thiết để exam_competencies.weight ∈ [0,1] (CHECK constraint) và CDI/coverage/concentration
+    dùng trọng số so sánh được giữa các ý. Không đổi nếu tổng đã ≈ 1.
+    """
+    total = sum(r.weight for r in resolved) + sum(it.off_curriculum_weight for it in items)
+    if total <= 0 or abs(total - 1.0) < 1e-6:
+        return resolved, items
+    scale = 1.0 / total
+    for r in resolved:
+        r.weight = round(r.weight * scale, 4)
+    for it in items:
+        it.off_curriculum_weight = round(it.off_curriculum_weight * scale, 4)
+    return resolved, items
+
+
+def _expand_mapped(items: list[MappedItem], shortlist: list[CurriculumUnit]) -> list[ResolvedCompetency]:
+    """Mỗi MappedItem → nhiều ResolvedCompetency (1/node); chapter/lesson resolve từ cây (parent_id)."""
+    by_id = {unit.id: unit for unit in shortlist}
+    resolved: list[ResolvedCompetency] = []
+    for item in items:
+        for node in item.nodes:
+            unit = by_id.get(node.node_id)
+            if unit is None:
+                continue
+            parent = by_id.get(unit.parent_id) if unit.parent_id else None
+            chapter = parent.name if parent else (unit.name if unit.parent_id is None else None)
+            lesson = unit.name if unit.parent_id is not None else None
+            resolved.append(
+                ResolvedCompetency(
+                    topic=item.topic,
+                    excerpt=item.excerpt,
+                    bloom_level=item.bloom_level,
+                    weight=node.weight,
+                    unit_id=unit.id,
+                    unit_code=unit.code,
+                    unit_name=unit.name,
+                    matched_catalog=True,
+                    off_curriculum=False,
+                    off_curriculum_weight=0.0,
+                    chapter=chapter,
+                    lesson=lesson,
+                    candidates=item.candidates,
+                )
+            )
     return resolved
 
 
 def merge_by_unit(items: list[ResolvedCompetency]) -> dict[int, tuple[int, float]]:
-    """Gộp các ý cùng unit trước khi ghi exam_competencies (PK = exam_paper_id + unit_id, và nhiều ý
-    thường map cùng 1 unit khi taxonomy neo theo catalog nhỏ): weight = TỔNG; bloom_level = trung
-    bình có trọng số làm tròn half-up (Σweight=0 trong nhóm -> mean đơn giản). Bỏ ý không có unit_id."""
+    """Gộp các ý cùng unit trước khi ghi exam_competencies: weight = TỔNG; bloom = trung bình có trọng số."""
     groups: dict[int, list[ResolvedCompetency]] = {}
     for it in items:
         if it.unit_id is None:
@@ -314,32 +384,6 @@ def merge_by_unit(items: list[ResolvedCompetency]) -> dict[int, tuple[int, float
     return merged
 
 
-def _evidence_query(guess: CompetencyGuess) -> str:
-    """Query RAG cho 1 ý: topic + excerpt (nếu có) — sát nghĩa hơn chỉ dùng topic vài từ."""
-    return f"{guess.topic}. {guess.excerpt}" if guess.excerpt else guess.topic
-
-
-def _best_evidence(query: str, mon: str, lop: str) -> EvidenceRef | None:
-    """Hit SGK tốt nhất cho 1 ý (Qdrant đã sort theo score desc + áp `retrieval_score_floor`) —
-    None nghĩa là không có bằng chứng nào đạt ngưỡng (ứng viên "ngoài chương trình")."""
-    hits = retrieval.search_textbook(query, mon=mon, lop=lop)
-    if not hits:
-        return None
-    top = hits[0]
-    return EvidenceRef(score=top["score"], heading=top.get("heading") or None, source_md=top.get("source_md") or None)
-
-
-def _collect_evidence(guesses: list[CompetencyGuess], mon: str, lop: str) -> tuple[list[EvidenceRef | None], bool]:
-    """Bằng chứng SGK cho từng ý, theo ĐÚNG thứ tự `guesses`. Trả (evidences, rag_available) —
-    sidecar/Qdrant lỗi giữa chừng -> ([None]*n, False) deterministic, KHÔNG raise (fail-soft,
-    pipeline nền không được sập vì RAG tạm gián đoạn)."""
-    try:
-        return [_best_evidence(_evidence_query(g), mon, lop) for g in guesses], True
-    except retrieval.RetrievalUnavailableError:
-        logger.warning("RAG evidence không khả dụng, bỏ qua bước đối chiếu SGK cho đề.")
-        return [None] * len(guesses), False
-
-
 def _analysis_items(items: list[ResolvedCompetency]) -> list[AnalysisItemRead]:
     return [
         AnalysisItemRead(
@@ -350,8 +394,9 @@ def _analysis_items(items: list[ResolvedCompetency]) -> list[AnalysisItemRead]:
             matched_catalog=item.matched_catalog,
             bloom_level=item.bloom_level,
             weight=item.weight,
-            evidence=item.evidence,
+            node_ref=NodeRef(node_id=item.unit_id, chapter=item.chapter, lesson=item.lesson) if item.unit_id else None,
             off_curriculum=item.off_curriculum,
+            off_curriculum_weight=item.off_curriculum_weight,
         )
         for item in items
     ]
@@ -423,38 +468,17 @@ def _bloom_distribution_and_alignment(items: list[ResolvedCompetency]) -> tuple[
         alignment = "BIASED_EASY"
     else:
         alignment = "ALIGNED"
-
     return dist, alignment
 
 
-def _avg_retrieval_distance(items: list[ResolvedCompetency]) -> float | None:
-    """Khoảng cách ngữ nghĩa trung bình đến SGK (1 - similarity score)."""
-    valid_scores = [it.evidence.score for it in items if it.evidence and it.evidence.score is not None]
-    if not valid_scores:
-        return None
-    avg_score = sum(valid_scores) / len(valid_scores)
-    return round(max(0.0, 1.0 - avg_score), 3)
-
-
 def build_content_analysis(inp: AnalysisBuildInput) -> ExamContentAnalysis:
-    """Dựng JSON phân tích nội dung v1.
-
-    Coverage chỉ tính ý khớp catalog và liệt kê đủ mọi unit catalog, kể cả weight=0. Concentration gom
-    theo unit_code của toàn bộ ý đã resolve, gồm cả unit fallback ngoài catalog. off_curriculum_weight
-    chỉ có ý nghĩa khi RAG khả dụng; nếu không, trả None để tránh kết luận nhầm ngoài chương trình.
-    """
+    """Dựng JSON phân tích nội dung theo 5 trục (bỏ Semantic Distance — plan PHẦN C)."""
     coverage, coverage_units = _coverage(inp.items, inp.catalog)
-    off_weight = None
-    if inp.rag_available:
-        off_weight = round(sum(item.weight for item in inp.items if item.off_curriculum), 3)
-
+    off_weight = round(sum(item.off_curriculum_weight for item in inp.items), 3)
     bloom_dist, bloom_align = _bloom_distribution_and_alignment(inp.items)
-    avg_dist = _avg_retrieval_distance(inp.items) if inp.rag_available else None
-
     return ExamContentAnalysis(
         model=inp.model,
         cdi=inp.cdi,
-        rag_available=inp.rag_available,
         items=_analysis_items(inp.items),
         coverage=coverage,
         coverage_units=coverage_units,
@@ -462,39 +486,18 @@ def build_content_analysis(inp: AnalysisBuildInput) -> ExamContentAnalysis:
         off_curriculum_weight=off_weight,
         bloom_distribution=bloom_dist,
         bloom_alignment=bloom_align,
-        avg_retrieval_distance=avg_dist,
     )
 
 
-def _collect_evidence_for_context(
-    ctx: AnalysisContext, guesses: list[CompetencyGuess]
-) -> tuple[list[EvidenceRef | None], bool]:
-    if not retrieval.has_rag(ctx.subject_code) or ctx.grade_number is None:
-        return [None] * len(guesses), False
-    return _collect_evidence(guesses, retrieval.rag_mon_slug(ctx.subject_code), str(ctx.grade_number))
-
-
-def _attach_evidence(
-    resolved: list[ResolvedCompetency], evidences: list[EvidenceRef | None], rag_available: bool
-) -> list[ResolvedCompetency]:
-    """Gắn bằng chứng RAG vào từng ý. off_curriculum: True (không có evidence dù đã tra RAG),
-    False (có evidence, đúng chương trình), None (RAG không khả dụng -> chưa xác định được)."""
-    return [
-        item.model_copy(update={"evidence": evidence, "off_curriculum": (evidence is None) if rag_available else None})
-        for item, evidence in zip(resolved, evidences, strict=False)
-    ]
-
-
 def _persist_competencies(db, paper_id: int, merged: dict[int, tuple[int, float]]) -> None:
-    """Ghi exam_competencies từ kết quả merge_by_unit — xóa hết rồi insert lại (đề không quá nhiều
-    ý nên không cần diff, và PK exam_paper_id+unit_id đã được merge_by_unit khử trùng trước đó)."""
+    """Ghi exam_competencies từ kết quả merge_by_unit — xóa hết rồi insert lại."""
     db.execute(ExamCompetency.__table__.delete().where(ExamCompetency.exam_paper_id == paper_id))
     for unit_id, (bloom_level, weight) in merged.items():
         db.add(ExamCompetency(exam_paper_id=paper_id, unit_id=unit_id, weight=weight, bloom_level=bloom_level))
 
 
 def analyze_exam_paper(exam_paper_id: int) -> None:
-    """Phân tích nội dung 1 đề thi và lưu CDI — chạy nền qua BackgroundTasks, không raise ra ngoài."""
+    """Phân tích nội dung 1 đề thi (M1+M2+M3) — chạy nền qua BackgroundTasks, không raise ra ngoài."""
     db = SessionLocal()
     t_start = time.monotonic()
     try:
@@ -506,43 +509,31 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
         text = extract_exam_text(storage.exam_file_path(paper.file_url), paper.file_type)
         logger.info("CDI[%s] trích text: %.2fs (%d ký tự)", exam_paper_id, time.monotonic() - t0, len(text))
 
-        # Resolve khối + tải catalog TRƯỚC khi gọi LLM phân loại -> constrained classification.
         grade_number = _resolve_grade_number(db, paper)
-        subject = db.get(Subject, paper.subject_id)
-        catalog = _load_catalog(db, paper.subject_id, grade_number)
+        semester = paper.semester_id if paper.semester_id in (1, 2) else None
+        shortlist = build_shortlist(db, paper.subject_id, grade_number, semester)
 
         t0 = time.monotonic()
-        guesses = classify_competencies(text, catalog)
-        logger.info("CDI[%s] gọi LLM phân loại: %.2fs (%d ý)", exam_paper_id, time.monotonic() - t0, len(guesses))
-        if not guesses:
+        items = map_items(text, shortlist)
+        logger.info("CDI[%s] LLM map: %.2fs (%d ý)", exam_paper_id, time.monotonic() - t0, len(items))
+        if not items:
             paper.content_analyzed_at = _now()
             paper.content_source = paper.file_type
             db.commit()
             return
 
-        ctx = AnalysisContext(
-            subject_id=paper.subject_id,
-            subject_code=subject.code if subject else "",
-            grade_number=grade_number,
-            catalog={u.code: u for u in catalog},
-        )
-        resolved = _resolve_units(db, ctx, guesses)
-        evidences, rag_available = _collect_evidence_for_context(ctx, guesses)
-        resolved = _attach_evidence(resolved, evidences, rag_available)
-        if grade_number is not None:
-            _persist_competencies(db, paper.id, merge_by_unit(resolved))
+        items = rejudge_null_items(items, shortlist)
+        resolved = _expand_mapped(items, shortlist)
+        resolved, items = _normalize_resolved(resolved, items)
+        merged = merge_by_unit(resolved)
+        if merged:
+            _persist_competencies(db, paper.id, merged)
         else:
-            logger.warning("Đề %s không xác định được khối -> chỉ lưu CDI, không tạo CurriculumUnit.", paper.id)
+            logger.warning("Đề %s không map được node nào.", paper.id)
 
-        paper.content_difficulty = cdi_from_bloom_mix([(g.bloom_level, g.weight) for g in guesses])
+        paper.content_difficulty = cdi_from_bloom_mix([(item.bloom_level, item.weight) for item in resolved])
         analysis = build_content_analysis(
-            AnalysisBuildInput(
-                items=resolved,
-                catalog=catalog,
-                rag_available=rag_available,
-                cdi=paper.content_difficulty,
-                model=None,
-            )
+            AnalysisBuildInput(items=resolved, catalog=shortlist, cdi=paper.content_difficulty, model=None)
         )
         paper.ai_analysis = {**(paper.ai_analysis or {}), _ANALYSIS_KEY: analysis.model_dump(mode="json")}
         paper.content_analyzed_at = _now()

@@ -16,7 +16,7 @@ from src.services import knowledge_pipeline
 router = APIRouter(
     prefix="/knowledge",
     tags=["Knowledge (RAG)"],
-    dependencies=[Depends(require_roles(enums.UserRole.ADMIN))],
+    dependencies=[Depends(require_roles(enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL))],
 )
 
 

@@ -8,6 +8,8 @@ class KnowledgeGapItem(BaseModel):
 
     unit_id: int
     unit_name: str | None = None
+    chapter: str | None = None
+    lesson: str | None = None
     gap_score: float = Field(..., description="0..1, cao = hổng nặng")
     mastery: float = Field(..., description="0..1, mức thành thạo")
     evidence_source: str | None = None  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR'

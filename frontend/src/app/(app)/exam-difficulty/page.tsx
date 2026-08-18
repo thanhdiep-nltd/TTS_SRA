@@ -3,22 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
-  BookOpen,
   CheckCircle2,
   ChevronRight,
   Gauge,
-  Info,
   Layers,
   Loader2,
   ShieldAlert,
   Sparkles,
-  TrendingDown,
-  TrendingUp,
   X,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { api } from "@/lib/api";
-import { ExamValidityRow, SchoolValidityOverview } from "@/lib/types";
+import { ExamContentAnalysis, ExamValidityRow, SchoolValidityOverview } from "@/lib/types";
 
 // Cấu hình Cờ Cảnh Báo Tam Giác Hóa
 const FLAG_CONFIG: Record<string, { label: string; cls: string; desc: string; icon: any }> = {
@@ -58,6 +54,7 @@ export default function ExamDifficultyPage() {
   const [selectedExam, setSelectedExam] = useState<ExamValidityRow | null>(null);
   const [examDetail, setExamDetail] = useState<any | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [contentAnalysis, setContentAnalysis] = useState<ExamContentAnalysis | null>(null);
 
   // Load danh sách môn học
   useEffect(() => {
@@ -114,9 +111,14 @@ export default function ExamDifficultyPage() {
     setSelectedExam(row);
     setDetailLoading(true);
     setExamDetail(null);
+    setContentAnalysis(null);
     try {
-      const data = await api.get(`/exam-papers/${row.exam_paper_id}`);
-      setExamDetail(data);
+      const [detail, ca] = await Promise.allSettled([
+        api.get(`/exam-papers/${row.exam_paper_id}`),
+        api.get<ExamContentAnalysis>(`/exam-papers/${row.exam_paper_id}/content-analysis`),
+      ]);
+      if (detail.status === "fulfilled") setExamDetail(detail.value);
+      if (ca.status === "fulfilled") setContentAnalysis(ca.value);
     } catch {
       setExamDetail(null);
     } finally {
@@ -489,50 +491,83 @@ export default function ExamDifficultyPage() {
                     );
                   })()}
 
-                  {/* Chuẩn chương trình phủ */}
-                  {examDetail?.ai_analysis?.curriculum_coverage && (
-                    <div className="space-y-2 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  {/* Phân tích nội dung đề (5 trục — KG phẳng) */}
+                  {contentAnalysis ? (
+                    <div className="space-y-3 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
                         <Layers className="w-4 h-4 text-indigo-500" />
-                        Độ bao phủ chương trình (Coverage)
+                        Phân tích nội dung đề (KG phẳng)
                       </h4>
-                      <p className="text-xs text-slate-600 dark:text-slate-300">
-                        Đề kiểm tra bao phủ{" "}
-                        <strong>{examDetail.ai_analysis.curriculum_coverage.covered_units}</strong> /{" "}
-                        {examDetail.ai_analysis.curriculum_coverage.total_units} bài học trong chương trình.
-                      </p>
-                      {examDetail.ai_analysis.curriculum_coverage.blind_spots?.length > 0 && (
-                        <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
-                          <span className="font-semibold">Điểm mù chưa kiểm tra: </span>
-                          {examDetail.ai_analysis.curriculum_coverage.blind_spots.join(", ")}
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                          <span className="text-[11px] text-slate-400 block font-medium">Độ phủ chương trình</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {contentAnalysis.coverage.matched}/{contentAnalysis.coverage.catalog_total}
+                            {contentAnalysis.coverage.ratio !== null &&
+                              ` (${Math.round(contentAnalysis.coverage.ratio * 100)}%)`}
+                          </span>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                          <span className="text-[11px] text-slate-400 block font-medium">Chương tập trung nhất</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {contentAnalysis.concentration.top_unit_name ?? "—"}
+                            {contentAnalysis.concentration.top_share !== null &&
+                              ` (${Math.round(contentAnalysis.concentration.top_share * 100)}%)`}
+                          </span>
+                          {contentAnalysis.concentration.is_concentrated && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                              Dồn chương
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {(contentAnalysis.off_curriculum_weight ?? 0) > 0 && (
+                        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            <span className="font-semibold">
+                              {(contentAnalysis.off_curriculum_weight * 100).toFixed(0)}% điểm có phần ngoài chương trình
+                            </span>{" "}
+                            — cờ mềm, chờ giáo viên duyệt (shortlist node).
+                          </span>
+                        </div>
+                      )}
+
+                      {contentAnalysis.items.length > 0 && (
+                        <div className="space-y-2 text-xs">
+                          {contentAnalysis.items.map((it, i) => (
+                            <div
+                              key={i}
+                              className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                  {it.topic}
+                                </span>
+                                <span className="shrink-0 px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-300 text-[10px] font-bold">
+                                  Bloom {it.bloom_level}
+                                </span>
+                              </div>
+                              <p className="text-slate-500 dark:text-slate-400 mt-1">
+                                {it.node_ref
+                                  ? `${it.node_ref.chapter ?? ""}${
+                                      it.node_ref.lesson ? ` › ${it.node_ref.lesson}` : ""
+                                    } (${Math.round(it.weight * 100)}%)`
+                                  : "Chưa khớp node — ngoài chương trình"}
+                              </p>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Bằng chứng SGK RAG */}
-                  {examDetail?.ai_analysis?.textbook_evidence && (
-                    <div className="space-y-2 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-violet-500" />
-                        Trích dẫn chứng cứ Sách Giáo Khoa (RAG)
-                      </h4>
-                      <div className="space-y-2 text-xs">
-                        {examDetail.ai_analysis.textbook_evidence.map((ev: any, i: number) => (
-                          <div
-                            key={i}
-                            className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800"
-                          >
-                            <span className="font-semibold text-slate-800 dark:text-slate-200 block">
-                              {ev.unit}
-                            </span>
-                            <p className="text-slate-500 dark:text-slate-400 mt-1 italic leading-relaxed">
-                              "{ev.quote}"
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  ) : (
+                    !detailLoading && (
+                      <p className="text-[11px] text-slate-400 italic px-1">
+                        Đề chưa có kết quả phân tích nội dung (chờ AI bóc tách).
+                      </p>
+                    )
                   )}
                 </>
               )}
