@@ -55,6 +55,7 @@ logs/
 htmlcov/
 .coverage
 coverage.xml
+tests/fixtures/
 
 # Docker
 docker-compose.override.yml
