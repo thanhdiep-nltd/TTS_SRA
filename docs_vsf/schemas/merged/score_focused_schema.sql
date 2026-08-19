@@ -246,11 +246,56 @@ CREATE TABLE public.curriculum_units (
     description     TEXT,
     semester_number SMALLINT CHECK (semester_number IN (1, 2)), -- NULL = dạy cả năm; 1/2 = học kỳ (SGK tập 1/tập 2)
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,              -- FALSE = ẩn khỏi picker (node rác cũ)
+    is_phu          BOOLEAN NOT NULL DEFAULT FALSE,             -- TRUE = node phụ (Ôn tập/Kiểm tra/Hoạt động) — loại khỏi shortlist map đề
+    book_id         BIGINT REFERENCES public.curriculum_books(id) ON DELETE SET NULL, -- cuốn SGK nguồn (nạp qua 'Nạp sách giáo khoa')
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_curriculum_subject_grade_code UNIQUE (subject_id, grade_number, code)
 );
 CREATE INDEX idx_curri_subject ON public.curriculum_units(subject_id, grade_number);
 CREATE INDEX idx_curri_parent ON public.curriculum_units(parent_id);
+CREATE INDEX idx_curri_book ON public.curriculum_units(book_id);
+
+-- 4b. Cuốn Sách Giáo Khoa đã nạp (nguồn gốc node chương/bài)
+CREATE TABLE public.curriculum_books (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    title           VARCHAR(255) NOT NULL,  -- text "Chương/Tập/Mô tả" người dùng nhập
+    subject_code    VARCHAR(10) NOT NULL,
+    subject_id      INTEGER NOT NULL,
+    grade_number    SMALLINT NOT NULL,
+    semester_number SMALLINT,               -- NULL = dạy cả năm; 1/2 = học kỳ (SGK tập 1/tập 2)
+    filename        VARCHAR(255),
+    source          VARCHAR(30),
+    created_by      BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_curri_book_subject_grade_sem_title UNIQUE (subject_id, grade_number, semester_number, title)
+);
+CREATE INDEX idx_curri_book_subject_grade ON public.curriculum_books(subject_id, grade_number);
+
+-- 4c. Job nạp sách giáo khoa (hàng đợi DB-backed — giống ews_pipeline_jobs)
+CREATE TABLE public.curriculum_ingest_jobs (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    requested_by    BIGINT REFERENCES public.users(id) ON DELETE CASCADE,
+    subject_code    VARCHAR(10) NOT NULL,
+    grade_number    SMALLINT NOT NULL,
+    semester_number SMALLINT,
+    include_lessons BOOLEAN NOT NULL DEFAULT FALSE,
+    dry_run         BOOLEAN NOT NULL DEFAULT TRUE,
+    filename        VARCHAR(255),
+    book_title      VARCHAR(255),
+    source_filepath TEXT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    progress        INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+    result_json     TEXT,
+    inserted        INTEGER NOT NULL DEFAULT 0,
+    updated         INTEGER NOT NULL DEFAULT 0,
+    hidden_placeholders INTEGER NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    started_at      TIMESTAMPTZ,
+    finished_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_curri_job_status ON public.curriculum_ingest_jobs(status);
+CREATE INDEX idx_curri_job_created ON public.curriculum_ingest_jobs(created_at);
 
 -- 5. Ánh xạ Trọng số Chuẩn đầu ra Bloom với Đề thi (Exam Competencies)
 CREATE TABLE public.exam_competencies (

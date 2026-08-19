@@ -1,12 +1,20 @@
-"""Nạp sách giáo khoa (PDF/DOCX/TXT) → tự tách mục lục → node chương/bài — KHÔNG RAG.
+"""Nạp sách giáo khoa (PDF/DOCX/TXT/MD) → tự tách mục lục → node chương/bài — KHÔNG RAG.
 
-M5 mở rộng: thay vì người dùng tự tổng hợp file JSON/markdown, upload chính cuốn SGK;
-pipeline đọc TOC (bookmark PDF → text-layer → VLM fallback) và sinh node curriculum_units.
+M5 mở rộng: thay vì người dùng tự tổng hợp file JSON/markdown, upload chính cuốn SGK.
+
+- PDF: đi thẳng Qwen3-VL-Flash (VLM-thuần) — VLM nhìn ảnh trang mục lục và xuất JSON cấu trúc
+  (chương → bài, kind lesson/phu). KHÔNG dùng bookmark/regex (nguồn gây lẫn ruột sách).
+- DOCX: heading styles (Heading 1 = chương, Heading 2 = bài).
+- TXT/MD: regex dòng "Chương X:" / "Bài n:" (mục lục tay — user kiểm soát nội dung).
+
+Mọi nguồn đều qua chuẩn hóa (_normalize_title), lọc placeholder (_is_placeholder),
+gắn cờ phụ (_is_phu_title) và sanity-check (_sanity_check) trước khi preview/lưu.
 Hỗ trợ dry_run (xem trước cây dự kiến trước khi ghi DB).
 """
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from pathlib import Path
@@ -24,6 +32,22 @@ _TMP_DIR = Path(__file__).resolve().parents[2] / "temp"
 _CHAPTER_RE = re.compile(r"^\s*Chương\s+([IVXLCDM]+|\d+)\s*[.:]?\s*(.+)$", re.IGNORECASE)
 _LESSON_RE = re.compile(r"^\s*Bài\s+(\d+)\s*[.:]?\s*(.+)$", re.IGNORECASE)
 _SEMESTER_RE = re.compile(r"(?:tập|tap|hk)\s*([12])", re.IGNORECASE)
+_TRAILING_PAGE_RE = re.compile(r"[\s.…]+\d{1,3}[\s.…]*$")
+
+# Placeholder xuất hiện trong bản mẫu/template sách — loại hẳn.
+_PLACEHOLDER_RE = re.compile(
+    r"^(tên chương|tên bài|tên mục|tên hoạt động|tên thực hành|tên luyện tập|tên đề mục|tên phần)$",
+    re.IGNORECASE,
+)
+# Node phụ (giữ trong cây nhưng loại khỏi shortlist map đề thi).
+_PHU_TITLE_RE = re.compile(
+    r"^(ôn tập|kiểm tra|hoạt động thực hành|luyện tập chung|bài tập cuối|tổng kết chương|câu hỏi ôn tập)",
+    re.IGNORECASE,
+)
+
+_TOC_SCAN_PAGES = 8
+_MAX_CHAPTERS_PER_SEMESTER = 6
+_MAX_LESSONS_PER_CHAPTER = 30
 
 TocEntry = tuple[int, str, int]  # (level: 1=chương, 2=bài, page)
 
@@ -36,8 +60,82 @@ def detect_semester_from_filename(filename: str) -> int | None:
     return int(match.group(1))
 
 
+def _normalize_title(title: str) -> str:
+    """Bỏ số trang cuối dòng + dấu chấm chấm; trim. Giữ nguyên cách viết hoa của sách."""
+    return _TRAILING_PAGE_RE.sub("", title).strip(" .…:").strip()
+
+
+def _is_placeholder(title: str) -> bool:
+    """True nếu là placeholder bản mẫu (Tên chương/Tên bài...) → loại hẳn."""
+    return bool(_PLACEHOLDER_RE.match(title.strip()))
+
+
+def _is_phu_title(title: str) -> bool:
+    """True nếu là node phụ (Ôn tập chương/Kiểm tra/Hoạt động thực hành...) → gắn cờ is_phu."""
+    return bool(_PHU_TITLE_RE.match(title.strip()))
+
+
+def _parse_toc_json(text: str) -> dict[str, Any] | None:
+    """Parse JSON object từ text VLM (bóc code fence, lấy object đầu tiên). None nếu hỏng."""
+    cleaned = re.sub(r"^`{3}(?:json)?|`{3}$", "", text.strip(), flags=re.MULTILINE).strip()
+    start = cleaned.find("{")
+    if start < 0:
+        return None
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(cleaned[start:])
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _merge_toc_chapters(parsed_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Gom kết quả từng trang VLM → danh sách chương (gộp trang TOC trải nhiều trang)."""
+    chapters: list[dict[str, Any]] = []
+    for page in parsed_pages:
+        if not page.get("toc_page"):
+            continue
+        for ch in page.get("chapters", []) or []:
+            name = _normalize_title(str(ch.get("name", "")))
+            if not name or _is_placeholder(name):
+                continue
+            if chapters and chapters[-1]["name"] == name:
+                target = chapters[-1]  # trang sau lặp lại tên chương → gộp bài
+            else:
+                target = {"name": name, "is_phu": _is_phu_title(name), "lessons": []}
+                chapters.append(target)
+            for lesson in ch.get("lessons", []) or []:
+                lesson_name = _normalize_title(str(lesson.get("name", "")))
+                if not lesson_name or _is_placeholder(lesson_name):
+                    continue
+                kind = lesson.get("kind")
+                target["lessons"].append(
+                    {
+                        "name": lesson_name,
+                        "is_phu": kind == "phu" or _is_phu_title(lesson_name),
+                    }
+                )
+    return chapters
+
+
+def extract_toc_from_pdf(content: bytes) -> tuple[list[dict[str, Any]], str]:
+    """Trích TOC bằng VLM-thuần: render ảnh N trang đầu → VLM nhận diện mục lục + xuất JSON cây."""
+    if not vlm.is_configured():
+        raise ValueError("Cần cấu hình VLM_API_KEY để nạp sách PDF — VLM là bắt buộc cho luồng này.")
+    _TMP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _TMP_DIR / f"toc_{uuid.uuid4().hex}.pdf"
+    tmp.write_bytes(content)
+    try:
+        pages = vlm.read_pdf_toc(tmp)
+    except vlm.VlmUnavailableError as exc:
+        raise ValueError(f"VLM đọc mục lục thất bại: {exc}") from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    parsed = [obj for obj in (_parse_toc_json(page) for page in pages) if obj]
+    return _merge_toc_chapters(parsed), "pdf-vlm"
+
+
 def extract_toc_from_text(text: str) -> list[TocEntry]:
-    """Dò dòng "Chương I: Tên" / "Bài 1: Tên" trong text → TOC entries (không cần page chính xác)."""
+    """Dò dòng "Chương X: Tên" / "Bài n: Tên" trong text → TOC entries (dùng cho TXT/MD tay)."""
     entries: list[TocEntry] = []
     for idx, line in enumerate(text.splitlines()):
         line = line.strip()
@@ -49,39 +147,6 @@ def extract_toc_from_text(text: str) -> list[TocEntry]:
         if lesson:
             entries.append((2, lesson.group(2).strip(), idx))
     return entries
-
-
-def extract_toc_from_pdf(content: bytes) -> tuple[list[TocEntry], str]:
-    """Trích TOC từ PDF: bookmark (get_toc) → text-layer regex → VLM. Trả (entries, source)."""
-    import fitz  # PyMuPDF
-
-    with fitz.open(stream=content, filetype="pdf") as doc:
-        toc = doc.get_toc()
-        if toc:
-            entries = [(int(level), title.strip(), page) for level, title, page in toc if int(level) <= 2]
-            if entries:
-                return entries, "pdf-bookmark"
-        text_parts: list[str] = []
-        for page in doc:
-            text_parts.append(page.get_text())
-    entries = extract_toc_from_text("\n".join(text_parts))
-    if entries:
-        return entries, "pdf-text"
-
-    if vlm.is_configured():
-        _TMP_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = _TMP_DIR / f"toc_{uuid.uuid4().hex}.pdf"
-        tmp.write_bytes(content)
-        try:
-            raw = vlm.read_pdf_toc(tmp)
-        except vlm.VlmUnavailableError:
-            raw = ""  # VLM lỗi (mạng/key/provider 5xx) → degrade, không làm 500
-        finally:
-            tmp.unlink(missing_ok=True)
-        entries = extract_toc_from_text(raw)
-        if entries:
-            return entries, "pdf-vlm"
-    return [], "pdf"
 
 
 def extract_toc_from_docx(content: bytes) -> list[TocEntry]:
@@ -99,64 +164,91 @@ def extract_toc_from_docx(content: bytes) -> list[TocEntry]:
     return entries
 
 
-def _dedupe(entries: list[TocEntry]) -> list[TocEntry]:
-    """Bỏ trùng tên chương/bài (TOC lặp giữa các trang)."""
-    seen: set[tuple[int, str]] = set()
-    result: list[TocEntry] = []
-    for level, title, page in entries:
-        key = (level, title)
-        if key in seen:
+def _entries_to_chapters(entries: list[TocEntry]) -> list[dict[str, Any]]:
+    """Chuyển TocEntry (level/title) → chapters dict; chuẩn hóa + tag phụ + loại placeholder."""
+    chapters: list[dict[str, Any]] = []
+    for level, title, _page in entries:
+        name = _normalize_title(title)
+        if not name or _is_placeholder(name):
             continue
-        seen.add(key)
-        result.append((level, title, page))
-    return result
+        if level == 1:
+            chapters.append({"name": name, "is_phu": _is_phu_title(name), "lessons": []})
+        elif chapters:
+            chapters[-1]["lessons"].append({"name": name, "is_phu": _is_phu_title(name)})
+    return chapters
 
 
-def build_unit_specs_from_toc(
-    entries: list[TocEntry],
+def _sanity_check(chapters: list[dict[str, Any]]) -> list[str]:
+    """Cảnh báo bất thường (số chương/bài vượt ngưỡng, trùng tên) — không chặn, chỉ cảnh báo."""
+    warnings: list[str] = []
+    if len(chapters) > _MAX_CHAPTERS_PER_SEMESTER:
+        warnings.append(
+            f"Phát hiện {len(chapters)} chương — nhiều hơn mức thường gặp cho 1 học kỳ "
+            f"({_MAX_CHAPTERS_PER_SEMESTER}); kiểm tra xem có lẫn nội dung ruột sách không."
+        )
+    for ch in chapters:
+        if len(ch["lessons"]) > _MAX_LESSONS_PER_CHAPTER:
+            warnings.append(
+                f"Chương '{ch['name']}' có {len(ch['lessons'])} bài — nhiều hơn mức bình thường; kiểm tra lại."
+            )
+    names = [ch["name"] for ch in chapters]
+    if len(set(names)) != len(names):
+        warnings.append("Có chương trùng tên — kiểm tra lại trước khi lưu.")
+    return warnings
+
+
+def build_unit_specs_from_chapters(
+    chapters: list[dict[str, Any]],
     subject_code: str,
     grade: int,
     semester: int | None,
     include_lessons: bool,
 ) -> list[dict[str, Any]]:
-    """Chuyển TOC entries → spec curriculum_units: chương C1.., bài con {chương}_B{n} (parent_code)."""
+    """Chuyển chapters → spec curriculum_units: chương C1.., bài con {chương}_B{n} (parent_code)."""
     specs: list[dict[str, Any]] = []
-    chapter_index = 0
-    lesson_index = 0
-    current_chapter_code: str | None = None
-    prefix = f"{subject_code.upper()}{grade}"
-    for level, title, _page in entries:
-        if level == 1:
-            chapter_index += 1
-            lesson_index = 0
-            current_chapter_code = f"{prefix}_C{chapter_index}"
-            specs.append(
-                {
-                    "code": current_chapter_code,
-                    "name": title,
-                    "semester_number": semester,
-                    "parent_code": None,
-                }
-            )
-            continue
-        if not include_lessons or current_chapter_code is None:
-            continue
-        lesson_index += 1
+    # subject_code có thể đã gắn khối (TOAN_6, TOAN_7...) từ dropdown 24 môn — nếu hậu tố
+    # khớp grade thì bỏ để code node gọn (TOAN6_C1 thay vì TOAN_66_C1).
+    base = subject_code.upper().strip()
+    if base.endswith(f"_{grade}"):
+        base = base[: -len(f"_{grade}")]
+    prefix = f"{base}{grade}"
+    for idx, ch in enumerate(chapters, start=1):
+        code = f"{prefix}_C{idx}"
         specs.append(
             {
-                "code": f"{current_chapter_code}_B{lesson_index}",
-                "name": title,
+                "code": code,
+                "name": ch["name"],
                 "semester_number": semester,
-                "parent_code": current_chapter_code,
+                "parent_code": None,
+                "is_phu": ch.get("is_phu", False),
             }
         )
+        if not include_lessons:
+            continue
+        for jdx, lesson in enumerate(ch.get("lessons", []), start=1):
+            specs.append(
+                {
+                    "code": f"{code}_B{jdx}",
+                    "name": lesson["name"],
+                    "semester_number": semester,
+                    "parent_code": code,
+                    "is_phu": lesson.get("is_phu", False),
+                }
+            )
     return specs
 
 
 def upsert_unit_tree(
-    db: Session, specs: list[dict[str, Any]], subject_id: int, grade: int
+    db: Session,
+    specs: list[dict[str, Any]],
+    subject_id: int,
+    grade: int,
+    book_id: int | None = None,
 ) -> tuple[int, int]:
-    """Upsert chương trước, rồi bài con gắn parent_id theo parent_code. Trả (inserted, updated)."""
+    """Upsert chương trước, rồi bài con gắn parent_id theo parent_code. Trả (inserted, updated).
+
+    book_id (nếu có) sẽ gắn vào từng node để biết cuốn SGK nguồn.
+    """
     inserted = updated = 0
     code_to_id: dict[str, int] = {}
     for spec in specs:
@@ -176,6 +268,8 @@ def upsert_unit_tree(
                 name=spec["name"],
                 semester_number=spec["semester_number"],
                 parent_id=parent_id,
+                is_phu=spec.get("is_phu", False),
+                book_id=book_id,
             )
             db.add(unit)
             inserted += 1
@@ -183,7 +277,10 @@ def upsert_unit_tree(
             unit.name = spec["name"]
             unit.semester_number = spec["semester_number"]
             unit.parent_id = parent_id
+            unit.is_phu = spec.get("is_phu", False)
             unit.is_active = True
+            if book_id is not None:
+                unit.book_id = book_id
             updated += 1
         db.flush()
         code_to_id[spec["code"]] = unit.id
@@ -197,10 +294,12 @@ def save_catalog_from_preview(
     subject_code: str,
     grade: int,
     semester: int | None = None,
+    book_id: int | None = None,
 ) -> dict[str, Any]:
     """Lưu cây chương/bài (đã trích xuất ở bước dry_run) thẳng vào curriculum_units.
 
     KHÔNG trích lại file, KHÔNG gọi VLM — upsert theo code đã xem trước (idempotent).
+    book_id (nếu có) gắn vào node để biết cuốn SGK nguồn.
     """
     specs: list[dict[str, Any]] = []
     for chapter in chapters:
@@ -211,6 +310,7 @@ def save_catalog_from_preview(
                 "name": chapter["name"],
                 "semester_number": chapter.get("semester_number") or semester,
                 "parent_code": None,
+                "is_phu": chapter.get("is_phu", False),
             }
         )
         for lesson in chapter.get("lessons", []):
@@ -220,6 +320,7 @@ def save_catalog_from_preview(
                     "name": lesson["name"],
                     "semester_number": chapter.get("semester_number") or semester,
                     "parent_code": code,
+                    "is_phu": lesson.get("is_phu", False),
                 }
             )
     if not specs:
@@ -228,7 +329,7 @@ def save_catalog_from_preview(
     subject_id = subject_ids.get(grade)
     if subject_id is None:
         raise ValueError(f"Không có s360.dim_subject cho {subject_code.upper()}_{grade} — nạp môn trước.")
-    inserted, updated = upsert_unit_tree(db, specs, subject_id, grade)
+    inserted, updated = upsert_unit_tree(db, specs, subject_id, grade, book_id=book_id)
     hidden = deactivate_placeholder_units(db)
     return {
         "subject_code": subject_code.upper(),
@@ -239,23 +340,23 @@ def save_catalog_from_preview(
         "inserted": inserted,
         "updated": updated,
         "hidden_placeholders": hidden,
+        "warnings": [],
         "dry_run": False,
+        "book_id": book_id,
     }
 
 
-def _extract(content: bytes, filename: str) -> tuple[list[TocEntry], str]:
-    """Chọn extractor theo đuôi file → (entries, source). Nâng ValueError khi không trích được."""
+def _extract(content: bytes, filename: str) -> tuple[list[dict[str, Any]], str]:
+    """Chọn extractor theo đuôi file → (chapters, source). PDF = VLM-thuần bắt buộc."""
     ext = Path(filename).suffix.lower()
     if ext == ".pdf":
-        entries, source = extract_toc_from_pdf(content)
-    elif ext == ".docx":
-        entries, source = extract_toc_from_docx(content), "docx"
-    elif ext in (".txt", ".md"):
+        return extract_toc_from_pdf(content)
+    if ext == ".docx":
+        return _entries_to_chapters(extract_toc_from_docx(content)), "docx"
+    if ext in (".txt", ".md"):
         text = content.decode("utf-8", errors="replace")
-        entries, source = extract_toc_from_text(text), "text"
-    else:
-        raise ValueError(f"Định dạng không hỗ trợ: {ext} (chỉ PDF/DOCX/TXT/MD)")
-    return _dedupe(entries), source
+        return _entries_to_chapters(extract_toc_from_text(text)), "text"
+    raise ValueError(f"Định dạng không hỗ trợ: {ext} (chỉ PDF/DOCX/TXT/MD)")
 
 
 def ingest_book(
@@ -267,25 +368,28 @@ def ingest_book(
     semester: int | None = None,
     include_lessons: bool = False,
     dry_run: bool = False,
+    book_id: int | None = None,
 ) -> dict[str, Any]:
     """Nạp sách → tách TOC → (dry_run: preview | thật: upsert curriculum_units). KHÔNG RAG."""
-    entries, source = _extract(content, filename)
-    if not entries:
+    chapters, source = _extract(content, filename)
+    if not chapters:
         raise ValueError(
-            "Không trích được mục lục: sách không có bookmark/text-layer và VLM đọc thất bại "
-            "(mạng hoặc provider tạm lỗi). Hãy thử lại sau, hoặc dùng file PDF có bookmark "
-            "hoặc file mục lục JSON/markdown."
+            "Không trích được mục lục: không tìm thấy trang MỤC LỤC trong "
+            f"{_TOC_SCAN_PAGES} trang đầu (PDF cần VLM hoạt động; nếu là DOCX/TXT hãy kiểm tra cấu trúc). "
+            "Hãy thử lại, hoặc dùng file mục lục JSON/markdown."
         )
     if semester is None:
         semester = detect_semester_from_filename(filename)
-    specs = build_unit_specs_from_toc(entries, subject_code, grade, semester, include_lessons)
-    chapters = [
+    warnings = _sanity_check(chapters)
+    specs = build_unit_specs_from_chapters(chapters, subject_code, grade, semester, include_lessons)
+    preview_chapters = [
         {
             "code": spec["code"],
             "name": spec["name"],
             "semester_number": spec["semester_number"],
+            "is_phu": spec["is_phu"],
             "lessons": [
-                {"code": child["code"], "name": child["name"]}
+                {"code": child["code"], "name": child["name"], "is_phu": child["is_phu"]}
                 for child in specs
                 if child["parent_code"] == spec["code"]
             ],
@@ -299,10 +403,11 @@ def ingest_book(
             "grade": grade,
             "semester": semester,
             "source": source,
-            "chapters": chapters,
+            "chapters": preview_chapters,
             "inserted": 0,
             "updated": 0,
             "hidden_placeholders": 0,
+            "warnings": warnings,
             "dry_run": True,
         }
 
@@ -310,16 +415,17 @@ def ingest_book(
     subject_id = subject_ids.get(grade)
     if subject_id is None:
         raise ValueError(f"Không có s360.dim_subject cho {subject_code.upper()}_{grade} — nạp môn trước.")
-    inserted, updated = upsert_unit_tree(db, specs, subject_id, grade)
+    inserted, updated = upsert_unit_tree(db, specs, subject_id, grade, book_id=book_id)
     hidden = deactivate_placeholder_units(db)
     return {
         "subject_code": subject_code.upper(),
         "grade": grade,
         "semester": semester,
         "source": source,
-        "chapters": chapters,
+        "chapters": preview_chapters,
         "inserted": inserted,
         "updated": updated,
         "hidden_placeholders": hidden,
+        "warnings": warnings,
         "dry_run": False,
     }

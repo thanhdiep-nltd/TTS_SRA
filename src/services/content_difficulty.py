@@ -192,6 +192,7 @@ def build_shortlist(db, subject_id: int, grade_number: int | None, semester_numb
     stmt = select(CurriculumUnit).where(
         CurriculumUnit.subject_id == subject_id,
         CurriculumUnit.is_active.is_(True),
+        CurriculumUnit.is_phu.is_(False),  # node phụ (Ôn tập/Kiểm tra/Hoạt động) không map đề thi
     )
     if grade_number is not None:
         stmt = stmt.where(CurriculumUnit.grade_number == grade_number)

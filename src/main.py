@@ -26,9 +26,9 @@ async def lifespan(app: FastAPI):
 
     # Auto-create missing helper tables (e.g. ai_observability_snapshots)
     try:
-        from src.db.session import engine
-        from src.db.base import Base
         import src.models.tables  # noqa: F401
+        from src.db.base import Base
+        from src.db.session import engine
         Base.metadata.create_all(bind=engine)
     except Exception as exc:
         print(f"Table creation check: {exc}")
@@ -64,8 +64,8 @@ async def lifespan(app: FastAPI):
 
         # Startup Self-Healing cho hàng chờ dự đoán EWS (BGH control panel)
         try:
-            from src.ews.job_worker import process_next_ews_job
             from src.db.session import SessionLocal
+            from src.ews.job_worker import process_next_ews_job
             from src.models.tables import EwsPipelineJob
 
             db = SessionLocal()
@@ -86,6 +86,27 @@ async def lifespan(app: FastAPI):
             process_next_ews_job()
         except Exception as e:
             print(f"Startup EWS Self-Healing Error: {e}")
+
+        # Startup Self-Healing cho hàng chờ nạp sách giáo khoa (DB-backed queue)
+        try:
+            from src.db.session import SessionLocal
+            from src.models.tables import CurriculumIngestJob
+            from src.services.curriculum_job_worker import process_next_curriculum_ingest_job
+
+            db = SessionLocal()
+            stuck = db.query(CurriculumIngestJob).filter(CurriculumIngestJob.status == "processing").all()
+            if stuck:
+                print(f"Startup Self-Healing: Đánh dấu {len(stuck)} job nạp sách kẹt thành 'failed'...")
+                for job in stuck:
+                    job.status = "failed"
+                    job.error_message = "Bị gián đoạn do hệ thống khởi động lại. Vui lòng thử lại."
+                    job.finished_at = datetime.utcnow()
+                db.commit()
+            db.close()
+            # Khởi chạy hàng chờ để xử lý job pending (nếu có)
+            process_next_curriculum_ingest_job()
+        except Exception as e:
+            print(f"Startup Curriculum Ingest Self-Healing Error: {e}")
 
     # Snapshot job cho trend chart "Tình trạng hệ thống AI" (ẩn khi chạy test)
 

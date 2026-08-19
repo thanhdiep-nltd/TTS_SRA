@@ -167,6 +167,7 @@ def unit_db():
                     description TEXT,
                     semester_number INTEGER,
                     is_active BOOLEAN NOT NULL DEFAULT 1,
+                    is_phu BOOLEAN NOT NULL DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
                 """
@@ -197,6 +198,12 @@ def unit_db():
             )
         )
         conn.execute(text("UPDATE curriculum_units SET is_active = 0 WHERE code = 'TOAN6_HIDDEN'"))
+        conn.execute(
+            text(
+                "INSERT INTO curriculum_units (subject_id, grade_number, code, name, semester_number, is_phu) "
+                "VALUES (106, 6, 'TOAN6_PHU', 'On tap chuong II', 1, 1)"
+            )
+        )
     with Session(engine) as session:
         yield session
 
@@ -209,6 +216,11 @@ def test_build_shortlist_filters_grade_semester_and_active(unit_db):
 def test_build_shortlist_ignores_filters_when_none(unit_db):
     units = cd.build_shortlist(unit_db, subject_id=106, grade_number=None, semester_number=None)
     assert {u.code for u in units} == {"TOAN6_C1", "TOAN6_C4", "TOAN7_C1"}
+
+
+def test_build_shortlist_excludes_phu_nodes(unit_db):
+    units = cd.build_shortlist(unit_db, subject_id=106, grade_number=6, semester_number=1)
+    assert "TOAN6_PHU" not in {u.code for u in units}
 
 
 def test_build_map_prompt_lists_shortlist_nodes():

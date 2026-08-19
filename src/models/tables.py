@@ -344,6 +344,80 @@ class CurriculumUnit(Base):
     # False = ẩn khỏi picker (rác phân mảnh taxonomy cũ, còn bị exam_competencies tham chiếu
     # nên không xóa được) — KHÔNG liên quan quyền hạn, chỉ là cờ hiển thị.
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    # True = node phụ (Ôn tập chương, Kiểm tra chương, Hoạt động thực hành...) — giữ trong cây
+    # điều hướng nhưng LOẠI khỏi shortlist map đề thi (build_shortlist lọc is_phu = false).
+    is_phu = Column(Boolean, nullable=False, server_default=text("false"))
+    # NULL = node sinh từ upload mục lục cũ / chưa gắn cuốn; set khi nạp qua 'Nạp sách giáo khoa'.
+    book_id = Column(BigInteger, ForeignKey("curriculum_books.id", ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class CurriculumBook(Base):
+    """Cuốn sách giáo khoa đã nạp (qua 'Nạp sách giáo khoa') — nguồn gốc của các node chương/bài."""
+
+    __tablename__ = "curriculum_books"
+    __table_args__ = (
+        Index("idx_curri_book_subject_grade", "subject_id", "grade_number"),
+        UniqueConstraint(
+            "subject_id",
+            "grade_number",
+            "semester_number",
+            "title",
+            name="uq_curri_book_subject_grade_sem_title",
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # title = text "Chương/Tập/Mô tả" người dùng nhập (vd "Tập 1 - Chương 1 Số học");
+    # dùng làm khóa phân biệt cuốn (cùng môn/khối/semester, title khác = cuốn khác).
+    title = Column(String(255), nullable=False)
+    subject_code = Column(String(10), nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    grade_number = Column(SmallInteger, nullable=False)
+    semester_number = Column(SmallInteger)
+    filename = Column(String(255))
+    source = Column(String(30))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class CurriculumIngestJob(Base):
+    """Job nạp sách giáo khoa bất đồng bộ — hàng đợi DB-backed (giống ews_pipeline_jobs).
+
+    Status: pending -> processing -> completed | failed. Mỗi job lưu file tạm (source_filepath)
+    để worker đọc; kết quả preview trích xuất nằm result_json (bền qua restart, frontend poll).
+    """
+
+    __tablename__ = "curriculum_ingest_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed')",
+            name="curri_ingest_job_status_valid",
+        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="curri_ingest_job_progress_valid"),
+        Index("idx_curri_job_status", "status"),
+        Index("idx_curri_job_created", "created_at"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    requested_by = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_code = Column(String(10), nullable=False)
+    grade_number = Column(SmallInteger, nullable=False)
+    semester_number = Column(SmallInteger)
+    include_lessons = Column(Boolean, nullable=False, server_default=text("false"))
+    dry_run = Column(Boolean, nullable=False, server_default=text("true"))
+    filename = Column(String(255))
+    book_title = Column(String(255))
+    source_filepath = Column(Text)
+    status = Column(String(20), nullable=False, server_default=text("'pending'"))
+    progress = Column(Integer, nullable=False, server_default=text("0"))
+    result_json = Column(Text)
+    inserted = Column(Integer, nullable=False, server_default=text("0"))
+    updated = Column(Integer, nullable=False, server_default=text("0"))
+    hidden_placeholders = Column(Integer, nullable=False, server_default=text("0"))
+    error_message = Column(Text)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 

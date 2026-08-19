@@ -14,7 +14,10 @@ class CurriculumUnitRead(BaseModel):
     parent_id: int | None = None
     parent_name: str | None = None
     is_active: bool = True
+    is_phu: bool = False
     description: str | None = None
+    book_id: int | None = None
+    book_title: str | None = None
 
 
 class CurriculumUploadResult(BaseModel):
@@ -33,6 +36,7 @@ class IngestedLessonRead(BaseModel):
 
     code: str
     name: str
+    is_phu: bool = False
 
 
 class IngestedChapterRead(BaseModel):
@@ -41,6 +45,7 @@ class IngestedChapterRead(BaseModel):
     code: str
     name: str
     semester_number: int | None = None
+    is_phu: bool = False
     lessons: list[IngestedLessonRead] = []
 
 
@@ -52,7 +57,41 @@ class BookIngestResult(BaseModel):
     semester: int | None = None
     source: str
     chapters: list[IngestedChapterRead]
-    inserted: int
-    updated: int
-    hidden_placeholders: int
+    inserted: int = 0
+    updated: int = 0
+    hidden_placeholders: int = 0
+    warnings: list[str] = []
     dry_run: bool = False
+    book_title: str | None = None
+    book_id: int | None = None
+
+
+class BookIngestJobRead(BaseModel):
+    """Trạng thái job nạp sách bất đồng bộ (DB-backed queue — giống EWS predict)."""
+
+    job_id: int
+    status: str  # pending | processing | completed | failed
+    progress: int = 0
+    subject_code: str
+    grade_number: int
+    semester_number: int | None = None
+    filename: str | None = None
+    book_title: str | None = None
+    result: BookIngestResult | None = None
+    error: str | None = None
+    created_at: str | None = None
+
+
+class CurriculumBookRead(BaseModel):
+    """1 cuốn SGK đã nạp, kèm số node chương/bài thuộc cuốn."""
+
+    id: int
+    title: str
+    subject_code: str
+    subject_id: int
+    grade_number: int
+    semester_number: int | None = None
+    filename: str | None = None
+    source: str | None = None
+    unit_count: int = 0
+    created_at: str | None = None

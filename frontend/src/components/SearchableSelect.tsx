@@ -103,9 +103,17 @@ function Combobox({ value, onChange, options, placeholder, disabled }: {
       if (!boxRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    // Đóng khi cuộn (kể cả cuộn trong container lồng nhau, capture:true) thay vì bám theo vị
-    // trí — đơn giản và tránh panel bị lệch/kẹt vị trí cũ.
-    const onScrollOrResize = () => setOpen(false);
+    // Cuộn toàn trang đóng panel (position:fixed nên không bám theo); nhưng cuộn BÊN TRONG
+    // panel (list options) hoặc bên trong nút thì KHÔNG đóng — tránh bug tự tắt khi lăn chuột
+    // trong danh sách dài (vd dropdown Môn học 19 môn).
+    const onScrollOrResize = (e?: Event) => {
+      if (e instanceof Event) {
+        const t = e.target as Node | null;
+        if (t && boxRef.current?.contains(t)) return;
+        if (t && panelRef.current?.contains(t)) return;
+      }
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScrollOrResize, true);

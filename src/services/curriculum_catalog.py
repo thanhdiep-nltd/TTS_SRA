@@ -1,7 +1,7 @@
 """Nạp catalog chuẩn chương trình (bảng phẳng curriculum_units) — KHÔNG RAG.
 
-Dùng chung cho scripts/seed_curriculum_nodes.py (CLI) và API admin
-(src/api/v1/curriculum.py). M0/M5 trong docs_vsf/plan_cdi_kg_anchored.md:
+Dùng cho API admin (src/api/v1/curriculum.py) và service ingest sách
+(src/services/curriculum_ingest.py). M0/M5 trong docs_vsf/plan_cdi_kg_anchored.md:
 bảng phẳng = bộ xương chương trình (chương/bài) — LLM map câu hỏi đề thi vào đây;
 KHÔNG đi qua Qdrant/Airflow (RAG chỉ dành cho chat hỏi đáp SGK).
 """
@@ -16,27 +16,12 @@ from typing import Any
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from src.models.tables import CurriculumUnit
-
-DEFAULT_DATA_PATH = Path(__file__).resolve().parents[2] / "scripts" / "seed_data" / "toan_canh_dieu_6_9.json"
+from src.models.tables import CurriculumBook, CurriculumUnit
 
 _GRADE_RE = re.compile(r"^##\s*.*?LỚP\s*(\d+)")
 _SEMESTER_RE = re.compile(r"^###\s*.*?Tập\s*(\d+)")
 _CHAPTER_RE = re.compile(r"^\*\s*\*\*Chương\s+[IVXLCDM]+\s*:\s*(.+?)\*\*\s*$")
 _DESC_RE = re.compile(r"^\s{2,}\*\s*(.+)$")
-
-
-def load_catalog(path: Path | None = None) -> dict[str, Any]:
-    """Đọc JSON catalog chuẩn chương trình và validate cấu trúc cơ bản."""
-    p = path or DEFAULT_DATA_PATH
-    data = json.loads(p.read_text(encoding="utf-8"))
-    if not data.get("subject_code") or not data.get("grades"):
-        raise ValueError(f"Catalog không hợp lệ: {p}")
-    for grade in data["grades"]:
-        for chapter in grade["chapters"]:
-            if not all(key in chapter for key in ("code", "name", "semester")):
-                raise ValueError(f"Chương thiếu trường bắt buộc trong {p}")
-    return data
 
 
 def parse_markdown_catalog(text_content: str, subject_code: str) -> dict[str, Any]:
@@ -131,12 +116,21 @@ def build_unit_specs(data: dict[str, Any], subject_id_by_grade: dict[int, int]) 
 
 
 def resolve_subject_ids(db: Session, subject_code: str, grades: list[int]) -> dict[int, int]:
-    """Tra s360.dim_subject theo code f"{subject_code}_{grade}" → {grade: subject_id}."""
+    """Tra s360.dim_subject theo code f"{subject_code}_{grade}" → {grade: subject_id}.
+
+    Môn Toán mock v4 lưu theo khối (TOAN_6, TOAN_7...); môn đơn mã (VAN, LY, KHTN...)
+    lưu code không hậu tố — fallback sang code gốc khi không có dạng gắn khối.
+    """
     result: dict[int, int] = {}
+    code = subject_code.upper().strip()
     for grade in grades:
         row = db.execute(
-            text("SELECT id FROM s360.dim_subject WHERE code = :code"), {"code": f"{subject_code}_{grade}"}
+            text("SELECT id FROM s360.dim_subject WHERE code = :code"), {"code": f"{code}_{grade}"}
         ).first()
+        if row is None:
+            row = db.execute(
+                text("SELECT id FROM s360.dim_subject WHERE code = :code"), {"code": code}
+            ).first()
         if row is not None:
             result[grade] = int(row[0])
     return result
@@ -165,6 +159,50 @@ def upsert_units(db: Session, specs: list[dict[str, Any]]) -> tuple[int, int]:
             updated += 1
     db.commit()
     return inserted, updated
+
+
+def get_or_create_book(
+    db: Session,
+    subject_code: str,
+    grade: int,
+    semester: int | None,
+    title: str,
+    filename: str | None = None,
+    source: str | None = None,
+    created_by: int | None = None,
+) -> int:
+    """Get cuốn SGK theo (subject_id, grade, semester, title) — nếu chưa có thì tạo; trả book_id.
+
+    Dùng khi commit nạp sách: mỗi node chương/bài gắn book_id vào cuốn này.
+    title rỗng → fallback tên file (để luôn có cuốn theo dõi nguồn gốc).
+    """
+    subject_ids = resolve_subject_ids(db, subject_code, [grade])
+    subject_id = subject_ids.get(grade)
+    if subject_id is None:
+        raise ValueError(f"Không có s360.dim_subject cho {subject_code.upper()}_{grade} — nạp môn trước.")
+    book_title = (title or "").strip() or (filename or "SGK".title())
+    book = db.execute(
+        select(CurriculumBook).where(
+            CurriculumBook.subject_id == subject_id,
+            CurriculumBook.grade_number == grade,
+            CurriculumBook.semester_number == semester,
+            CurriculumBook.title == book_title,
+        )
+    ).scalars().first()
+    if book is None:
+        book = CurriculumBook(
+            title=book_title,
+            subject_code=subject_code.upper(),
+            subject_id=subject_id,
+            grade_number=grade,
+            semester_number=semester,
+            filename=filename,
+            source=source,
+            created_by=created_by,
+        )
+        db.add(book)
+        db.flush()
+    return book.id
 
 
 def deactivate_placeholder_units(db: Session) -> int:

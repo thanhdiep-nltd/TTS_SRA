@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     vlm_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     vlm_api_key: str = ""
     vlm_timeout_s: float = Field(default=60.0, gt=0.0)
+    # Số trang gọi VLM song song khi đọc nhiều trang (nạp SGK mục lục, đọc đề nhiều trang).
+    # Giữ vừa phải (3-5) để không dính rate-limit 429/503 của provider.
+    vlm_max_concurrency: int = Field(default=4, ge=1, le=8)
 
     # Database
     database_url: str = "sqlite:///./data/app.db"

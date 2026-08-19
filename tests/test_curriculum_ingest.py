@@ -1,9 +1,15 @@
-"""Test offline cho src/services/curriculum_ingest.py — nạp sách (PDF/DOCX/TXT) tự tách TOC."""
+"""Test offline cho src/services/curriculum_ingest.py — nạp sách tự tách TOC (PDF=VLM-thuần)."""
 
 import pytest
 
 from src.services.curriculum_ingest import (
-    build_unit_specs_from_toc,
+    _entries_to_chapters,
+    _is_phu_title,
+    _is_placeholder,
+    _merge_toc_chapters,
+    _normalize_title,
+    _sanity_check,
+    build_unit_specs_from_chapters,
     detect_semester_from_filename,
     extract_toc_from_text,
     ingest_book,
@@ -40,6 +46,7 @@ class _FakeDb:
                 "name": obj.name,
                 "parent_id": obj.parent_id,
                 "semester_number": obj.semester_number,
+                "is_phu": obj.is_phu,
             }
         )
 
@@ -71,6 +78,18 @@ def test_detect_semester_from_filename():
     assert detect_semester_from_filename("toan6.pdf") is None
 
 
+def test_normalize_and_filters():
+    assert _normalize_title("Số tự nhiên ..... 5") == "Số tự nhiên"
+    assert _normalize_title("  Số nguyên  ") == "Số nguyên"
+    assert _is_placeholder("Tên chương") is True
+    assert _is_placeholder("Tên bài") is True
+    assert _is_placeholder("Số tự nhiên") is False
+    assert _is_phu_title("Ôn tập chương II") is True
+    assert _is_phu_title("Kiểm tra chương III") is True
+    assert _is_phu_title("Hoạt động thực hành và trải nghiệm") is True
+    assert _is_phu_title("Tập hợp") is False
+
+
 def test_extract_toc_from_text():
     entries = extract_toc_from_text(_MD_TOC)
     chapters = [e for e in entries if e[0] == 1]
@@ -82,34 +101,87 @@ def test_extract_toc_from_text():
     assert lessons[0][1] == "Tập hợp"
 
 
-def test_build_unit_specs_from_toc_chapters_only():
-    entries = extract_toc_from_text(_MD_TOC)
-    specs = build_unit_specs_from_toc(entries, "toan", 6, 1, include_lessons=False)
+def test_entries_to_chapters_tags_phu_and_drops_placeholder():
+    entries = [
+        (1, "SỐ TỰ NHIÊN ..... 3", 0),
+        (2, "Bài 1: Tập hợp", 1),
+        (2, "Ôn tập chương I", 2),
+        (2, "Tên bài", 3),
+        (1, "Số nguyên", 4),
+    ]
+    chapters = _entries_to_chapters(entries)
+    assert [c["name"] for c in chapters] == ["SỐ TỰ NHIÊN", "Số nguyên"]
+    assert [x["name"] for x in chapters[0]["lessons"]] == ["Bài 1: Tập hợp", "Ôn tập chương I"]
+    assert [x["is_phu"] for x in chapters[0]["lessons"]] == [False, True]
+
+
+def test_merge_toc_chapters_groups_multi_page():
+    parsed = [
+        {"toc_page": False},
+        {
+            "toc_page": True,
+            "chapters": [
+                {"name": "Số tự nhiên", "lessons": [{"name": "Tập hợp", "kind": "lesson"}]},
+            ],
+        },
+        {
+            "toc_page": True,
+            "chapters": [
+                {"name": "Số tự nhiên", "lessons": [{"name": "Lũy thừa", "kind": "lesson"}]},
+                {"name": "Số nguyên", "lessons": [{"name": "Ôn tập chương II", "kind": "phu"}]},
+            ],
+        },
+    ]
+    chapters = _merge_toc_chapters(parsed)
+    assert len(chapters) == 2
+    assert chapters[0]["name"] == "Số tự nhiên"
+    assert [item["name"] for item in chapters[0]["lessons"]] == ["Tập hợp", "Lũy thừa"]
+    assert chapters[1]["lessons"][0]["is_phu"] is True
+
+
+def test_sanity_check_warns_on_high_counts_and_dupes():
+    chapters = [
+        {"name": "C" + str(i), "is_phu": False, "lessons": [{"name": "B" + str(j), "is_phu": False} for j in range(35)]}
+        for i in range(8)
+    ]
+    warnings = _sanity_check(chapters)
+    assert any("nhiều hơn mức thường gặp" in w for w in warnings)
+    assert any("nhiều hơn mức bình thường" in w for w in warnings)
+    dup = [{"name": "Trùng", "is_phu": False, "lessons": []}, {"name": "Trùng", "is_phu": False, "lessons": []}]
+    assert any("trùng tên" in w for w in _sanity_check(dup))
+
+
+def test_build_unit_specs_from_chapters_chapters_only():
+    chapters = _entries_to_chapters(extract_toc_from_text(_MD_TOC))
+    specs = build_unit_specs_from_chapters(chapters, "toan", 6, 1, include_lessons=False)
     assert [s["code"] for s in specs] == ["TOAN6_C1", "TOAN6_C2"]
     assert specs[0]["semester_number"] == 1
     assert all(s["parent_code"] is None for s in specs)
 
 
-def test_build_unit_specs_from_toc_with_lessons():
-    entries = extract_toc_from_text(_MD_TOC)
-    specs = build_unit_specs_from_toc(entries, "toan", 6, 2, include_lessons=True)
+def test_build_unit_specs_from_chapters_with_lessons():
+    chapters = _entries_to_chapters(extract_toc_from_text(_MD_TOC))
+    specs = build_unit_specs_from_chapters(chapters, "toan", 6, 2, include_lessons=True)
     codes = [s["code"] for s in specs]
     assert codes == ["TOAN6_C1", "TOAN6_C1_B1", "TOAN6_C1_B2", "TOAN6_C2", "TOAN6_C2_B1"]
     assert specs[1]["parent_code"] == "TOAN6_C1"
     assert specs[4]["parent_code"] == "TOAN6_C2"
 
 
-def test_upsert_unit_tree_links_parents():
-    entries = extract_toc_from_text(_MD_TOC)
-    specs = build_unit_specs_from_toc(entries, "toan", 6, 1, include_lessons=True)
+def test_upsert_unit_tree_links_parents_and_persists_phu():
+    chapters = _entries_to_chapters(extract_toc_from_text(_MD_TOC))
+    chapters[0]["lessons"].append({"name": "Ôn tập chương I", "is_phu": True})
+    specs = build_unit_specs_from_chapters(chapters, "toan", 6, 1, include_lessons=True)
     db = _FakeDb()
     inserted, updated = upsert_unit_tree(db, specs, subject_id=42, grade=6)
-    assert inserted == 5
+    assert inserted == 6
     assert updated == 0
     assert db.committed
     lesson = next(s for s in db.seen if s["code"] == "TOAN6_C1_B1")
     chapter = next(s for s in db.seen if s["code"] == "TOAN6_C1")
     assert lesson["parent_id"] == chapter["id"]
+    phu = next(s for s in db.seen if s["name"] == "Ôn tập chương I")
+    assert phu["is_phu"] is True
 
 
 def test_ingest_book_dry_run_no_db_write():
@@ -157,36 +229,52 @@ def test_ingest_book_empty_toc_raises():
         ingest_book(_FakeDb(), "book.txt", b"no toc here", "toan", 6)
 
 
-def test_extract_toc_from_pdf_bookmark(monkeypatch):
-    """PDF có bookmark (get_toc) → trích TOC chương/bài trực tiếp."""
+def test_extract_toc_from_pdf_uses_vlm_json(monkeypatch):
+    """PDF → VLM-thuần: mock read_pdf_toc trả JSON từng trang → chapters đúng."""
     import fitz
 
+    from src.services import vlm as vlm_mod
     from src.services.curriculum_ingest import extract_toc_from_pdf
 
     doc = fitz.open()
-    page = doc.new_page()
-    page.insert_text((72, 72), "Sách giáo khoa")
-    doc.set_toc(
-        [
-            [1, "Chương I. Số tự nhiên", 1],
-            [2, "Bài 1. Tập hợp", 1],
-            [2, "Bài 2. Tập hợp số tự nhiên", 1],
-            [1, "Chương II. Số nguyên", 1],
-        ]
-    )
+    doc.new_page().insert_text((72, 72), "SGK")
     content = doc.tobytes()
     doc.close()
 
-    entries, source = extract_toc_from_pdf(content)
-    assert source == "pdf-bookmark"
-    chapters = [e for e in entries if e[0] == 1]
-    lessons = [e for e in entries if e[0] == 2]
-    assert [c[1] for c in chapters] == ["Chương I. Số tự nhiên", "Chương II. Số nguyên"]
-    assert len(lessons) == 2
+    monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
+    monkeypatch.setattr(
+        vlm_mod,
+        "read_pdf_toc",
+        lambda *a, **k: [
+            '{"toc_page": false}',
+            '{"toc_page": true, "chapters": [{"name": "Số tự nhiên", "lessons": [{"name": "Tập hợp", "kind": "lesson"}]}, {"name": "Số nguyên", "lessons": [{"name": "Ôn tập chương II", "kind": "phu"}]}]}',
+        ],
+    )
+
+    chapters, source = extract_toc_from_pdf(content)
+    assert source == "pdf-vlm"
+    assert [c["name"] for c in chapters] == ["Số tự nhiên", "Số nguyên"]
+    assert chapters[1]["lessons"][0]["is_phu"] is True
 
 
-def test_extract_toc_from_pdf_vlm_failure_degrades(monkeypatch):
-    """VLM đọc TOC thất bại → trả ([] , "pdf") thay vì nâng exception (không 500)."""
+def test_extract_toc_from_pdf_requires_vlm(monkeypatch):
+    import fitz
+
+    from src.services import vlm as vlm_mod
+    from src.services.curriculum_ingest import extract_toc_from_pdf
+
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "SGK")
+    content = doc.tobytes()
+    doc.close()
+
+    monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: False)
+    with pytest.raises(ValueError):
+        extract_toc_from_pdf(content)
+
+
+def test_extract_toc_from_pdf_vlm_failure_raises_value_error(monkeypatch):
+    """VLM lỗi (503) → ValueError (endpoint trả 422), không phải VlmUnavailableError trần."""
     import fitz
 
     from src.services import vlm as vlm_mod
@@ -202,9 +290,8 @@ def test_extract_toc_from_pdf_vlm_failure_degrades(monkeypatch):
         vlm_mod, "read_pdf_toc", lambda *a, **k: (_ for _ in ()).throw(vlm_mod.VlmUnavailableError("503"))
     )
 
-    entries, source = extract_toc_from_pdf(content)
-    assert entries == []
-    assert source == "pdf"
+    with pytest.raises(ValueError):
+        extract_toc_from_pdf(content)
 
 
 def test_save_catalog_from_preview_upserts_without_extract(monkeypatch):
@@ -217,11 +304,12 @@ def test_save_catalog_from_preview_upserts_without_extract(monkeypatch):
     chapters = [
         {
             "code": "TOAN6_C1",
-            "name": "Chương I. Số tự nhiên",
+            "name": "Số tự nhiên",
             "semester_number": 1,
-            "lessons": [{"code": "TOAN6_C1_B1", "name": "Bài 1. Tập hợp"}],
+            "is_phu": False,
+            "lessons": [{"code": "TOAN6_C1_B1", "name": "Tập hợp", "is_phu": False}],
         },
-        {"code": "TOAN6_C2", "name": "Chương II. Số nguyên", "semester_number": 1, "lessons": []},
+        {"code": "TOAN6_C2", "name": "Số nguyên", "semester_number": 1, "is_phu": False, "lessons": []},
     ]
     db = _FakeDb()
     result = save_catalog_from_preview(db, chapters, "toan", 6)
