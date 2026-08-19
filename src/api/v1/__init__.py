@@ -17,6 +17,7 @@ from src.api.v1 import (
     notifications,
     pass_fail_forecast,
     question_bank,
+    question_classify,
     recordings,
     reports,
     school,
@@ -52,5 +53,6 @@ api_router.include_router(curriculum.router)
 api_router.include_router(recordings.router)
 api_router.include_router(knowledge_gap.router)
 api_router.include_router(pass_fail_forecast.router)
+api_router.include_router(question_classify.router)
 
 __all__ = ["api_router"]

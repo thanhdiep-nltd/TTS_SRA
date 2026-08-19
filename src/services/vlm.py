@@ -77,7 +77,7 @@ _ENRICH_RULES = (
     "- keywords: 4-8 thuật ngữ/khái niệm cốt lõi của bài.\n"
     "- sections: DANH SÁCH các mục con/đề mục xuất hiện trong bài theo đúng thứ tự (tên ngắn gọn); "
     "bài không có mục con rõ ràng → sections: [].\n"
-    "- Bỏ header/footer, số trang, tiêu đề lặp lại trang trước. Chỉ dựa vào nội dung ảnh, không bịa."
+    "- Bỏ header/footer, số trang, tiêu đề lặp lại trang trước. TUYỆT ĐỐI KHÔNG tự ý mở rộng, KHÔNG đưa kiến thức bách khoa toàn thư hay kiến thức ngoài sách vào."
 )
 
 _ENRICH_PROMPT = (
@@ -151,6 +151,7 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
     )
     payload = {
         "model": model_name,
+        "temperature": 0.1,
         "messages": [
             {
                 "role": "user",

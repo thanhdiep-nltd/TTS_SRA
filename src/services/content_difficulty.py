@@ -232,7 +232,8 @@ def build_node_listing(shortlist: list[CurriculumUnit]) -> str:
 
 _MAP_HEADER_LINES = [
     "Bạn là chuyên gia phân tích đề thi. Tách đề dưới đây thành các câu hỏi/ý lớn, với MỖI Ý xác định:",
-    "- nodes: chọn 1–3 node kiến thức từ DANH SÁCH (node_id) mà ý kiểm tra; mỗi node kèm weight (0..1) là tỉ trọng điểm của phần kiến thức đó trong ý",
+    "- nodes: chọn các node kiến thức từ DANH SÁCH (node_id) là TRỌNG TÂM MỤC TIÊU ĐÁNH GIÁ (Core Target) của ý; mỗi node kèm weight (0..1) là tỉ trọng điểm của phần kiến thức đó trong ý",
+    "- QUY TẮC TRỌNG TÂM: Chỉ chọn các node là mục tiêu kiến thức chính mà câu hỏi sinh ra để tập trung kiểm tra kiến thức đó.",
     "- off_curriculum_weight: tỉ trọng phần kiến thức của ý KHÔNG nằm trong danh sách (0..1). Toàn bộ ngoài danh sách → nodes = [] và off_curriculum_weight = 1",
     "- bloom_level: mức Bloom CỦA CẢ Ý (1=Nhớ, 2=Hiểu, 3=Vận dụng, 4=Phân tích, 5=Đánh giá, 6=Sáng tạo)",
     "- excerpt: TRÍCH NGUYÊN VĂN 1–2 câu tiêu biểu của ý từ đề (không diễn đạt lại)",

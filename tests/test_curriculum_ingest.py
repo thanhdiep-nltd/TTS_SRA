@@ -200,7 +200,7 @@ def test_merge_toc_chapters_groups_multi_page_and_keeps_page():
     assert chapters[1]["lessons"][0]["is_phu"] is True
 
 
-def test_parse_scan_batch_ok_and_mismatch():
+def test_parse_scan_batch_ok_and_self_adjusts_count():
     raw = (
         '{"pages": [{"kind": "frontmatter", "printed_page": 1}, '
         '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 3}]}'
@@ -208,10 +208,17 @@ def test_parse_scan_batch_ok_and_mismatch():
     pages = _parse_scan_batch(raw, 2)
     assert pages is not None and len(pages) == 2
     assert pages[1]["kind"] == "content"
-    assert _parse_scan_batch(raw, 3) is None  # sai số phần tử
+    # AI trả thiếu phần tử → tự chèn {} vừa khít lô (không vứt cả lô); thừa → cắt bớt.
+    padded = _parse_scan_batch(raw, 3)
+    assert padded is not None and len(padded) == 3
+    assert padded[2] == {}
+    truncated = _parse_scan_batch(raw, 1)
+    assert truncated is not None and len(truncated) == 1
+    assert truncated[0]["kind"] == "frontmatter"
     assert _parse_scan_batch(None, 2) is None
     assert _parse_scan_batch('{"pages": "x"}', 2) is None
     assert _parse_scan_batch("không phải json", 2) is None
+    assert _parse_scan_batch('{"pages": []}', 2) is None
 
 
 def test_anchor_id():
@@ -306,21 +313,24 @@ def test_extract_book_structure_two_pass_locates_toc(monkeypatch):
 def test_extract_book_structure_no_toc_fallback_full_scan(monkeypatch):
     from src.services import vlm as vlm_mod
 
+    # PDF 3 trang = đúng 1 lô quét (vlm_sweep_pages_per_call ≥ 3) → mock trả 1 lô vừa khít,
+    # không bị cắt theo batch_size.
     raw = (
         '{"pages": ['
         '{"kind": "frontmatter", "printed_page": 1}, '
         '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "Tập hợp", "printed_page": 2}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "Tập hợp", "printed_page": 3}, '
-        '{"kind": "content", "chapter": "Số nguyên", "lesson": "Số nguyên âm", "printed_page": 4}'
+        '{"kind": "content", "chapter": "Số nguyên", "lesson": "Số nguyên âm", "printed_page": 3}'
         "]}"
     )
     monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
     # Lượt A không có TOC → fallback quét toàn cuốn (cùng raw cho cả 2 lần gọi).
     monkeypatch.setattr(vlm_mod, "read_book_pages", lambda path, **kw: [raw])
 
-    chapters, _page_items, warnings, pdf_path = extract_book_structure(_make_pdf(4))
+    chapters, _page_items, warnings, pdf_path = extract_book_structure(_make_pdf(3))
     try:
         assert [c["name"] for c in chapters] == ["Số tự nhiên", "Số nguyên"]
+        assert chapters[0]["lessons"][0]["name"] == "Tập hợp"
+        assert chapters[1]["lessons"][0]["name"] == "Số nguyên âm"
         assert any("MỤC LỤC" in w for w in warnings)
     finally:
         pdf_path.unlink(missing_ok=True)

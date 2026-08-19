@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
+  FileQuestion,
   Gauge,
   Layers,
   Loader2,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
+import QuestionTestTab from "@/components/exam-difficulty/QuestionTestTab";
 import { api } from "@/lib/api";
 import { ExamContentAnalysis, ExamValidityRow, SchoolValidityOverview } from "@/lib/types";
 
@@ -38,7 +40,14 @@ const FLAG_CONFIG: Record<string, { label: string; cls: string; desc: string; ic
   },
 };
 
+// Tab bar giống Dashboard: tab 1 = bảng tam giác hóa TEVI, tab 2 = test 1 câu hỏi.
+const TABS: { key: "tevi" | "question-test"; label: string; icon: React.ElementType }[] = [
+  { key: "tevi", label: "Phân tích độ khó đề thi (TEVI)", icon: Gauge },
+  { key: "question-test", label: "Kiểm tra câu hỏi", icon: FileQuestion },
+];
+
 export default function ExamDifficultyPage() {
+  const [activeTab, setActiveTab] = useState<"tevi" | "question-test">("tevi");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [subjectId, setSubjectId] = useState<string>("");
   const [gradeId, setGradeId] = useState<string>("");
@@ -145,6 +154,30 @@ export default function ExamDifficultyPage() {
         </div>
       </header>
 
+      {/* Tab bar — giống Dashboard */}
+      <div className="flex flex-wrap gap-2">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const active = activeTab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${
+                active
+                  ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+                  : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeTab === "tevi" && (
+        <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 border rounded-2xl p-4 shadow-sm">
@@ -528,7 +561,7 @@ export default function ExamDifficultyPage() {
                           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                           <span>
                             <span className="font-semibold">
-                              {(contentAnalysis.off_curriculum_weight * 100).toFixed(0)}% điểm có phần ngoài chương trình
+                              {((contentAnalysis.off_curriculum_weight ?? 0) * 100).toFixed(0)}% điểm có phần ngoài chương trình
                             </span>{" "}
                             — cờ mềm, chờ giáo viên duyệt (shortlist node).
                           </span>
@@ -585,6 +618,10 @@ export default function ExamDifficultyPage() {
           </div>
         </div>
       )}
+        </>
+      )}
+
+      {activeTab === "question-test" && <QuestionTestTab />}
     </div>
   );
 }

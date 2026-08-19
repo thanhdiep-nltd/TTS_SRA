@@ -22,6 +22,7 @@ import json
 import re
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -113,16 +114,21 @@ def _as_page_int(value: Any) -> int | None:
 
 
 def _parse_scan_batch(raw: str | None, expected_count: int) -> list[dict[str, Any]] | None:
-    """Parse response 1 lô quét toàn cuốn → list dict theo từng trang; None nếu JSON hỏng/sai số phần tử."""
+    """Parse response 1 lô quét toàn cuốn → list dict theo từng trang; None nếu JSON hỏng hoàn toàn."""
     if not raw:
         return None
     obj = _parse_json_object(raw)
     if obj is None or not isinstance(obj.get("pages"), list):
         return None
-    pages = obj["pages"]
-    if len(pages) != expected_count:
+    pages = [p if isinstance(p, dict) else {} for p in obj["pages"]]
+    if not pages:
         return None
-    return [p if isinstance(p, dict) else {} for p in pages]
+    # Nếu AI trả thiếu/thừa một vài phần tử, tự điều chỉnh vừa khít expected_count thay vì vứt bỏ cả lô
+    if len(pages) < expected_count:
+        pages.extend([{}] * (expected_count - len(pages)))
+    elif len(pages) > expected_count:
+        pages = pages[:expected_count]
+    return pages
 
 
 def _merge_toc_chapters(parsed_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -433,7 +439,7 @@ def _enrich_chapters(
     pdf_path: Path,
     progress_cb: ProgressCb | None = None,
 ) -> list[str]:
-    """Làm giàu từng bài bằng VLM (1 call/bài, TOÀN BỘ trang): summary + keywords + sections.
+    """Làm giàu từng bài bằng VLM SONG SONG (ThreadPoolExecutor): summary + keywords + sections.
 
     Khoảng trang bài từ NHÃN NEO MỤC LỤC (VLM gán mỗi trang về 1 ID trong danh sách — không
     phụ thuộc số trang in, chịu được file cắt ngắn). Gửi toàn bộ trang của bài + tên bài/chương
@@ -454,8 +460,11 @@ def _enrich_chapters(
             targets.extend((ci, li, lesson) for li, lesson in enumerate(lessons))
         else:
             targets.append((ci, None, ch))
+
     total = len(targets)
-    done = 0
+    done_count = 0
+
+    valid_tasks: list[tuple[int, int | None, dict[str, Any], tuple[int, int]]] = []
     for ci, li, node in targets:
         rng = ranges.get((ci, li))
         if rng is None:
@@ -464,27 +473,50 @@ def _enrich_chapters(
                 f"Bài '{node['name']}': không có trang nội dung trong file này (file có thể bị "
                 "cắt ngắn / chỉ tải 1 phần sách) — bỏ làm giàu bài này."
             )
-            continue
-        start, end = rng
-        indices = _sample_indices(start, end, _MAX_REFINE_PAGES)
-        chapter_name = chapters[ci].get("name") if ci < len(chapters) else None
-        try:
-            raw = vlm.read_lesson_pages(
-                pdf_path, indices, lesson_name=node["name"], chapter_name=chapter_name
-            )
-        except vlm.VlmUnavailableError as exc:
-            warnings.append(f"Bài '{node['name']}': {exc}")
-            continue
-        data = _parse_json_object(raw)
-        if data is None or not isinstance(data.get("summary"), str):
-            warnings.append(f"Bài '{node['name']}': VLM trả JSON làm giàu không hợp lệ — bỏ làm giàu.")
-            continue
-        node["summary"] = data.get("summary").strip() or None
-        node["keywords"] = _clean_keywords(data.get("keywords"))
-        node["sections"] = _clean_sections(data.get("sections"))
-        done += 1
-        if progress_cb:
-            progress_cb(done, total, "enrich")
+            done_count += 1
+            if progress_cb:
+                progress_cb(done_count, total, "enrich")
+        else:
+            valid_tasks.append((ci, li, node, rng))
+
+    if valid_tasks:
+        settings = get_settings()
+        max_workers = max(1, min(settings.vlm_max_concurrency, len(valid_tasks)))
+
+        def process_one(task: tuple[int, int | None, dict[str, Any], tuple[int, int]]) -> tuple[dict[str, Any], str | None]:
+            ci, _li, node, rng = task
+            start, end = rng
+            indices = _sample_indices(start, end, _MAX_REFINE_PAGES)
+            chapter_name = chapters[ci].get("name") if ci < len(chapters) else None
+            try:
+                raw = vlm.read_lesson_pages(
+                    pdf_path, indices, lesson_name=node["name"], chapter_name=chapter_name
+                )
+            except vlm.VlmUnavailableError as exc:
+                return node, f"Bài '{node['name']}': {exc}"
+
+            data = _parse_json_object(raw)
+            if data is None or not isinstance(data.get("summary"), str):
+                return node, f"Bài '{node['name']}': VLM trả JSON làm giàu không hợp lệ — bỏ làm giàu."
+
+            node["summary"] = data.get("summary").strip() or None
+            node["keywords"] = _clean_keywords(data.get("keywords"))
+            node["sections"] = _clean_sections(data.get("sections"))
+            return node, None
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(process_one, t) for t in valid_tasks]
+            for fut in as_completed(futures):
+                try:
+                    _, warn = fut.result()
+                    if warn:
+                        warnings.append(warn)
+                except Exception as exc:
+                    warnings.append(f"Lỗi khi làm giàu bài: {exc}")
+                finally:
+                    done_count += 1
+                    if progress_cb:
+                        progress_cb(done_count, total, "enrich")
 
     # Tổng hợp cấp chương từ các bài (nối/ghép dữ liệu VLM đã có — không bóc dữ liệu mới).
     for ch in chapters:

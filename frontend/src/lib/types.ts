@@ -576,6 +576,27 @@ export interface SchoolValidityOverview {
   flagged_items: ExamValidityRow[];
 }
 
+// ===== Kiểm tra câu hỏi (tab trong trang TEVI) — test 1 câu hỏi thuộc chương/bài nào =====
+export interface ClassifiedItem {
+  topic: string;
+  chapter: string | null;
+  lesson: string | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  bloom_level: number;
+  weight: number;
+  confidence: number | null;
+  excerpt: string | null;
+}
+
+export interface QuestionClassifyResult {
+  text: string;
+  matched: boolean;
+  off_curriculum: boolean;
+  items: ClassifiedItem[];
+  candidates: string[];
+}
+
 export interface ContentAdjustedRankRow {
   class_id: string;
   class_name: string;
@@ -1379,29 +1400,5 @@ export interface PassFailForecastResult {
   borderline_count: number;
   fail_rate: number;
   students: StudentForecastRow[];
-}
-
-export interface ExamValidityRow {
-  exam_paper_id: string;
-  subject_id: string;
-  subject_name: string;
-  semester_id: string;
-  score_category: string;
-  grade_id: string | null;
-  grade_name: string;
-  n: number;
-  mean_score: number;
-  edi: number;
-  cdi: number | null;
-  divergence: number | null;
-  flag: string; // 'NORMAL' | 'INFLATION_OR_LEAK' | 'LEARNING_GAP'
-  confidence: string; // 'HIGH' | 'MEDIUM' | 'LOW'
-  column_index?: number | null;
-}
-
-export interface SchoolValidityOverview {
-  total_checked: number;
-  flags_count: Record<string, number>;
-  flagged_items: ExamValidityRow[];
 }
 
