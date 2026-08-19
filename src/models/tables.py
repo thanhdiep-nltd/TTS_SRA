@@ -339,6 +339,11 @@ class CurriculumUnit(Base):
     code = Column(String(50), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
+    # Làm giàu nội dung khi nạp sách giáo khoa (quét toàn cuốn): tóm tắt, từ khóa, mục con.
+    # Phục vụ map đề chính xác (CDI/độ khó) và giải thích lỗ hổng kiến thức chi tiết hơn.
+    summary = Column(Text)
+    keywords = Column(ARRAY(Text))
+    sections = Column(JSONB)
     # NULL = SGK không tách tập (dạy cả năm, vd KHTN); 1/2 = chỉ thuộc học kỳ đó (SGK tập 1/tập 2).
     semester_number = Column(SmallInteger)
     # False = ẩn khỏi picker (rác phân mảnh taxonomy cũ, còn bị exam_competencies tham chiếu
@@ -405,6 +410,8 @@ class CurriculumIngestJob(Base):
     grade_number = Column(SmallInteger, nullable=False)
     semester_number = Column(SmallInteger)
     include_lessons = Column(Boolean, nullable=False, server_default=text("false"))
+    # Làm giàu nội dung (tóm tắt + từ khóa + mục con) khi nạp — mặc định bật; tắt để preview nhanh.
+    enrich = Column(Boolean, nullable=False, server_default=text("true"))
     dry_run = Column(Boolean, nullable=False, server_default=text("true"))
     filename = Column(String(255))
     book_title = Column(String(255))

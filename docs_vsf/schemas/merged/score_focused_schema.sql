@@ -244,6 +244,11 @@ CREATE TABLE public.curriculum_units (
     code            VARCHAR(50) NOT NULL,
     name            VARCHAR(255) NOT NULL,
     description     TEXT,
+    -- Làm giàu nội dung khi nạp sách (quét toàn cuốn): tóm tắt, từ khóa, mục con —
+    -- phục vụ map đề (CDI/độ khó) và giải thích lỗ hổng kiến thức chi tiết hơn.
+    summary         TEXT,
+    keywords        TEXT[],
+    sections        JSONB,               -- [{"name": "..."}] — mục con trong bài theo thứ tự (không kind taxonomy)
     semester_number SMALLINT CHECK (semester_number IN (1, 2)), -- NULL = dạy cả năm; 1/2 = học kỳ (SGK tập 1/tập 2)
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,              -- FALSE = ẩn khỏi picker (node rác cũ)
     is_phu          BOOLEAN NOT NULL DEFAULT FALSE,             -- TRUE = node phụ (Ôn tập/Kiểm tra/Hoạt động) — loại khỏi shortlist map đề
@@ -279,6 +284,7 @@ CREATE TABLE public.curriculum_ingest_jobs (
     grade_number    SMALLINT NOT NULL,
     semester_number SMALLINT,
     include_lessons BOOLEAN NOT NULL DEFAULT FALSE,
+    enrich          BOOLEAN NOT NULL DEFAULT TRUE, -- làm giàu nội dung (tóm tắt/từ khóa/mục con); tắt để preview nhanh
     dry_run         BOOLEAN NOT NULL DEFAULT TRUE,
     filename        VARCHAR(255),
     book_title      VARCHAR(255),

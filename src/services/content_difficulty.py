@@ -207,13 +207,27 @@ def build_shortlist(db, subject_id: int, grade_number: int | None, semester_numb
 
 
 def build_node_listing(shortlist: list[CurriculumUnit]) -> str:
-    """Danh sách node dạng "id: tên (khối, HK)" cho prompt — LLM chọn node_id từ đây."""
-    return "\n".join(
-        f"- {unit.id}: {unit.name} (khối {unit.grade_number}"
-        + (f", HK{unit.semester_number}" if unit.semester_number else "")
-        + ")"
-        for unit in shortlist
-    )
+    """Danh sách node dạng "id: tên (khối, HK) — Từ khóa: ... — Tóm tắt: ..." cho prompt.
+
+    Node có nội dung làm giàu (keywords/summary khi nạp sách) sẽ kèm thêm — giúp LLM map
+    đề chọn đúng node theo nội dung, không chỉ tên. Giới hạn độ dài để không phình prompt.
+    """
+    lines: list[str] = []
+    for unit in shortlist:
+        line = (
+            f"- {unit.id}: {unit.name} (khối {unit.grade_number}"
+            + (f", HK{unit.semester_number}" if unit.semester_number else "")
+            + ")"
+        )
+        if unit.keywords:
+            line += " — Từ khóa: " + ", ".join(unit.keywords[:5])
+        if unit.summary:
+            summary = unit.summary.strip()
+            if len(summary) > 120:
+                summary = summary[:117].rstrip() + "..."
+            line += " — " + summary
+        lines.append(line)
+    return "\n".join(lines)
 
 
 _MAP_HEADER_LINES = [

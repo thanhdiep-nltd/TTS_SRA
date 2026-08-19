@@ -10,6 +10,9 @@ class KnowledgeGapItem(BaseModel):
     unit_name: str | None = None
     chapter: str | None = None
     lesson: str | None = None
+    # Tóm tắt/từ khóa của unit (làm giàu khi nạp sách) — giúp giải thích "hổng khái niệm/mục nào".
+    summary: str | None = None
+    keywords: list[str] | None = None
     gap_score: float = Field(..., description="0..1, cao = hổng nặng")
     mastery: float = Field(..., description="0..1, mức thành thạo")
     evidence_source: str | None = None  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR'

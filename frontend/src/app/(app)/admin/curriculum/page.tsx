@@ -1,20 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FileUp,
+  Folder,
   FolderTree,
   Loader2,
   RefreshCw,
+  Sparkles,
   Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { api } from "@/lib/api";
+
+interface CurriculumSection {
+  name: string;
+}
 
 interface CurriculumUnitRow {
   id: number;
@@ -27,6 +35,10 @@ interface CurriculumUnitRow {
   is_active: boolean;
   is_phu: boolean;
   description: string | null;
+  // Làm giàu nội dung khi nạp sách (quét toàn cuốn): tóm tắt, từ khóa, mục con.
+  summary: string | null;
+  keywords: string[] | null;
+  sections: CurriculumSection[] | null;
   book_id: number | null;
   book_title: string | null;
 }
@@ -55,6 +67,9 @@ interface IngestedLesson {
   code: string;
   name: string;
   is_phu: boolean;
+  summary?: string | null;
+  keywords?: string[] | null;
+  sections?: CurriculumSection[] | null;
 }
 
 interface IngestedChapter {
@@ -62,6 +77,9 @@ interface IngestedChapter {
   name: string;
   semester_number: number | null;
   is_phu: boolean;
+  summary?: string | null;
+  keywords?: string[] | null;
+  sections?: CurriculumSection[] | null;
   lessons: IngestedLesson[];
 }
 
@@ -251,9 +269,22 @@ export default function AdminCurriculumPage() {
   const [bookSemester, setBookSemester] = useState(""); // "" = tự đoán từ tên file
   const [bookTitle, setBookTitle] = useState(""); // Tên cuốn / Chương - Tập - Mô tả
   const [includeLessons, setIncludeLessons] = useState(false);
+  // Làm giàu nội dung khi nạp PDF: quét toàn cuốn + VLM tạo tóm tắt/từ khóa/mục con cho từng bài.
+  const [enrichContent, setEnrichContent] = useState(true);
   const [bookUploading, setBookUploading] = useState(false);
   const [bookMsg, setBookMsg] = useState<string | null>(null);
   const [bookErr, setBookErr] = useState<string | null>(null);
+
+  // Hàng chi tiết (tóm tắt/từ khóa/mục con) đang mở rộng trong view node — null = không mở.
+  const [expandedUnitId, setExpandedUnitId] = useState<number | null>(null);
+
+  // Node đang xem chi tiết trong modal — null = đóng.
+  const [detailUnit, setDetailUnit] = useState<CurriculumUnitRow | null>(null);
+
+  // Làm giàu lại từ file PDF gốc đã lưu (job nền) — theo dõi ở Lịch sử nạp sách.
+  const [reEnriching, setReEnriching] = useState(false);
+  const [reEnrichMsg, setReEnrichMsg] = useState<string | null>(null);
+  const [reEnrichErr, setReEnrichErr] = useState<string | null>(null);
 
   // Lịch sử nạp sách (job queue, poll như EWS)
   const [ingestJobs, setIngestJobs] = useState<BookIngestJob[]>([]);
@@ -286,6 +317,79 @@ export default function AdminCurriculumPage() {
     },
     [subjectCode, grade, semester, includeInactive]
   );
+
+  // Quản lý thu gọn/mở rộng các chương cha trong chế độ xem phân cấp
+  const [collapsedParents, setCollapsedParents] = useState<Set<number>>(new Set());
+
+  const toggleParentCollapse = useCallback((parentId: number) => {
+    setCollapsedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(parentId)) {
+        next.delete(parentId);
+      } else {
+        next.add(parentId);
+      }
+      return next;
+    });
+  }, []);
+
+  // Xây dựng danh sách phân cấp động (Tree View): sắp xếp tự nhiên mã node, gom con theo parent_id
+  const hierarchicalUnits = useMemo(() => {
+    const naturalCompare = (a: CurriculumUnitRow, b: CurriculumUnitRow) => {
+      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" });
+    };
+
+    const sorted = [...units].sort(naturalCompare);
+    const byId = new Map<number, CurriculumUnitRow>();
+    const childrenMap = new Map<number, CurriculumUnitRow[]>();
+
+    for (const u of sorted) {
+      byId.set(u.id, u);
+    }
+
+    for (const u of sorted) {
+      if (u.parent_id && byId.has(u.parent_id)) {
+        if (!childrenMap.has(u.parent_id)) childrenMap.set(u.parent_id, []);
+        childrenMap.get(u.parent_id)!.push(u);
+      }
+    }
+
+    // Các node gốc: không có parent_id hoặc parent_id không nằm trong danh sách hiện tại
+    const roots = sorted.filter((u) => !u.parent_id || !byId.has(u.parent_id));
+
+    interface FlatTreeNode {
+      unit: CurriculumUnitRow;
+      isParent: boolean;
+      level: number;
+      childCount: number;
+      hiddenByCollapse: boolean;
+    }
+
+    const result: FlatTreeNode[] = [];
+
+    const traverse = (list: CurriculumUnitRow[], level: number, parentCollapsed: boolean) => {
+      for (const u of list) {
+        const children = childrenMap.get(u.id) || [];
+        const isParent = children.length > 0;
+        const isCollapsed = collapsedParents.has(u.id);
+
+        result.push({
+          unit: u,
+          isParent,
+          level,
+          childCount: children.length,
+          hiddenByCollapse: parentCollapsed,
+        });
+
+        if (isParent) {
+          traverse(children, level + 1, parentCollapsed || isCollapsed);
+        }
+      }
+    };
+
+    traverse(roots, 0, false);
+    return result;
+  }, [units, collapsedParents]);
 
   // Tải danh sách sách (view "books") — lọc theo môn/khối như cũ
   const fetchBooks = useCallback(async () => {
@@ -376,16 +480,22 @@ export default function AdminCurriculumPage() {
     loadIngestJobs();
   }, [loadIngestJobs]);
 
-  // Poll lịch sử khi có job đang pending/processing (như EWS)
+  // Poll lịch sử khi có job đang pending/processing (như EWS); khi job cuối hoàn tất → làm mới dữ liệu 1 lần.
+  const prevJobsActiveRef = useRef(false);
   useEffect(() => {
     const active = ingestJobs.some((j) => j.status === "pending" || j.status === "processing");
-    if (!active) return;
+    const wasActive = prevJobsActiveRef.current;
+    prevJobsActiveRef.current = active;
+    if (!active) {
+      if (wasActive) refreshCurrentView(); // job vừa xong (vd làm giàu lại) → cập nhật node/sách
+      return;
+    }
     const timer = setInterval(() => {
       loadIngestJobs();
       fetchBooks();
     }, 3000);
     return () => clearInterval(timer);
-  }, [ingestJobs, loadIngestJobs, fetchBooks]);
+  }, [ingestJobs, loadIngestJobs, fetchBooks, refreshCurrentView]);
 
   const handleUpload = async () => {
     if (!selectedFile) {
@@ -419,7 +529,7 @@ export default function AdminCurriculumPage() {
     }
     setBookUploading(true);
     setBookErr(null);
-    setBookMsg("Đang nạp file và lưu tự động vào hệ thống (VLM/AI xử lý ngầm, mất ~30s–2 phút)...");
+    setBookMsg("Đang nạp file và lưu tự động vào hệ thống (VLM/AI quét toàn cuốn + làm giàu nội dung, mất ~1–3 phút)...");
     const formData = new FormData();
     formData.append("file", bookFile);
     formData.append("subject_code", subjectCode);
@@ -427,6 +537,7 @@ export default function AdminCurriculumPage() {
     if (bookSemester) formData.append("semester", bookSemester);
     if (bookTitle.trim()) formData.append("book_title", bookTitle.trim());
     if (includeLessons) formData.append("include_lessons", "true");
+    if (enrichContent) formData.append("enrich", "true");
     formData.append("dry_run", "false"); // Tự động lưu thẳng vào DB khi trích xuất xong
     try {
       const job = await api.upload<BookIngestJob>("/curriculum/ingest-book", formData);
@@ -437,8 +548,8 @@ export default function AdminCurriculumPage() {
         await new Promise((resolve) => setTimeout(resolve, 2500));
         const st = await api.get<BookIngestJob>(`/curriculum/ingest-book/jobs/${job.job_id}`);
         if (st.status === "completed") {
-          const insertedCount = st.result?.inserted ?? st.inserted ?? 0;
-          const updatedCount = st.result?.updated ?? st.updated ?? 0;
+          const insertedCount = st.result?.inserted ?? 0;
+          const updatedCount = st.result?.updated ?? 0;
           setBookMsg(
             `Đã nạp và lưu thành công ${st.result?.chapters?.length ?? 0} chương (${insertedCount} node mới, ${updatedCount} cập nhật) vào hệ thống.`
           );
@@ -480,6 +591,23 @@ export default function AdminCurriculumPage() {
     setBookToDelete(book);
     setDeleteErr(null);
   }, []);
+
+  // Chạy lại bước làm giàu nội dung cho cuốn đang xem (từ file PDF gốc đã lưu, không cần upload lại).
+  const handleReEnrich = async () => {
+    if (!activeBook) return;
+    setReEnriching(true);
+    setReEnrichErr(null);
+    setReEnrichMsg(null);
+    try {
+      await api.post<BookIngestJob>(`/curriculum/books/${activeBook.id}/re-enrich`);
+      setReEnrichMsg("Đã tạo job làm giàu lại — theo dõi ở bảng 'Lịch sử nạp sách (hàng đợi nền)'.");
+      loadIngestJobs();
+    } catch (e: any) {
+      setReEnrichErr(e?.message ?? "Không tạo được job làm giàu lại.");
+    } finally {
+      setReEnriching(false);
+    }
+  };
 
   const confirmDeleteBook = async () => {
     if (!bookToDelete) return;
@@ -579,7 +707,9 @@ export default function AdminCurriculumPage() {
               Nạp sách giáo khoa — tự động trích xuất & lưu trực tiếp
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Upload file SGK (<strong>PDF/DOCX/TXT/MD</strong>). Hệ thống chạy ngầm tự bóc tách mục lục và <strong>lưu thẳng vào cơ sở dữ liệu</strong>. Bạn có thể rời đi hoặc làm việc khác trong khi AI xử lý.
+              Upload file SGK (<strong>PDF/DOCX/TXT/MD</strong>). Với PDF hệ thống <strong>quét toàn bộ cuốn</strong>,
+              tự bóc tách mục lục và làm giàu nội dung (tóm tắt, từ khóa, mục con) rồi <strong>lưu thẳng vào cơ sở dữ liệu</strong>.
+              Bạn có thể rời đi hoặc làm việc khác trong khi AI xử lý.
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[200px]">
@@ -647,6 +777,21 @@ export default function AdminCurriculumPage() {
                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
                 <span>Tách cả bài con (BÀI n)</span>
+              </label>
+              <label
+                className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300"
+                title="PDF: quét toàn cuốn, VLM tạo tóm tắt + từ khóa + mục con cho từng bài (chậm hơn ~1-2 phút)"
+              >
+                <input
+                  type="checkbox"
+                  checked={enrichContent}
+                  onChange={(e) => setEnrichContent(e.target.checked)}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="inline-flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-brand-500" />
+                  Làm giàu nội dung (tóm tắt, từ khóa, mục con)
+                </span>
               </label>
               <label className="flex-1 min-w-[240px] flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 cursor-pointer hover:border-brand-400 text-sm text-slate-500">
                 <FileUp className="w-4 h-4 shrink-0" />
@@ -818,6 +963,16 @@ export default function AdminCurriculumPage() {
                             ) : j.result ? (
                               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                                 {j.result.chapters?.length ?? 0} chương · {j.result.inserted} node mới · {j.result.updated} cập nhật
+                                {j.result.warnings?.length ? (
+                                  <span
+                                    className="block text-amber-600 dark:text-amber-400 font-normal mt-1"
+                                    title={j.result.warnings.join("\n")}
+                                  >
+                                    ⚠ {j.result.warnings.length} cảnh báo:{" "}
+                                    {j.result.warnings[0].slice(0, 110)}
+                                    {j.result.warnings[0].length > 110 ? "..." : ""}
+                                  </span>
+                                ) : null}
                               </span>
                             ) : (
                               "—"
@@ -968,18 +1123,40 @@ export default function AdminCurriculumPage() {
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs text-slate-400">{units.length} node</span>
               {activeBook && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteBook(activeBook)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors"
-                  title={`Xóa cuốn "${activeBook.title}" và toàn bộ node`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Xóa cuốn này</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleReEnrich}
+                    disabled={reEnriching}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 transition-colors disabled:opacity-50"
+                    title="Chạy lại bước làm giàu (tóm tắt/từ khóa/mục con) từ file PDF gốc đã lưu"
+                  >
+                    {reEnriching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    <span>{reEnriching ? "Đang tạo job..." : "Làm giàu lại"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBook(activeBook)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors"
+                    title={`Xóa cuốn "${activeBook.title}" và toàn bộ node`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa cuốn này</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
+          {reEnrichMsg && (
+            <p className="px-5 py-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 border-b border-emerald-100 dark:border-emerald-900/40 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {reEnrichMsg}
+            </p>
+          )}
+          {reEnrichErr && (
+            <p className="px-5 py-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-950/20 border-b border-rose-100 dark:border-rose-900/40 flex items-center gap-1.5">
+              <X className="w-3.5 h-3.5 shrink-0" /> {reEnrichErr}
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -995,59 +1172,184 @@ export default function AdminCurriculumPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                {units.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-brand-600 dark:text-brand-400">{u.code}</td>
-                    <td className="px-5 py-3 font-medium text-slate-800 dark:text-slate-200">
-                      {u.name}
-                      {u.is_phu && (
-                        <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                          Phụ
-                        </span>
-                      )}
-                      {u.description && (
-                        <span className="block text-[11px] font-normal text-slate-400 max-w-md truncate">
-                          {u.description}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-center text-xs text-slate-500">{u.grade_number}</td>
-                    <td className="px-5 py-3 text-center text-xs text-slate-500">
-                      {u.semester_number ? `HK${u.semester_number}` : "—"}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-slate-500">{u.parent_name ?? "—"}</td>
-                    <td className="px-5 py-3 text-xs text-slate-500">
-                      {u.book_title ? (
-                        <span className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400">
-                          <BookOpen className="w-3 h-3 shrink-0" />
-                          <span className="truncate max-w-[160px]" title={u.book_title}>{u.book_title}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      <span
-                        className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          u.is_active
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
-                            : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                {hierarchicalUnits.map((item) => {
+                  if (item.hiddenByCollapse) return null;
+                  const u = item.unit;
+                  const hasDetail = Boolean(u.summary || (u.keywords?.length ?? 0) > 0 || (u.sections?.length ?? 0) > 0);
+                  const expanded = expandedUnitId === u.id;
+                  const isRoot = item.level === 0;
+
+                  return (
+                    <Fragment key={u.id}>
+                      <tr
+                        className={`transition-colors ${
+                          isRoot
+                            ? "bg-slate-50/80 dark:bg-slate-800/40 font-semibold border-t-2 border-slate-200/80 dark:border-slate-700/80 hover:bg-slate-100/70 dark:hover:bg-slate-800/70"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
                         }`}
                       >
-                        {u.is_active ? "Hoạt động" : "Đã ẩn"}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => handleToggle(u)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
-                        title={u.is_active ? "Ẩn khỏi shortlist map" : "Kích hoạt lại"}
-                      >
-                        {u.is_active ? "Ẩn" : "Kích hoạt"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <td className="px-5 py-3 font-mono text-xs text-brand-600 dark:text-brand-400">{u.code}</td>
+                        <td className="px-5 py-3 text-slate-800 dark:text-slate-200">
+                          {isRoot ? (
+                            <div className="flex items-center gap-2">
+                              {item.isParent ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleParentCollapse(u.id)}
+                                  className="p-1 -ml-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors"
+                                  title={collapsedParents.has(u.id) ? "Mở rộng các bài con" : "Thu gọn các bài con"}
+                                >
+                                  {collapsedParents.has(u.id) ? (
+                                    <ChevronRight className="w-4 h-4" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4" />
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="w-4 inline-block" />
+                              )}
+                              <Folder className="w-4 h-4 text-brand-500 shrink-0" />
+                              <span className="font-bold text-slate-900 dark:text-slate-100">{u.name}</span>
+                              {item.isParent && (
+                                <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-normal bg-slate-200/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300">
+                                  {item.childCount} bài con
+                                </span>
+                              )}
+                              {u.is_phu && (
+                                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                  Phụ
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <div
+                              className="flex items-start gap-2"
+                              style={{ paddingLeft: `${item.level * 1.75}rem` }}
+                            >
+                              <span className="text-slate-300 dark:text-slate-600 select-none font-mono text-sm mt-0.5 shrink-0">
+                                ↳
+                              </span>
+                              {hasDetail && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedUnitId(expanded ? null : u.id)}
+                                  className="mt-0.5 shrink-0 text-slate-400 hover:text-brand-500 transition-colors"
+                                  title={expanded ? "Thu gọn chi tiết" : "Xem chi tiết nội dung (tóm tắt/từ khóa/mục con)"}
+                                >
+                                  {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                </button>
+                              )}
+                              <div>
+                                <span className="font-medium text-slate-800 dark:text-slate-200">{u.name}</span>
+                                {u.is_phu && (
+                                  <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                    Phụ
+                                  </span>
+                                )}
+                                {u.description && (
+                                  <span className="block text-[11px] font-normal text-slate-400 max-w-md truncate">
+                                    {u.description}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-center text-xs text-slate-500">{u.grade_number}</td>
+                        <td className="px-5 py-3 text-center text-xs text-slate-500">
+                          {u.semester_number ? `HK${u.semester_number}` : "—"}
+                        </td>
+                        <td className="px-5 py-3 text-xs text-slate-500">{u.parent_name ?? "—"}</td>
+                        <td className="px-5 py-3 text-xs text-slate-500">
+                          {u.book_title ? (
+                            <span className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400">
+                              <BookOpen className="w-3 h-3 shrink-0" />
+                              <span className="truncate max-w-[160px]" title={u.book_title}>{u.book_title}</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              u.is_active
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                                : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                            }`}
+                          >
+                            {u.is_active ? "Hoạt động" : "Đã ẩn"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setDetailUnit(u)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/40 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 transition-colors"
+                              title="Xem chi tiết node (tóm tắt, từ khóa, mục con)"
+                            >
+                              Chi tiết
+                            </button>
+                            <button
+                              onClick={() => handleToggle(u)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+                              title={u.is_active ? "Ẩn khỏi shortlist map" : "Kích hoạt lại"}
+                            >
+                              {u.is_active ? "Ẩn" : "Kích hoạt"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expanded && hasDetail && (
+                        <tr className="bg-brand-50/50 dark:bg-brand-950/20 border-t border-brand-100 dark:border-brand-900/40">
+                          <td colSpan={8} className="px-5 py-4">
+                            <div className="space-y-2.5">
+                              {u.summary && (
+                                <div>
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400 mb-1">
+                                    Tóm tắt
+                                  </p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-3xl">
+                                    {u.summary}
+                                  </p>
+                                </div>
+                              )}
+                              {(u.keywords?.length ?? 0) > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                                    Từ khóa:
+                                  </span>
+                                  {u.keywords!.map((k) => (
+                                    <span
+                                      key={k}
+                                      className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                                    >
+                                      {k}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {(u.sections?.length ?? 0) > 0 && (
+                                <div className="space-y-1">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                                    Mục con trong bài
+                                  </p>
+                                  <ol className="list-decimal list-inside space-y-0.5">
+                                    {u.sections!.map((s, i) => (
+                                      <li key={`${s.name}-${i}`} className="text-xs text-slate-600 dark:text-slate-300">
+                                        {s.name}
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
                 {units.length === 0 && !loading && (
                   <tr>
                     <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-400">
@@ -1060,6 +1362,152 @@ export default function AdminCurriculumPage() {
           </div>
         </section>
       )}
+        </div>
+      )}
+
+      {/* Modal xem chi tiết node: meta + tóm tắt + từ khóa + mục con + thao tác */}
+      {detailUnit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 border border-brand-100 dark:border-brand-900/50 shrink-0">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <span className="truncate">{detailUnit.name}</span>
+                    {detailUnit.is_phu && (
+                      <span className="shrink-0 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                        Phụ
+                      </span>
+                    )}
+                  </h4>
+                  <p className="font-mono text-xs text-brand-600 dark:text-brand-400">{detailUnit.code}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailUnit(null)}
+                className="shrink-0 p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Meta nhanh */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Khối</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Khối {detailUnit.grade_number}</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Học kỳ</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {detailUnit.semester_number ? `HK${detailUnit.semester_number}` : "Cả năm"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Chương cha</p>
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate" title={detailUnit.parent_name ?? ""}>
+                  {detailUnit.parent_name ?? "—"}
+                </p>
+              </div>
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Cuốn sách nguồn</p>
+                <p className="text-sm font-semibold text-brand-600 dark:text-brand-400 truncate" title={detailUnit.book_title ?? ""}>
+                  {detailUnit.book_title ?? "—"}
+                </p>
+              </div>
+            </div>
+
+            {/* Trạng thái + thao tác */}
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 px-3.5 py-2.5">
+              <span
+                className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  detailUnit.is_active
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                    : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                }`}
+              >
+                {detailUnit.is_active ? "Hoạt động (có trong shortlist map đề)" : "Đã ẩn (không map đề thi)"}
+              </span>
+              <button
+                onClick={() => {
+                  handleToggle(detailUnit);
+                  setDetailUnit(null);
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+              >
+                {detailUnit.is_active ? "Ẩn khỏi map đề" : "Kích hoạt lại"}
+              </button>
+            </div>
+
+            {/* Mô tả (nạp tay / markdown catalog) */}
+            {detailUnit.description && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Mô tả</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{detailUnit.description}</p>
+              </div>
+            )}
+
+            {/* Tóm tắt */}
+            {detailUnit.summary && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400 mb-1">
+                  Tóm tắt nội dung
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{detailUnit.summary}</p>
+              </div>
+            )}
+
+            {/* Từ khóa */}
+            {(detailUnit.keywords?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400 mb-1.5">
+                  Từ khóa kiến thức
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {detailUnit.keywords!.map((k) => (
+                    <span
+                      key={k}
+                      className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-brand-50 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-900 text-brand-700 dark:text-brand-300"
+                    >
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Mục con */}
+            {(detailUnit.sections?.length ?? 0) > 0 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-brand-600 dark:text-brand-400 mb-1.5">
+                  Mục con trong bài ({detailUnit.sections!.length})
+                </p>
+                <ol className="list-decimal list-inside space-y-1">
+                  {detailUnit.sections!.map((s, i) => (
+                    <li key={`${s.name}-${i}`} className="text-sm text-slate-700 dark:text-slate-200">
+                      {s.name}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* Chưa có dữ liệu làm giàu */}
+            {!detailUnit.summary &&
+              (detailUnit.keywords?.length ?? 0) === 0 &&
+              (detailUnit.sections?.length ?? 0) === 0 && (
+                <p className="text-xs text-slate-400">
+                  Node này chưa có nội dung làm giàu (sách nạp trước khi tính năng ra đời, hoặc tắt
+                  "Làm giàu nội dung" khi nạp). Hãy nạp lại cuốn sách với bật "Làm giàu nội dung".
+                </p>
+              )}
+          </div>
         </div>
       )}
 

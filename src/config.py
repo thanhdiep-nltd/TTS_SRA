@@ -53,10 +53,13 @@ class Settings(BaseSettings):
     vlm_model: str = "qwen3-vl-flash"
     vlm_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     vlm_api_key: str = ""
-    vlm_timeout_s: float = Field(default=60.0, gt=0.0)
+    vlm_timeout_s: float = Field(default=300.0, gt=0.0)
     # Số trang gọi VLM song song khi đọc nhiều trang (nạp SGK mục lục, đọc đề nhiều trang).
     # Giữ vừa phải (3-5) để không dính rate-limit 429/503 của provider.
     vlm_max_concurrency: int = Field(default=4, ge=1, le=8)
+    # Số trang PDF đưa vào 1 lần gọi VLM khi quét TOÀN CUỐN SGK (nhiều ảnh/request) —
+    # lô càng lớn càng ít call nhưng payload nặng hơn.
+    vlm_sweep_pages_per_call: int = Field(default=3, ge=1, le=10)
 
     # Database
     database_url: str = "sqlite:///./data/app.db"

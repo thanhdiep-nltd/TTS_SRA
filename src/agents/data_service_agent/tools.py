@@ -404,11 +404,22 @@ def get_knowledge_gap_report(student_code: str, subject: str, year: int = 0, sem
             ).fetchall()
         }
 
+        # Nội dung làm giàu (tóm tắt/từ khóa khi nạp sách) — giúp giải thích "hổng khái niệm/mục nào".
+        enriched = {
+            r.id: (r.summary, list(r.keywords) if r.keywords else None)
+            for r in session.execute(
+                text("SELECT id, summary, keywords FROM public.curriculum_units WHERE id = ANY(:ids)"),
+                {"ids": [m.unit_id for m in mastery]},
+            ).fetchall()
+        }
+
         gaps = [
             {
                 "Chương/Bài": names.get(m.unit_id, f"Unit {m.unit_id}"),
                 "Mức hổng (0-1)": m.gap_score,
                 "Mức thành thạo (0-1)": m.mastery,
+                "Nội dung bài": (enriched.get(m.unit_id) or (None, None))[0],
+                "Từ khóa": (enriched.get(m.unit_id) or (None, None))[1],
             }
             for m in mastery
             if m.is_gap

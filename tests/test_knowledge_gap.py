@@ -10,12 +10,12 @@ from src.services.knowledge_gap import UnitWeight, aggregate_class_gaps, compute
 def test_unit_meta_maps_chapter_and_lesson():
     fake = MagicMock()
     fake.execute.return_value.fetchall.return_value = [
-        SimpleNamespace(id=1, name="Nguyên hàm", parent_id=101, chapter_name="Nguyên hàm – Tích phân"),
-        SimpleNamespace(id=2, name="Chương X", parent_id=None, chapter_name=None),
+        SimpleNamespace(id=1, name="Nguyên hàm", parent_id=101, chapter_name="Nguyên hàm – Tích phân", summary=None, keywords=None),
+        SimpleNamespace(id=2, name="Chương X", parent_id=None, chapter_name=None, summary="Tóm tắt chương X", keywords=["số học"]),
     ]
     meta = _unit_meta(fake, [1, 2])
-    assert meta[1] == ("Nguyên hàm", "Nguyên hàm – Tích phân", "Nguyên hàm")
-    assert meta[2] == ("Chương X", "Chương X", None)
+    assert meta[1] == ("Nguyên hàm", "Nguyên hàm – Tích phân", "Nguyên hàm", None, None)
+    assert meta[2] == ("Chương X", "Chương X", None, "Tóm tắt chương X", ["số học"])
     assert _unit_meta(fake, []) == {}
 
 

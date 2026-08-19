@@ -58,18 +58,21 @@ def _load_exam_units(
     ]
 
 
-def _unit_meta(db: Session, unit_ids: list[int]) -> dict[int, tuple[str | None, str | None, str | None]]:
-    """Map unit_id → (name, chapter, lesson).
+def _unit_meta(
+    db: Session, unit_ids: list[int]
+) -> dict[int, tuple[str | None, str | None, str | None, str | None, list[str] | None]]:
+    """Map unit_id → (name, chapter, lesson, summary, keywords).
 
     chapter = tên node cha (parent_id) nếu unit là bài con, ngược lại chính tên unit (node chương);
-    lesson = tên unit nếu là bài con, None nếu là chương.
+    lesson = tên unit nếu là bài con, None nếu là chương. summary/keywords là nội dung làm giàu
+    khi nạp sách — giúp giải thích "hổng khái niệm/mục nào".
     """
     if not unit_ids:
         return {}
     rows = db.execute(
         text(
             """
-            SELECT cu.id, cu.name, cu.parent_id, p.name AS chapter_name
+            SELECT cu.id, cu.name, cu.parent_id, cu.summary, cu.keywords, p.name AS chapter_name
             FROM public.curriculum_units cu
             LEFT JOIN public.curriculum_units p ON p.id = cu.parent_id
             WHERE cu.id = ANY(:ids)
@@ -82,6 +85,8 @@ def _unit_meta(db: Session, unit_ids: list[int]) -> dict[int, tuple[str | None, 
             r.name,
             (r.chapter_name if r.chapter_name else r.name) if r.parent_id else r.name,
             r.name if r.parent_id else None,
+            r.summary,
+            list(r.keywords) if r.keywords else None,
         )
         for r in rows
     }
@@ -147,9 +152,11 @@ def get_student_knowledge_gaps(
     gaps = [
         KnowledgeGapItem(
             unit_id=m.unit_id,
-            unit_name=meta.get(m.unit_id, (None, None, None))[0],
-            chapter=meta.get(m.unit_id, (None, None, None))[1],
-            lesson=meta.get(m.unit_id, (None, None, None))[2],
+            unit_name=meta.get(m.unit_id, (None, None, None, None, None))[0],
+            chapter=meta.get(m.unit_id, (None, None, None, None, None))[1],
+            lesson=meta.get(m.unit_id, (None, None, None, None, None))[2],
+            summary=meta.get(m.unit_id, (None, None, None, None, None))[3],
+            keywords=meta.get(m.unit_id, (None, None, None, None, None))[4],
             gap_score=m.gap_score,
             mastery=m.mastery,
             evidence_source="EXAM",
@@ -230,9 +237,11 @@ def get_class_knowledge_gaps(
     gaps = [
         KnowledgeGapItem(
             unit_id=uid,
-            unit_name=meta.get(uid, (None, None, None))[0],
-            chapter=meta.get(uid, (None, None, None))[1],
-            lesson=meta.get(uid, (None, None, None))[2],
+            unit_name=meta.get(uid, (None, None, None, None, None))[0],
+            chapter=meta.get(uid, (None, None, None, None, None))[1],
+            lesson=meta.get(uid, (None, None, None, None, None))[2],
+            summary=meta.get(uid, (None, None, None, None, None))[3],
+            keywords=meta.get(uid, (None, None, None, None, None))[4],
             gap_score=round(sum(v) / len(v), 3),
             mastery=round(1.0 - sum(v) / len(v), 3),
             evidence_source="EXAM",

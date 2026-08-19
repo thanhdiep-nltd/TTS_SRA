@@ -16,6 +16,10 @@ class CurriculumUnitRead(BaseModel):
     is_active: bool = True
     is_phu: bool = False
     description: str | None = None
+    # Làm giàu nội dung khi nạp sách (quét toàn cuốn): tóm tắt, từ khóa, mục con.
+    summary: str | None = None
+    keywords: list[str] | None = None
+    sections: list[dict] | None = None
     book_id: int | None = None
     book_title: str | None = None
 
@@ -32,20 +36,26 @@ class CurriculumUploadResult(BaseModel):
 
 
 class IngestedLessonRead(BaseModel):
-    """1 bài con (node level 2) phát hiện từ mục lục sách."""
+    """1 bài con (node level 2) phát hiện từ mục lục sách, kèm nội dung làm giàu."""
 
     code: str
     name: str
     is_phu: bool = False
+    summary: str | None = None
+    keywords: list[str] | None = None
+    sections: list[dict] | None = None
 
 
 class IngestedChapterRead(BaseModel):
-    """1 chương (node level 1) phát hiện từ mục lục sách, kèm bài con."""
+    """1 chương (node level 1) phát hiện từ mục lục sách, kèm bài con + nội dung làm giàu."""
 
     code: str
     name: str
     semester_number: int | None = None
     is_phu: bool = False
+    summary: str | None = None
+    keywords: list[str] | None = None
+    sections: list[dict] | None = None
     lessons: list[IngestedLessonRead] = []
 
 

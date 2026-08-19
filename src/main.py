@@ -33,6 +33,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"Table creation check: {exc}")
 
+    # Mini-migrations (dev: ALTER TABLE ... ADD COLUMN IF NOT EXISTS — data dev sửa thẳng SQL)
+    try:
+        from src.db.mini_migrations import apply_mini_migrations
+        from src.db.session import SessionLocal
+
+        _mig_db = SessionLocal()
+        try:
+            apply_mini_migrations(_mig_db)
+        finally:
+            _mig_db.close()
+    except Exception as exc:
+        print(f"Mini-migrations error: {exc}")
+
     # Startup Self-Healing for stuck camera tasks
     if settings.app_env != "test" and "pytest" not in sys.modules:
         try:

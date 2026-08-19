@@ -23,7 +23,8 @@ from src.services.curriculum_catalog import get_or_create_book
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_MINUTES = 5
+# Nạp PDF giờ quét TOÀN BỘ cuốn (VLM) + làm giàu từng bài — cần thời gian lớn hơn trước.
+_TIMEOUT_MINUTES = 60
 
 
 def process_next_curriculum_ingest_job() -> None:
@@ -85,6 +86,16 @@ def process_next_curriculum_ingest_job() -> None:
                 raise ValueError("File tạm nạp sách đã bị mất — cần nạp lại.")
             content = source_file.read_bytes()
 
+            def _progress(done: int, total: int, stage: str) -> None:
+                """Cập nhật job.progress theo giai đoạn (scan 10-70, enrich 70-95) — commit để UI poll thấy."""
+                if total <= 0:
+                    base = 70 if stage == "scan" else 95
+                else:
+                    ratio = done / total
+                    base = 10 + int(60 * ratio) if stage == "scan" else 70 + int(25 * ratio)
+                next_job.progress = min(99, base)
+                db.commit()
+
             book_id = None
             if not next_job.dry_run:
                 book_id = get_or_create_book(
@@ -107,6 +118,8 @@ def process_next_curriculum_ingest_job() -> None:
                 include_lessons=next_job.include_lessons,
                 dry_run=next_job.dry_run,
                 book_id=book_id,
+                enrich=next_job.enrich,
+                progress_cb=_progress,
             )
             next_job.result_json = json.dumps(result, ensure_ascii=False)
             next_job.status = "completed"

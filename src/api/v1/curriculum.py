@@ -147,6 +147,9 @@ def list_units(
             is_active=u.is_active,
             is_phu=u.is_phu,
             description=u.description,
+            summary=u.summary,
+            keywords=u.keywords,
+            sections=u.sections,
             book_id=u.book_id,
             book_title=books.get(u.book_id) if u.book_id else None,
         )
@@ -186,15 +189,18 @@ def ingest_book(
     semester: Annotated[int | None, Form()] = None,
     book_title: Annotated[str | None, Form()] = None,
     include_lessons: Annotated[bool, Form()] = False,
+    enrich: Annotated[bool, Form()] = True,
     dry_run: Annotated[bool, Form()] = True,
     current_user: Annotated[User, Depends(get_current_user)] = None,
     background_tasks: BackgroundTasks = None,
     db: Annotated[Session, Depends(get_db)] = None,
 ):
-    """Nạp sách giáo khoa (PDF/DOCX/TXT/MD) → tách mục lục BẤT ĐỒNG BỘ (DB-backed queue).
+    """Nạp sách giáo khoa (PDF/DOCX/TXT/MD) → tự tách mục lục BẤT ĐỒNG BỘ (DB-backed queue).
 
-    Tạo job pending + lưu file tạm rồi gọi worker (FIFO, 1 job/lúc). Frontend poll
-    GET /ingest-book/jobs/{job_id}. dry_run=true: chỉ preview (mặc định); false: tự lưu + gắn book.
+    PDF: quét TOÀN BỘ cuốn 1 lần bằng VLM (tự định vị MỤC LỤC); enrich=true (mặc định) còn
+    làm giàu từng bài (tóm tắt + từ khóa + mục con). Tạo job pending + lưu file tạm rồi gọi
+    worker (FIFO, 1 job/lúc). Frontend poll GET /ingest-book/jobs/{job_id}.
+    dry_run=true: chỉ preview (mặc định); false: tự lưu + gắn book.
     """
     content = file.file.read()
     _TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -208,6 +214,7 @@ def ingest_book(
         grade_number=grade,
         semester_number=semester,
         include_lessons=include_lessons,
+        enrich=enrich,
         dry_run=dry_run,
         filename=file.filename or "book.pdf",
         book_title=book_title,
@@ -402,6 +409,59 @@ def book_cover(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
     return Response(content=png, media_type="image/png")
 
 
+@router.post("/books/{book_id}/re-enrich", response_model=BookIngestJobRead, status_code=202)
+def re_enrich_book(
+    book_id: int,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    background_tasks: BackgroundTasks = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """Chạy LẠI bước làm giàu (tóm tắt/từ khóa/mục con) cho 1 cuốn từ file PDF gốc đã lưu.
+
+    Tạo job nạp lại (dry_run=false, enrich=true) dùng đúng file uploads/curriculum_books/{id}.pdf
+    → worker upsert cập nhật summary/keywords/sections cho node đã có (không cần upload lại).
+    include_lessons tự dò: cuốn có node bài con (parent_id) thì tách bài như bản gốc.
+    """
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+    src = _book_pdf_path(book_id)
+    if not src.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Cuốn này chưa có file PDF gốc (nạp trước khi tính năng ra đời) — hãy nạp lại cuốn.",
+        )
+    has_lessons = (
+        db.execute(
+            select(CurriculumUnit.id)
+            .where(CurriculumUnit.book_id == book_id, CurriculumUnit.parent_id.is_not(None))
+            .limit(1)
+        ).scalars().first()
+        is not None
+    )
+    _TMP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _TMP_DIR / f"curri_{uuid.uuid4().hex}.pdf"
+    tmp.write_bytes(src.read_bytes())
+    job = CurriculumIngestJob(
+        requested_by=current_user.id if current_user else None,
+        subject_code=book.subject_code,
+        grade_number=book.grade_number,
+        semester_number=book.semester_number,
+        include_lessons=has_lessons,
+        enrich=True,
+        dry_run=False,
+        filename=book.filename,
+        book_title=book.title,
+        source_filepath=str(tmp),
+        status="pending",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    background_tasks.add_task(process_next_curriculum_ingest_job)
+    return _job_to_read(db, job)
+
+
 @router.post("/units/{unit_id}/toggle-active", response_model=CurriculumUnitRead)
 def toggle_unit_active(unit_id: int, db: Annotated[Session, Depends(get_db)] = None):
     """Bật/tắt node (ẩn khỏi shortlist LLM map) — không xóa (giữ tham chiếu exam_competencies)."""
@@ -420,6 +480,9 @@ def toggle_unit_active(unit_id: int, db: Annotated[Session, Depends(get_db)] = N
         is_active=unit.is_active,
         is_phu=unit.is_phu,
         description=unit.description,
+        summary=unit.summary,
+        keywords=unit.keywords,
+        sections=unit.sections,
         book_id=unit.book_id,
     )
 
