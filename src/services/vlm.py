@@ -52,14 +52,37 @@ def is_configured(settings: Settings | None = None) -> bool:
     return bool(s.vlm_api_base and s.vlm_api_key)
 
 
+def _format_friendly_vlm_error(exc: Exception, model_name: str) -> str:
+    """Chuyển đổi lỗi kỹ thuật từ API VLM (503, 429, timeout, network...) thành thông báo tiếng Việt dễ hiểu."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code if exc.response is not None else 0
+        if status in (502, 503, 504):
+            return f"Máy chủ AI ({model_name}) hiện đang quá tải hoặc tạm thời bảo trì (HTTP {status}). Hệ thống đã tự động thử lại 3 lần nhưng chưa thành công. Vui lòng thử lại sau ít phút."
+        if status == 429:
+            return f"Đã vượt quá giới hạn tần suất gọi API AI (HTTP 429 - Rate Limit). Vui lòng đợi 1–2 phút rồi thử nạp lại."
+        if status in (401, 403):
+            return f"Khóa API AI (VLM_API_KEY) không hợp lệ hoặc đã hết hạn (HTTP {status}). Vui lòng kiểm tra lại cấu hình API key."
+        return f"Máy chủ AI ({model_name}) phản hồi mã lỗi HTTP {status}. Vui lòng thử lại sau."
+    if isinstance(exc, httpx.TimeoutException):
+        return f"Thời gian chờ phản hồi từ máy chủ AI ({model_name}) quá lâu (Timeout). File sách có thể quá nặng hoặc đường truyền mạng chập chờn."
+    if isinstance(exc, httpx.ConnectError):
+        return f"Không thể kết nối đến máy chủ AI ({model_name}). Vui lòng kiểm tra kết nối mạng hoặc đường dẫn API."
+    raw = str(exc)
+    clean_msg = raw.split("For more information check:")[0].strip()
+    return f"Lỗi xử lý AI ({model_name}): {clean_msg}"
+
+
 def _chat_completions(image_b64: str, settings: Settings, prompt: str | None = None) -> str:
     """Gọi chat/completions với 1 ảnh; trả text. Lỗi mạng/HTTP → VlmUnavailableError.
 
     5xx (vd 503 nhà cung cấp tạm quá tải) / 429 (rate limit) → retry tối đa 3 lần với
     backoff tăng dần (1s → 2s → 4s) trước khi nâng lỗi — tránh worker fail ngay vì 503 thoáng qua.
     """
+    model_name = settings.vlm_model
+    url = f"{settings.vlm_api_base.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {settings.vlm_api_key}"}
     payload = {
-        "model": settings.vlm_model,
+        "model": model_name,
         "messages": [
             {
                 "role": "user",
@@ -70,30 +93,45 @@ def _chat_completions(image_b64: str, settings: Settings, prompt: str | None = N
             }
         ],
     }
-    url = f"{settings.vlm_api_base.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {settings.vlm_api_key}"}
+
     last_error: Exception | None = None
     for attempt in range(3):
+        t0 = time.time()
+        print(f"[VLM/Qwen] 🚀 Đang gửi request tới '{model_name}' (lần {attempt + 1}/3)...")
+        logger.info("vlm_request_start", model=model_name, url=url, attempt=attempt + 1)
         try:
             resp = httpx.post(url, json=payload, headers=headers, timeout=settings.vlm_timeout_s)
             status = resp.status_code if isinstance(resp.status_code, int) else 0
+            duration = time.time() - t0
             transient = status >= 500 or status == 429
             if transient and attempt < 2:
                 last_error = httpx.HTTPStatusError(
                     f"Server error {status}", request=resp.request, response=resp
                 )
+                print(f"[VLM/Qwen] ⚠️ Gặp lỗi tạm thời (HTTP {status}) sau {duration:.2f}s — chuẩn bị retry lần {attempt + 2} sau {_VLM_BACKOFF[attempt]}s...")
                 logger.warning(
-                    "vlm_transient_retry", status=status, attempt=attempt + 1, sleep=_VLM_BACKOFF[attempt]
+                    "vlm_transient_retry", model=model_name, status=status, attempt=attempt + 1, duration_s=round(duration, 2), sleep=_VLM_BACKOFF[attempt]
                 )
                 time.sleep(_VLM_BACKOFF[attempt])
                 continue
+
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
-            return content if isinstance(content, str) else str(content)
+            result_str = content if isinstance(content, str) else str(content)
+            print(f"[VLM/Qwen] ✅ Nhận phản hồi thành công từ '{model_name}' (HTTP {status}, {duration:.2f}s, {len(result_str)} ký tự)")
+            logger.info("vlm_call_success", model=model_name, status_code=status, duration_s=round(duration, 2), result_len=len(result_str))
+            return result_str
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            duration = time.time() - t0
             last_error = exc
-    logger.warning("vlm_call_failed", error=str(last_error)[:200])
-    raise VlmUnavailableError(f"Lỗi gọi VLM: {last_error}") from last_error
+            print(f"[VLM/Qwen] ❌ Lỗi gọi '{model_name}' lần {attempt + 1} ({duration:.2f}s): {exc}")
+            logger.warning("vlm_call_attempt_error", model=model_name, attempt=attempt + 1, duration_s=round(duration, 2), error=str(exc)[:200])
+
+    friendly_msg = _format_friendly_vlm_error(last_error or Exception("Không nhận được phản hồi"), model_name)
+    print(f"[VLM/Qwen] 🛑 Đã thử 3 lần nhưng gọi '{model_name}' thất bại: {friendly_msg}")
+    logger.error("vlm_call_failed", model=model_name, error=friendly_msg)
+    raise VlmUnavailableError(friendly_msg) from last_error
+
 
 
 def read_image_bytes(image_bytes: bytes, settings: Settings | None = None) -> str:
@@ -158,9 +196,12 @@ def read_pdf_toc(
     import fitz  # PyMuPDF — đã có trong deps
 
     with fitz.open(path) as doc:
+        total_pages_to_check = min(max_pages, doc.page_count)
+        print(f"[VLM/Qwen] 📖 Bắt đầu đọc mục lục PDF ({total_pages_to_check}/{doc.page_count} trang đầu) bằng model '{s.vlm_model}' (concurrency={s.vlm_max_concurrency})...")
+        logger.info("vlm_pdf_toc_start", total_pages=total_pages_to_check, model=s.vlm_model)
         images = [
             base64.b64encode(doc.load_page(idx).get_pixmap(dpi=dpi).tobytes("png")).decode("ascii")
-            for idx in range(min(max_pages, doc.page_count))
+            for idx in range(total_pages_to_check)
         ]
     return _call_in_parallel(images, s, _TOC_PROMPT)
 
@@ -178,3 +219,4 @@ def _call_in_parallel(
         return [_chat_completions(img, settings, prompt) for img in images]
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         return list(pool.map(lambda img: _chat_completions(img, settings, prompt), images))
+

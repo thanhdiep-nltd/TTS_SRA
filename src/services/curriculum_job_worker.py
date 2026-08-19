@@ -116,6 +116,17 @@ def process_next_curriculum_ingest_job() -> None:
             next_job.hidden_placeholders = result.get("hidden_placeholders", 0)
             next_job.finished_at = datetime.utcnow()
             db.commit()
+
+            # Nạp thẳng (dry_run=false, không qua /commit): lưu file PDF gốc để render ảnh bìa
+            if not next_job.dry_run and book_id is not None and source_file is not None:
+                try:
+                    from src.api.v1.curriculum import _BOOK_DIR, _book_pdf_path
+
+                    _BOOK_DIR.mkdir(parents=True, exist_ok=True)
+                    _book_pdf_path(book_id).write_bytes(source_file.read_bytes())
+                    source_file.unlink(missing_ok=True)
+                except (OSError, ImportError) as exc:  # noqa: BLE001
+                    logger.warning("Không lưu được file gốc cuốn %s: %s", book_id, exc)
             logger.info("Curriculum ingest job %s hoàn tất: %d chương", next_job.id, len(result.get("chapters", [])))
         except Exception as exc:  # noqa: BLE001
             logger.exception("Curriculum ingest job %s thất bại", next_job.id)
@@ -123,13 +134,8 @@ def process_next_curriculum_ingest_job() -> None:
             next_job.error_message = str(exc)[:2000]
             next_job.finished_at = datetime.utcnow()
             db.commit()
-        finally:
-            # Xóa file tạm (result đã nằm trong result_json)
-            if source_file is not None and source_file.exists():
-                try:
-                    source_file.unlink(missing_ok=True)
-                except OSError:
-                    logger.warning("Không xóa được file tạm %s", source_file)
+        # KHÔNG xóa file tạm ở đây — commit (/ingest-book/commit) cần file PDF gốc để lưu
+        # vào uploads/curriculum_books/{book_id}.pdf (render ảnh bìa). Commit tự dọn sau khi copy.
 
         # Xử lý job pending tiếp theo (nếu có)
         process_next_curriculum_ingest_job()

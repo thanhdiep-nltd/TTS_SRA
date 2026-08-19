@@ -10,11 +10,12 @@ job (202) + lưu file tạm; frontend poll /ingest-book/jobs/{id}; /ingest-book/
 """
 
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
@@ -23,6 +24,7 @@ from src.api.deps import get_current_user, get_db, require_roles
 from src.models import enums
 from src.models.tables import CurriculumBook, CurriculumIngestJob, CurriculumUnit, User
 from src.schemas.curriculum import (
+    BookDeleteResult,
     BookIngestJobRead,
     BookIngestResult,
     CurriculumBookRead,
@@ -38,7 +40,16 @@ router = APIRouter(
     dependencies=[Depends(require_roles(enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL, enums.UserRole.SUBJECT_HEAD))],
 )
 
-_TMP_DIR = Path(__file__).resolve().parents[2] / "temp"
+_TMP_DIR = Path(__file__).resolve().parents[2] / "uploads" / "curriculum_tmp"
+# Thư mục lưu file PDF GỐC của từng cuốn SGK (để render ảnh bìa/trang đầu khi xem danh sách sách).
+_BOOK_DIR = Path(__file__).resolve().parents[2] / "uploads" / "curriculum_books"
+
+logger = logging.getLogger(__name__)
+
+
+def _book_pdf_path(book_id: int) -> Path:
+    """Đường dẫn file PDF gốc của cuốn sách (quy ước {book_id}.pdf)."""
+    return _BOOK_DIR / f"{book_id}.pdf"
 
 
 def _job_to_read(db: Session, job: CurriculumIngestJob) -> BookIngestJobRead:
@@ -282,6 +293,24 @@ def commit_book_catalog(
     job.updated = saved["updated"]
     job.hidden_placeholders = saved["hidden_placeholders"]
     db.commit()
+
+    # Giữ file PDF GỐC của cuốn (để render ảnh bìa/trang đầu ở danh sách sách). File tạm của job
+    # có thể đã bị worker dọn — nếu còn thì copy sang thư mục bền theo {book_id}.pdf.
+    try:
+        if job.source_filepath:
+            src = Path(job.source_filepath)
+            if src.exists():
+                _BOOK_DIR.mkdir(parents=True, exist_ok=True)
+                dst = _book_pdf_path(book_id)
+                dst.write_bytes(src.read_bytes())
+                # Dọn file tạm sau khi đã copy sang thư mục bền
+                try:
+                    src.unlink(missing_ok=True)
+                except OSError:
+                    pass
+    except OSError as exc:
+        logger.warning("Không lưu được file gốc cuốn %s: %s", book_id, exc)
+
     return BookIngestResult(**saved)
 
 
@@ -344,6 +373,35 @@ def list_subjects(db: Annotated[Session, Depends(get_db)] = None):
     return [CurriculumSubjectRead(code=str(r.code), name=str(r.name)) for r in rows]
 
 
+@router.get("/books/{book_id}/cover")
+def book_cover(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
+    """Ảnh bìa (trang đầu) của cuốn SGK — render từ file PDF gốc đã lưu khi commit.
+
+    Trả PNG để frontend hiển thị thumbnail trong danh sách sách. Nếu chưa có file gốc
+    (sách nạp trước khi tính năng này ra đời) → 404, frontend sẽ hiện placeholder.
+    """
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+    pdf_path = _book_pdf_path(book_id)
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="Chưa có file gốc cho cuốn sách này")
+    try:
+        import fitz  # PyMuPDF — đã có trong deps
+
+        with fitz.open(pdf_path) as doc:
+            if doc.page_count == 0:
+                raise HTTPException(status_code=404, detail="PDF trống")
+            pix = doc.load_page(0).get_pixmap(dpi=72)
+            png = pix.tobytes("png")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — file hỏng/không render được
+        logger.warning("Không render được bìa cuốn %s: %s", book_id, exc)
+        raise HTTPException(status_code=500, detail="Không render được ảnh bìa") from exc
+    return Response(content=png, media_type="image/png")
+
+
 @router.post("/units/{unit_id}/toggle-active", response_model=CurriculumUnitRead)
 def toggle_unit_active(unit_id: int, db: Annotated[Session, Depends(get_db)] = None):
     """Bật/tắt node (ẩn khỏi shortlist LLM map) — không xóa (giữ tham chiếu exam_competencies)."""
@@ -364,3 +422,28 @@ def toggle_unit_active(unit_id: int, db: Annotated[Session, Depends(get_db)] = N
         description=unit.description,
         book_id=unit.book_id,
     )
+
+@router.delete("/books/{book_id}", response_model=BookDeleteResult)
+def delete_book(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
+    """Xóa 1 cuốn SGK và toàn bộ các node chương/bài thuộc cuốn đó."""
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+
+    try:
+        res = curriculum_catalog.delete_book_and_units(db, book_id)
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Lỗi khi xóa cuốn sách %s: %s", book_id, exc)
+        raise HTTPException(status_code=500, detail=f"Lỗi khi xóa cuốn sách: {exc}") from exc
+
+    # Xóa file PDF bìa/gốc lưu ở uploads/curriculum_books/{book_id}.pdf
+    try:
+        pdf_path = _book_pdf_path(book_id)
+        if pdf_path.exists():
+            pdf_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Không xóa được file gốc cuốn %s: %s", book_id, exc)
+
+    return res
+

@@ -127,11 +127,13 @@ def extract_toc_from_pdf(content: bytes) -> tuple[list[dict[str, Any]], str]:
     try:
         pages = vlm.read_pdf_toc(tmp)
     except vlm.VlmUnavailableError as exc:
-        raise ValueError(f"VLM đọc mục lục thất bại: {exc}") from exc
+        raise ValueError(str(exc)) from exc
     finally:
         tmp.unlink(missing_ok=True)
     parsed = [obj for obj in (_parse_toc_json(page) for page in pages) if obj]
-    return _merge_toc_chapters(parsed), "pdf-vlm"
+    merged = _merge_toc_chapters(parsed)
+    print(f"[Curriculum Ingest] 🎯 Đã phân tích xong {len(pages)} trang qua Qwen/VLM: tìm thấy {len(parsed)} trang mục lục, trích xuất được {len(merged)} chương.")
+    return merged, "pdf-vlm"
 
 
 def extract_toc_from_text(text: str) -> list[TocEntry]:

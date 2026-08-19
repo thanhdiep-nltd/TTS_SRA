@@ -95,3 +95,12 @@ class CurriculumBookRead(BaseModel):
     source: str | None = None
     unit_count: int = 0
     created_at: str | None = None
+
+
+class BookDeleteResult(BaseModel):
+    """Kết quả xóa cuốn sách giáo khoa và các node liên quan."""
+
+    book_id: int
+    title: str
+    deleted_units_count: int
+

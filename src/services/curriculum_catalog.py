@@ -13,10 +13,18 @@ import re
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, or_, select, text, update
 from sqlalchemy.orm import Session
 
-from src.models.tables import CurriculumBook, CurriculumUnit
+from src.models.tables import (
+    AssignmentCompetency,
+    CurriculumBook,
+    CurriculumUnit,
+    ExamCompetency,
+    Misconception,
+    QuestionItem,
+    StudentKnowledgeGap,
+)
 
 _GRADE_RE = re.compile(r"^##\s*.*?LỚP\s*(\d+)")
 _SEMESTER_RE = re.compile(r"^###\s*.*?Tập\s*(\d+)")
@@ -214,3 +222,50 @@ def deactivate_placeholder_units(db: Session) -> int:
         unit.is_active = False
     db.commit()
     return len(rows)
+
+def delete_book_and_units(db: Session, book_id: int) -> dict[str, Any]:
+    """Xóa 1 cuốn SGK và toàn bộ node chương/bài thuộc cuốn đó (kèm dọn dẹp liên kết)."""
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise ValueError(f"Cuốn sách id={book_id} không tồn tại.")
+
+    unit_ids = [
+        int(uid)
+        for uid in db.execute(
+            select(CurriculumUnit.id).where(CurriculumUnit.book_id == book_id)
+        ).scalars().all()
+    ]
+
+    if unit_ids:
+        # Xóa các ràng buộc ngoại phụ thuộc nếu có
+        db.execute(delete(ExamCompetency).where(ExamCompetency.unit_id.in_(unit_ids)))
+        db.execute(delete(StudentKnowledgeGap).where(StudentKnowledgeGap.unit_id.in_(unit_ids)))
+        db.execute(delete(AssignmentCompetency).where(AssignmentCompetency.unit_id.in_(unit_ids)))
+        db.execute(delete(QuestionItem).where(QuestionItem.unit_id.in_(unit_ids)))
+        db.execute(delete(Misconception).where(Misconception.unit_id.in_(unit_ids)))
+
+        # Gỡ liên kết parent_id để tránh lỗi self-referencing foreign key
+        db.execute(
+            update(CurriculumUnit)
+            .where(or_(CurriculumUnit.book_id == book_id, CurriculumUnit.parent_id.in_(unit_ids)))
+            .values(parent_id=None)
+        )
+
+        # Xóa toàn bộ curriculum_units thuộc book_id
+        db.execute(
+            delete(CurriculumUnit).where(
+                or_(CurriculumUnit.book_id == book_id, CurriculumUnit.id.in_(unit_ids))
+            )
+        )
+
+    title = book.title
+    db.delete(book)
+    db.commit()
+
+    return {
+        "book_id": book_id,
+        "title": title,
+        "deleted_units_count": len(unit_ids),
+    }
+
+

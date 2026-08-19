@@ -9,6 +9,7 @@ import {
   FolderTree,
   Loader2,
   RefreshCw,
+  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -129,6 +130,97 @@ const FALLBACK_SUBJECT_OPTIONS = [
   { value: "GDCD", label: "Giáo dục công dân (GDCD)" },
 ];
 
+/** Card vuông 1 cuốn sách: ảnh bìa (trang đầu PDF) + tên + môn/khối + số node. */
+function BookCard({
+  book,
+  onOpen,
+  onDelete,
+}: {
+  book: CurriculumBookRow;
+  onOpen: (b: CurriculumBookRow) => void;
+  onDelete: (b: CurriculumBookRow) => void;
+}) {
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let url: string | null = null;
+    let cancelled = false;
+    api
+      .blob(`/curriculum/books/${book.id}/cover`)
+      .then((blob) => {
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setCoverUrl(url);
+      })
+      .catch(() => {
+        /* chưa có file gốc → placeholder */
+      });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [book.id]);
+
+  return (
+    <div className="relative group flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm hover:shadow-md hover:border-brand-300 dark:hover:border-brand-700 transition-all text-left">
+      {/* Nút Xóa cuốn sách */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(book);
+        }}
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 shadow-xs border border-slate-200 dark:border-slate-700 transition-all opacity-70 hover:opacity-100 hover:scale-105"
+        title={`Xóa cuốn "${book.title}" và toàn bộ node`}
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onOpen(book)}
+        className="flex flex-col flex-1 text-left"
+        title={`Xem node của "${book.title}"`}
+      >
+        {/* Ảnh bìa — vuông, hiển thị trang đầu PDF */}
+        <div className="relative aspect-[3/4] w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          {coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={coverUrl}
+              alt={`Bìa ${book.title}`}
+              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-300 dark:text-slate-600">
+              <BookOpen className="w-10 h-10" />
+              <span className="text-[10px] font-medium px-2 text-center">{book.subject_code}</span>
+            </div>
+          )}
+          <span className="absolute top-2 left-2 inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/90 dark:bg-slate-900/80 text-brand-700 dark:text-brand-300 border border-slate-200 dark:border-slate-700">
+            Khối {book.grade_number}
+            {book.semester_number ? ` · HK${book.semester_number}` : ""}
+          </span>
+        </div>
+        {/* Thông tin */}
+        <div className="p-3 space-y-1 flex-1 flex flex-col justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
+              {book.title}
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {book.subject_code} · {book.unit_count} node
+            </p>
+          </div>
+          <span className="inline-flex mt-2 px-2 py-1 rounded-lg text-[11px] font-semibold bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-900 group-hover:bg-brand-100 dark:group-hover:bg-brand-900/40 transition-colors self-start">
+            Xem node →
+          </span>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 export default function AdminCurriculumPage() {
   const [subjectCode, setSubjectCode] = useState("TOAN_6");
   const [grade, setGrade] = useState("");
@@ -136,7 +228,10 @@ export default function AdminCurriculumPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [subjectOptions, setSubjectOptions] = useState(FALLBACK_SUBJECT_OPTIONS);
 
-  // Chế độ xem: "books" = danh sách sách; "nodes" = node của 1 cuốn đang chọn
+  // Main Dashboard Tab: "catalog" = Thư viện Sách & Cây Mục Lục, "ingest" = Nạp Sách Mới & Hàng Đợi
+  const [mainTab, setMainTab] = useState<"catalog" | "ingest">("catalog");
+
+  // Chế độ xem bên trong catalog: "books" = danh sách sách; "nodes" = node của 1 cuốn đang chọn
   const [view, setView] = useState<"books" | "nodes">("books");
   const [activeBook, setActiveBook] = useState<CurriculumBookRow | null>(null);
   const [books, setBooks] = useState<CurriculumBookRow[]>([]);
@@ -156,8 +251,6 @@ export default function AdminCurriculumPage() {
   const [bookSemester, setBookSemester] = useState(""); // "" = tự đoán từ tên file
   const [bookTitle, setBookTitle] = useState(""); // Tên cuốn / Chương - Tập - Mô tả
   const [includeLessons, setIncludeLessons] = useState(false);
-  const [bookPreview, setBookPreview] = useState<BookIngestResult | null>(null);
-  const [bookJobId, setBookJobId] = useState<number | null>(null);
   const [bookUploading, setBookUploading] = useState(false);
   const [bookMsg, setBookMsg] = useState<string | null>(null);
   const [bookErr, setBookErr] = useState<string | null>(null);
@@ -165,6 +258,12 @@ export default function AdminCurriculumPage() {
   // Lịch sử nạp sách (job queue, poll như EWS)
   const [ingestJobs, setIngestJobs] = useState<BookIngestJob[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
+
+  // Xóa cuốn sách
+  const [bookToDelete, setBookToDelete] = useState<CurriculumBookRow | null>(null);
+  const [deletingBook, setDeletingBook] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
   const fetchUnits = useCallback(
     async (bookId?: number) => {
@@ -283,9 +382,10 @@ export default function AdminCurriculumPage() {
     if (!active) return;
     const timer = setInterval(() => {
       loadIngestJobs();
+      fetchBooks();
     }, 3000);
     return () => clearInterval(timer);
-  }, [ingestJobs, loadIngestJobs]);
+  }, [ingestJobs, loadIngestJobs, fetchBooks]);
 
   const handleUpload = async () => {
     if (!selectedFile) {
@@ -312,17 +412,14 @@ export default function AdminCurriculumPage() {
     }
   };
 
-
-  const handleBookExtract = async () => {
+  const handleBookIngestDirect = async () => {
     if (!bookFile) {
       setBookErr("Vui lòng chọn file sách giáo khoa (PDF/DOCX/TXT/MD).");
       return;
     }
     setBookUploading(true);
     setBookErr(null);
-    setBookMsg("Đang gửi file và trích xuất mục lục (VLM chạy nền, mất ~30s–2 phút)...");
-    setBookPreview(null);
-    setBookJobId(null);
+    setBookMsg("Đang nạp file và lưu tự động vào hệ thống (VLM/AI xử lý ngầm, mất ~30s–2 phút)...");
     const formData = new FormData();
     formData.append("file", bookFile);
     formData.append("subject_code", subjectCode);
@@ -330,68 +427,43 @@ export default function AdminCurriculumPage() {
     if (bookSemester) formData.append("semester", bookSemester);
     if (bookTitle.trim()) formData.append("book_title", bookTitle.trim());
     if (includeLessons) formData.append("include_lessons", "true");
-    formData.append("dry_run", "true");
+    formData.append("dry_run", "false"); // Tự động lưu thẳng vào DB khi trích xuất xong
     try {
       const job = await api.upload<BookIngestJob>("/curriculum/ingest-book", formData);
-      setBookJobId(job.job_id);
       loadIngestJobs();
-      // Poll job (tối đa ~3 phút) — không giữ request đồng bộ 5 phút
+      // Poll job để cập nhật trạng thái thời gian thực
       const deadline = Date.now() + 180_000;
       while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         const st = await api.get<BookIngestJob>(`/curriculum/ingest-book/jobs/${job.job_id}`);
-        if (st.status === "completed" && st.result) {
-          setBookPreview(st.result);
+        if (st.status === "completed") {
+          const insertedCount = st.result?.inserted ?? st.inserted ?? 0;
+          const updatedCount = st.result?.updated ?? st.updated ?? 0;
           setBookMsg(
-            "Trích xuất " + st.result.chapters.length + " chương (nguồn: " + st.result.source + ") — kiểm tra cây bên dưới rồi bấm \"Lưu vào bảng\"."
+            `Đã nạp và lưu thành công ${st.result?.chapters?.length ?? 0} chương (${insertedCount} node mới, ${updatedCount} cập nhật) vào hệ thống.`
           );
+          setBookFile(null);
           setBookUploading(false);
+          await fetchBooks();
+          if (view === "nodes" && activeBook) {
+            await fetchUnits(activeBook.id);
+          } else {
+            await fetchUnits();
+          }
           return;
         }
         if (st.status === "failed") {
-          setBookErr(st.error ?? "Trích xuất mục lục thất bại.");
+          setBookErr(st.error ?? "Nạp sách thất bại.");
           setBookUploading(false);
           return;
         }
       }
-      setBookErr("Trích xuất quá lâu (>3 phút) — kiểm tra VLM_API_KEY/provider rồi thử lại.");
+      setBookMsg("Job nạp sách đang tiếp tục chạy ngầm trong hệ thống. Bạn có thể theo dõi tiến độ ở bảng Lịch sử bên dưới.");
     } catch (e: any) {
-      setBookErr(e?.message ?? "Gửi file trích xuất thất bại.");
+      setBookErr(e?.message ?? "Gửi file nạp sách thất bại.");
     } finally {
       setBookUploading(false);
       loadIngestJobs();
-    }
-  };
-
-  const handleBookSave = async () => {
-    if (!bookPreview || !bookPreview.chapters.length) {
-      setBookErr("Chưa có cây chương/bài để lưu — hãy bấm \"Trích xuất\" trước.");
-      return;
-    }
-    if (!bookJobId) {
-      setBookErr("Thiếu mã job — hãy bấm \"Trích xuất\" lại.");
-      return;
-    }
-    setBookUploading(true);
-    setBookErr(null);
-    setBookMsg(null);
-    const formData = new FormData();
-    formData.append("job_id", String(bookJobId));
-    try {
-      const res = await api.upload<BookIngestResult>("/curriculum/ingest-book/commit", formData);
-      setBookPreview(res);
-      setBookMsg(
-        "Đã lưu " + res.inserted + " chương/bài mới, cập nhật " + res.updated + ", ẩn " +
-        res.hidden_placeholders + " placeholder (nguồn: " + res.source + "). Lưu chạy nhanh vì không trích lại file."
-      );
-      fetchUnits();
-      loadIngestJobs();
-      // Đang xem danh sách sách thì làm mới cả list sách (số node thay đổi)
-      if (view === "books") fetchBooks();
-    } catch (e: any) {
-      setBookErr(e?.message ?? "Lưu vào bảng thất bại.");
-    } finally {
-      setBookUploading(false);
     }
   };
 
@@ -404,6 +476,33 @@ export default function AdminCurriculumPage() {
     }
   };
 
+  const handleDeleteBook = useCallback((book: CurriculumBookRow) => {
+    setBookToDelete(book);
+    setDeleteErr(null);
+  }, []);
+
+  const confirmDeleteBook = async () => {
+    if (!bookToDelete) return;
+    setDeletingBook(true);
+    setDeleteErr(null);
+    try {
+      await api.del(`/curriculum/books/${bookToDelete.id}`);
+      setDeleteSuccess(`Đã xóa cuốn "${bookToDelete.title}" và toàn bộ node chương/bài thuộc cuốn.`);
+      const deletedId = bookToDelete.id;
+      setBookToDelete(null);
+      await fetchBooks();
+      if (view === "nodes" && activeBook?.id === deletedId) {
+        backToBooks();
+      } else if (view === "nodes" && activeBook) {
+        fetchUnits(activeBook.id);
+      }
+    } catch (e: any) {
+      setDeleteErr(e?.message ?? "Lỗi khi xóa cuốn sách.");
+    } finally {
+      setDeletingBook(false);
+    }
+  };
+
   return (
     <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-6">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -413,394 +512,403 @@ export default function AdminCurriculumPage() {
               <FolderTree className="w-5 h-5" />
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              Quản lý Chương trình học (Catalog phẳng)
+              Quản lý Sách & Chương trình học (Curriculum)
             </h2>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Bảng <code className="text-xs">curriculum_units</code> — bộ xương chương trình (chương/bài) để LLM map câu hỏi đề thi.
+            Quản lý danh mục SGK, cây node chương/bài và pipeline nạp sách tự động bằng AI.
           </p>
         </div>
         <button
           onClick={refreshCurrentView}
           disabled={loading || booksLoading}
-          className="px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
+          className="px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-xs transition"
         >
           <RefreshCw className={`w-4 h-4 ${loading || booksLoading ? "animate-spin" : ""}`} />
-          Làm mới
+          Làm mới dữ liệu
         </button>
       </header>
 
-      {/* Banner: KHÔNG RAG */}
-      <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
-        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-        <span>
-          <strong>Không dùng RAG:</strong> dữ liệu ghi thẳng vào bảng{" "}
-          <code className="text-xs">curriculum_units</code>, không đi qua Qdrant/Airflow. RAG chỉ phục vụ
-          chat hỏi đáp SGK (trang &quot;Kho tri thức &amp; SGK&quot;).
-        </span>
+      {/* 2-Tab Dashboard Navigation Bar */}
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <button
+          onClick={() => setMainTab("catalog")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            mainTab === "catalog"
+              ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Thư viện Sách & Cây Mục Lục
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+              mainTab === "catalog" ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+            }`}
+          >
+            {books.length} cuốn
+          </span>
+        </button>
+
+        <button
+          onClick={() => setMainTab("ingest")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            mainTab === "ingest"
+              ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
+          }`}
+        >
+          <UploadCloud className="w-4 h-4" />
+          Nạp Sách Mới & Hàng Đợi (AI)
+          {ingestJobs.some((j) => j.status === "pending" || j.status === "processing") && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white animate-pulse">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Đang xử lý
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Upload */}
-      <section className="bg-white dark:bg-slate-900 border rounded-2xl p-5 shadow-sm space-y-3">
-        <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-          <UploadCloud className="w-4 h-4 text-brand-500" />
-          Tải lên mục lục chương trình (không RAG)
-        </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Nhận file <strong>JSON</strong> (định dạng catalog) hoặc <strong>markdown mục lục SGK</strong>{" "}
-          (dạng &quot;## LỚP 6 / ### Tập 1 / * **Chương I: Tên** / mô tả&quot;). Upsert theo mã node — chạy lại an toàn.
-        </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[200px]">
-            <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học</label>
-            <SearchableSelect
-              options={subjectOptions}
-              value={subjectCode}
-              onChange={setSubjectCode}
-              className="min-w-[200px]"
-            />
-          </div>
-          <label className="flex-1 min-w-[260px] flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 cursor-pointer hover:border-brand-400 text-sm text-slate-500">
-            <FileUp className="w-4 h-4 shrink-0" />
-            {selectedFile ? (
-              <span className="truncate text-slate-800 dark:text-slate-200">{selectedFile.name}</span>
-            ) : (
-              <span>Chọn file .json / .md / .txt...</span>
-            )}
-            <input
-              type="file"
-              accept=".json,.md,.txt"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                setSelectedFile(f);
-                setUploadErr(null);
-              }}
-            />
-          </label>
-          <button
-            onClick={handleUpload}
-            disabled={uploading || !selectedFile}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-            {uploading ? "Đang nạp..." : "Tải lên"}
-          </button>
-        </div>
-        {uploadMsg && (
-          <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> {uploadMsg}
-          </p>
-        )}
-        {uploadErr && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-            <X className="w-3.5 h-3.5" /> {uploadErr}
-          </p>
-        )}
-      </section>
-
-
-      {/* Nạp sách giáo khoa — tự tách mục lục thành node */}
-      <section className="bg-white dark:bg-slate-900 border rounded-2xl p-5 shadow-sm space-y-3">
-        <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-brand-500" />
-          Nạp sách giáo khoa — pipeline tự tách chương/bài (không RAG)
-        </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Upload chính file SGK (<strong>PDF/DOCX/TXT/MD</strong>). Với PDF, VLM (Qwen3-VL-Flash) nhìn
-          ảnh trang mục lục và xuất cây chương/bài; DOCX dùng heading; TXT/MD dùng dòng mục lục.
-          <strong>Bấm &quot;Trích xuất&quot;</strong> để xem trước cây dự kiến (kèm cảnh báo) rồi mới <strong>lưu</strong>.
-        </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[200px]">
-            <label className="text-xs font-semibold text-slate-500 mb-1 block">
-              Môn học <span className="text-rose-500">*</span>
-            </label>
-            <SearchableSelect
-              options={subjectOptions}
-              value={subjectCode}
-              onChange={(v) => {
-                setSubjectCode(v);
-                // Môn dạng TOAN_6/TOAN_7... đã gắn khối trong mã → tự đồng bộ ô Khối lớp
-                const m = v.match(/^([A-Z_]+)_(\d+)$/);
-                if (m) setBookGrade(m[2]);
-              }}
-              className="min-w-[200px]"
-            />
-          </div>
-          <div className="min-w-[180px]">
-            <label className="text-xs font-semibold text-slate-500 mb-1 block">Khối lớp</label>
-            <SearchableSelect
-              options={[
-                { value: "6", label: "Khối 6" },
-                { value: "7", label: "Khối 7" },
-                { value: "8", label: "Khối 8" },
-                { value: "9", label: "Khối 9" },
-              ]}
-              value={bookGrade}
-              onChange={setBookGrade}
-              className="min-w-[180px]"
-            />
-          </div>
-          <div className="min-w-[160px]">
-            <label className="text-xs font-semibold text-slate-500 mb-1 block">Học kỳ</label>
-            <SearchableSelect
-              options={[
-                { value: "", label: "Tự đoán (tên file)" },
-                { value: "1", label: "Học kỳ 1" },
-                { value: "2", label: "Học kỳ 2" },
-              ]}
-              value={bookSemester}
-              onChange={setBookSemester}
-              className="min-w-[160px]"
-            />
-          </div>
-          <div className="min-w-[240px] flex-1">
-            <label className="text-xs font-semibold text-slate-500 mb-1 block">
-              Tên cuốn / Chương / Tập / Mô tả (Tùy chọn)
-            </label>
-            <input
-              type="text"
-              value={bookTitle}
-              onChange={(e) => {
-                setBookTitle(e.target.value);
-                setBookErr(null);
-              }}
-              placeholder='Ví dụ: Tập 1 - Chương 1 Số học'
-              className="w-full px-3.5 py-2 rounded-xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-            <input
-              type="checkbox"
-              checked={includeLessons}
-              onChange={(e) => setIncludeLessons(e.target.checked)}
-              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-            />
-            <span>Tách cả bài con (BÀI n)</span>
-          </label>
-          <label className="flex-1 min-w-[240px] flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 cursor-pointer hover:border-brand-400 text-sm text-slate-500">
-            <FileUp className="w-4 h-4 shrink-0" />
-            {bookFile ? (
-              <span className="truncate text-slate-800 dark:text-slate-200">{bookFile.name}</span>
-            ) : (
-              <span>Chọn file SGK .pdf / .docx / .txt / .md...</span>
-            )}
-            <input
-              type="file"
-              accept=".pdf,.docx,.txt,.md"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                setBookFile(file);
-                setBookPreview(null);
-                setBookErr(null);
-              }}
-            />
-          </label>
-          <button
-            onClick={handleBookExtract}
-            disabled={bookUploading || !bookFile}
-            className="px-4 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {bookUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-            {bookUploading ? "Đang trích xuất..." : "Trích xuất"}
-          </button>
-          <button
-            onClick={handleBookSave}
-            disabled={bookUploading || !bookPreview}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            <UploadCloud className="w-4 h-4" />
-            Lưu vào bảng
-          </button>
-        </div>
-        {bookMsg && (
-          <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5" /> {bookMsg}
-          </p>
-        )}
-        {bookErr && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-            <X className="w-3.5 h-3.5" /> {bookErr}
-          </p>
-        )}
-        {bookPreview && bookPreview.warnings.length > 0 && (
-          <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
-            {bookPreview.warnings.map((w, i) => (
-              <div key={i} className="flex items-start gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <span>{w}</span>
+      {/* TAB 2: NẠP SÁCH & HÀNG ĐỢI NỀN */}
+      {mainTab === "ingest" && (
+        <div className="space-y-6">
+          {/* Nạp sách giáo khoa — pipeline tự động bóc tách & lưu thẳng vào hệ thống */}
+          <section className="bg-white dark:bg-slate-900 border rounded-2xl p-5 shadow-sm space-y-3">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-brand-500" />
+              Nạp sách giáo khoa — tự động trích xuất & lưu trực tiếp
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Upload file SGK (<strong>PDF/DOCX/TXT/MD</strong>). Hệ thống chạy ngầm tự bóc tách mục lục và <strong>lưu thẳng vào cơ sở dữ liệu</strong>. Bạn có thể rời đi hoặc làm việc khác trong khi AI xử lý.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[200px]">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">
+                  Môn học <span className="text-rose-500">*</span>
+                </label>
+                <SearchableSelect
+                  options={subjectOptions}
+                  value={subjectCode}
+                  onChange={(v) => {
+                    setSubjectCode(v);
+                    const m = v.match(/^([A-Z_]+)_(\d+)$/);
+                    if (m) setBookGrade(m[2]);
+                  }}
+                  className="min-w-[200px]"
+                />
               </div>
-            ))}
-          </div>
-        )}
-        {bookPreview && bookPreview.chapters.length > 0 && (
-          <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3 max-h-64 overflow-y-auto space-y-1.5">
-            {bookPreview.chapters.map((ch) => (
-              <div key={ch.code}>
-                <div className="text-xs font-semibold text-brand-600 dark:text-brand-400">
-                  <span className="font-mono">{ch.code}</span> — {ch.name}
-                  {ch.is_phu && (
-                    <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                      Phụ
-                    </span>
-                  )}
-                  {ch.semester_number ? ` (HK${ch.semester_number})` : ""}
-                </div>
-                {ch.lessons.length > 0 && (
-                  <div className="ml-4 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 mt-0.5">
-                    {ch.lessons.map((lesson) => (
-                      <div key={lesson.code}>
-                        <span className="font-mono">{lesson.code}</span> — {lesson.name}
-                        {lesson.is_phu && (
-                          <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                            Phụ
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+              <div className="min-w-[180px]">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Khối lớp</label>
+                <SearchableSelect
+                  options={[
+                    { value: "6", label: "Khối 6" },
+                    { value: "7", label: "Khối 7" },
+                    { value: "8", label: "Khối 8" },
+                    { value: "9", label: "Khối 9" },
+                  ]}
+                  value={bookGrade}
+                  onChange={setBookGrade}
+                  className="min-w-[180px]"
+                />
+              </div>
+              <div className="min-w-[160px]">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Học kỳ</label>
+                <SearchableSelect
+                  options={[
+                    { value: "", label: "Tự đoán (tên file)" },
+                    { value: "1", label: "Học kỳ 1" },
+                    { value: "2", label: "Học kỳ 2" },
+                  ]}
+                  value={bookSemester}
+                  onChange={setBookSemester}
+                  className="min-w-[160px]"
+                />
+              </div>
+              <div className="min-w-[240px] flex-1">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">
+                  Tên cuốn / Chương / Tập / Mô tả (Tùy chọn)
+                </label>
+                <input
+                  type="text"
+                  value={bookTitle}
+                  onChange={(e) => {
+                    setBookTitle(e.target.value);
+                    setBookErr(null);
+                  }}
+                  placeholder='Ví dụ: Tập 1 - Chương 1 Số học'
+                  className="w-full px-3.5 py-2 rounded-xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={includeLessons}
+                  onChange={(e) => setIncludeLessons(e.target.checked)}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>Tách cả bài con (BÀI n)</span>
+              </label>
+              <label className="flex-1 min-w-[240px] flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 cursor-pointer hover:border-brand-400 text-sm text-slate-500">
+                <FileUp className="w-4 h-4 shrink-0" />
+                {bookFile ? (
+                  <span className="truncate text-slate-800 dark:text-slate-200">{bookFile.name}</span>
+                ) : (
+                  <span>Chọn file SGK .pdf / .docx / .txt / .md...</span>
                 )}
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setBookFile(file);
+                    setBookErr(null);
+                  }}
+                />
+              </label>
+              <button
+                onClick={handleBookIngestDirect}
+                disabled={bookUploading || !bookFile}
+                className="px-5 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-sm transition-all"
+              >
+                {bookUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                {bookUploading ? "Đang nạp & lưu sách..." : "Nạp sách vào hệ thống"}
+              </button>
+            </div>
+            {bookMsg && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {bookMsg}
+              </p>
+            )}
+            {bookErr && (
+              <p className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <X className="w-3.5 h-3.5" /> {bookErr}
+              </p>
+            )}
+          </section>
+
+          {/* Upload JSON / Markdown thủ công */}
+          <section className="bg-white dark:bg-slate-900 border rounded-2xl p-5 shadow-sm space-y-3">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <UploadCloud className="w-4 h-4 text-brand-500" />
+              Tải lên mục lục chương trình từ file JSON / Markdown
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Nhận file <strong>JSON</strong> (định dạng catalog) hoặc <strong>markdown mục lục SGK</strong> (dạng &quot;## LỚP 6 / ### Tập 1 / * **Chương I: Tên** / mô tả&quot;).
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[200px]">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học</label>
+                <SearchableSelect
+                  options={subjectOptions}
+                  value={subjectCode}
+                  onChange={setSubjectCode}
+                  className="min-w-[200px]"
+                />
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+              <label className="flex-1 min-w-[260px] flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 cursor-pointer hover:border-brand-400 text-sm text-slate-500">
+                <FileUp className="w-4 h-4 shrink-0" />
+                {selectedFile ? (
+                  <span className="truncate text-slate-800 dark:text-slate-200">{selectedFile.name}</span>
+                ) : (
+                  <span>Chọn file .json / .md / .txt...</span>
+                )}
+                <input
+                  type="file"
+                  accept=".json,.md,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setSelectedFile(f);
+                    setUploadErr(null);
+                  }}
+                />
+              </label>
+              <button
+                onClick={handleUpload}
+                disabled={uploading || !selectedFile}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                {uploading ? "Đang nạp..." : "Tải lên"}
+              </button>
+            </div>
+            {uploadMsg && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {uploadMsg}
+              </p>
+            )}
+            {uploadErr && (
+              <p className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <X className="w-3.5 h-3.5" /> {uploadErr}
+              </p>
+            )}
+          </section>
 
-      {/* Lịch sử nạp sách (job queue) */}
-      <section className="bg-white dark:bg-slate-900 border rounded-2xl p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <RefreshCw className={`w-4 h-4 text-brand-500 ${ingestJobs.some((j) => j.status === "pending" || j.status === "processing") ? "animate-spin" : ""}`} />
-            Lịch sử nạp sách (hàng đợi nền)
-          </h3>
-          <span className="text-xs text-slate-400">{ingestJobs.length} job</span>
-        </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-          Mỗi lần &quot;Trích xuất&quot; tạo một job chạy nền (DB-backed queue, 1 job/lúc theo FIFO). Bạn có thể rời
-          đi; khi xong kết quả tự cập nhật tại đây — giống &quot;Lịch sử dự đoán&quot; của EWS.
-        </p>
-        {ingestJobs.length === 0 ? (
-          <p className="text-sm text-slate-400 py-4 text-center">
-            Chưa có job nạp sách nào. {jobsLoading ? "Đang tải..." : ""}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
-                  <th className="px-4 py-2.5">ID</th>
-                  <th className="px-4 py-2.5">File</th>
-                  <th className="px-4 py-2.5">Môn · Khối</th>
-                  <th className="px-4 py-2.5">Tên cuốn</th>
-                  <th className="px-4 py-2.5">Trạng thái</th>
-                  <th className="px-4 py-2.5 text-center">Tiến độ</th>
-                  <th className="px-4 py-2.5">Tạo lúc</th>
-                  <th className="px-4 py-2.5">Kết quả / Lỗi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                {ingestJobs.map((j) => {
-                  const meta = INGEST_STATUS_META[j.status];
-                  return (
-                    <tr key={j.job_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-4 py-2.5 font-mono text-xs text-slate-400">#{j.job_id}</td>
-                      <td className="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-300 truncate max-w-[180px]" title={j.filename ?? ""}>
-                        {j.filename ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-slate-500">
-                        {j.subject_code} · Khối {j.grade_number}
-                        {j.semester_number ? ` · HK${j.semester_number}` : ""}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-slate-500 truncate max-w-[160px]" title={j.book_title ?? ""}>
-                        {j.book_title || "—"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.cls}`}>
-                          {j.status === "processing" ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : j.status === "completed" ? (
-                            <CheckCircle2 className="w-3 h-3" />
-                          ) : j.status === "failed" ? (
-                            <X className="w-3 h-3" />
-                          ) : (
-                            <RefreshCw className="w-3 h-3" />
-                          )}
-                          {meta.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-xs text-slate-500">{j.progress}%</td>
-                      <td className="px-4 py-2.5 text-xs text-slate-400 font-mono whitespace-nowrap">
-                        {j.created_at ? new Date(j.created_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-slate-500 max-w-[200px] truncate" title={j.error ?? (j.result ? `${j.result.inserted} mới · ${j.result.updated} cập nhật` : "")}>
-                        {j.status === "failed" ? (
-                          <span className="text-rose-600 dark:text-rose-400">{j.error ?? "Thất bại"}</span>
-                        ) : j.result ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">
-                            {j.result.chapters.length} chương · {j.result.inserted} mới · {j.result.updated} cập nhật
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
+          {/* Lịch sử nạp sách (job queue) */}
+          <section className="bg-white dark:bg-slate-900 border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <RefreshCw className={`w-4 h-4 text-brand-500 ${ingestJobs.some((j) => j.status === "pending" || j.status === "processing") ? "animate-spin" : ""}`} />
+                Lịch sử nạp sách (hàng đợi nền)
+              </h3>
+              <span className="text-xs text-slate-400">{ingestJobs.length} job</span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              Mỗi lần nạp sách tạo một job chạy nền (DB-backed queue). Kết quả và trạng thái tự cập nhật thời gian thực tại đây.
+            </p>
+            {ingestJobs.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4 text-center">
+                Chưa có job nạp sách nào. {jobsLoading ? "Đang tải..." : ""}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
+                      <th className="px-4 py-2.5">ID</th>
+                      <th className="px-4 py-2.5">File</th>
+                      <th className="px-4 py-2.5">Môn · Khối</th>
+                      <th className="px-4 py-2.5">Tên cuốn</th>
+                      <th className="px-4 py-2.5">Trạng thái</th>
+                      <th className="px-4 py-2.5 text-center">Tiến độ</th>
+                      <th className="px-4 py-2.5">Tạo lúc</th>
+                      <th className="px-4 py-2.5">Kết quả / Thông báo</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {ingestJobs.map((j) => {
+                      const meta = INGEST_STATUS_META[j.status];
+                      return (
+                        <tr key={j.job_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-4 py-2.5 font-mono text-xs text-slate-400">#{j.job_id}</td>
+                          <td className="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-300 truncate max-w-[180px]" title={j.filename ?? ""}>
+                            {j.filename ?? "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500">
+                            {j.subject_code} · Khối {j.grade_number}
+                            {j.semester_number ? ` · HK${j.semester_number}` : ""}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500 truncate max-w-[160px]" title={j.book_title ?? ""}>
+                            {j.book_title || "—"}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.cls}`}>
+                              {j.status === "processing" ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : j.status === "completed" ? (
+                                <CheckCircle2 className="w-3 h-3" />
+                              ) : j.status === "failed" ? (
+                                <X className="w-3 h-3" />
+                              ) : (
+                                <RefreshCw className="w-3 h-3" />
+                              )}
+                              {meta.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-xs text-slate-500">{j.progress}%</td>
+                          <td className="px-4 py-2.5 text-xs text-slate-400 font-mono whitespace-nowrap">
+                            {j.created_at ? new Date(j.created_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500 max-w-[320px]">
+                            {j.status === "failed" ? (
+                              <span className="text-rose-600 dark:text-rose-400 font-medium" title={j.error ?? ""}>
+                                {j.error ?? "Thất bại"}
+                              </span>
+                            ) : j.result ? (
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                {j.result.chapters?.length ?? 0} chương · {j.result.inserted} node mới · {j.result.updated} cập nhật
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
-      {/* Bộ lọc (chỉ hiển thị ở view danh sách sách; khi xem node của 1 cuốn thì ẩn) */}
-      {view === "books" && (
-        <section className="bg-white dark:bg-slate-900 border rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-sm">
-        <div className="min-w-[200px]">
-          <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học</label>
-          <SearchableSelect
-            options={subjectOptions}
-            value={subjectCode}
-            onChange={setSubjectCode}
-            className="min-w-[200px]"
-          />
+      {/* TAB 1: THƯ VIỆN SÁCH & CÂY MỤC LỤC */}
+      {mainTab === "catalog" && (
+        <div className="space-y-6">
+          {/* Banner: KHÔNG RAG */}
+          <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              <strong>Không dùng RAG:</strong> dữ liệu ghi thẳng vào bảng{" "}
+              <code className="text-xs">curriculum_units</code>, không đi qua Qdrant/Airflow. RAG chỉ phục vụ
+              chat hỏi đáp SGK (trang &quot;Kho tri thức &amp; SGK&quot;).
+            </span>
+          </div>
+
+          {/* Bộ lọc (chỉ hiển thị ở view danh sách sách; khi xem node của 1 cuốn thì ẩn) */}
+          {view === "books" && (
+            <section className="bg-white dark:bg-slate-900 border rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-sm">
+            <div className="min-w-[200px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học</label>
+              <SearchableSelect
+                options={subjectOptions}
+                value={subjectCode}
+                onChange={setSubjectCode}
+                className="min-w-[200px]"
+              />
+            </div>
+            <div className="min-w-[130px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Khối</label>
+              <SearchableSelect
+                options={[
+                  { value: "", label: "Tất cả khối" },
+                  ...Array.from({ length: 7 }, (_, i) => ({ value: String(i + 6), label: `Khối ${i + 6}` })),
+                ]}
+                value={grade}
+                onChange={setGrade}
+                className="min-w-[130px]"
+              />
+            </div>
+            <div className="min-w-[120px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Học kỳ</label>
+              <SearchableSelect
+                options={[
+                  { value: "", label: "Cả năm" },
+                  { value: "1", label: "Học kỳ 1" },
+                  { value: "2", label: "Học kỳ 2" },
+                ]}
+                value={semester}
+                onChange={setSemester}
+                className="min-w-[120px]"
+              />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(e) => setIncludeInactive(e.target.checked)}
+                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span>Bao gồm node đã ẩn</span>
+            </label>
+          </section>
+          )}
+
+      {deleteSuccess && (
+        <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{deleteSuccess}</span>
+          </div>
+          <button
+            onClick={() => setDeleteSuccess(null)}
+            className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div className="min-w-[130px]">
-          <label className="text-xs font-semibold text-slate-500 mb-1 block">Khối</label>
-          <SearchableSelect
-            options={[
-              { value: "", label: "Tất cả khối" },
-              ...Array.from({ length: 7 }, (_, i) => ({ value: String(i + 6), label: `Khối ${i + 6}` })),
-            ]}
-            value={grade}
-            onChange={setGrade}
-            className="min-w-[130px]"
-          />
-        </div>
-        <div className="min-w-[120px]">
-          <label className="text-xs font-semibold text-slate-500 mb-1 block">Học kỳ</label>
-          <SearchableSelect
-            options={[
-              { value: "", label: "Cả năm" },
-              { value: "1", label: "Học kỳ 1" },
-              { value: "2", label: "Học kỳ 2" },
-            ]}
-            value={semester}
-            onChange={setSemester}
-            className="min-w-[120px]"
-          />
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={(e) => setIncludeInactive(e.target.checked)}
-            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-          />
-          <span>Bao gồm node đã ẩn</span>
-        </label>
-      </section>
       )}
 
       {error && (
@@ -809,67 +917,25 @@ export default function AdminCurriculumPage() {
         </div>
       )}
 
-      {/* ===== View: danh sách sách (mặc định) ===== */}
+      {/* ===== View: danh sách sách (mặc định) — card vuông có ảnh bìa ===== */}
       {view === "books" && (
         <section className="bg-white dark:bg-slate-900 border rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <h3 className="font-semibold text-slate-900 dark:text-slate-100">Danh sách sách giáo khoa</h3>
             <span className="text-xs text-slate-400">{books.length} cuốn</span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
-                  <th className="px-5 py-3">Tên cuốn</th>
-                  <th className="px-5 py-3">Môn</th>
-                  <th className="px-5 py-3 text-center">Khối</th>
-                  <th className="px-5 py-3 text-center">HK</th>
-                  <th className="px-5 py-3 text-center">Số node</th>
-                  <th className="px-5 py-3">File nguồn</th>
-                  <th className="px-5 py-3">Tạo lúc</th>
-                  <th className="px-5 py-3 text-center">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+          <div className="p-5">
+            {books.length === 0 && !booksLoading ? (
+              <p className="text-sm text-slate-400 text-center py-10">
+                Chưa có cuốn sách nào cho bộ lọc hiện tại — hãy dùng "Nạp sách giáo khoa" ở trên rồi bấm Lưu.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
                 {books.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-5 py-3 font-medium text-slate-800 dark:text-slate-200">
-                      <span className="inline-flex items-center gap-1.5">
-                        <BookOpen className="w-3.5 h-3.5 text-brand-500 shrink-0" />
-                        {b.title}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-xs text-slate-500">{b.subject_code}</td>
-                    <td className="px-5 py-3 text-center text-xs text-slate-500">{b.grade_number}</td>
-                    <td className="px-5 py-3 text-center text-xs text-slate-500">
-                      {b.semester_number ? `HK${b.semester_number}` : "—"}
-                    </td>
-                    <td className="px-5 py-3 text-center text-xs text-slate-500">{b.unit_count}</td>
-                    <td className="px-5 py-3 text-xs text-slate-500 truncate max-w-[200px]" title={b.filename ?? ""}>
-                      {b.filename ?? "—"}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-slate-400 font-mono whitespace-nowrap">
-                      {b.created_at ? new Date(b.created_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      <button
-                        onClick={() => openBook(b)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-900 hover:bg-brand-100 dark:hover:bg-brand-900/40 transition-colors"
-                      >
-                        Xem node
-                      </button>
-                    </td>
-                  </tr>
+                  <BookCard key={b.id} book={b} onOpen={openBook} onDelete={handleDeleteBook} />
                 ))}
-                {books.length === 0 && !booksLoading && (
-                  <tr>
-                    <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-400">
-                      Chưa có cuốn sách nào cho bộ lọc hiện tại — hãy dùng "Nạp sách giáo khoa" ở trên rồi bấm Lưu.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -899,7 +965,20 @@ export default function AdminCurriculumPage() {
                 )}
               </h3>
             </div>
-            <span className="text-xs text-slate-400 shrink-0">{units.length} node</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-slate-400">{units.length} node</span>
+              {activeBook && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteBook(activeBook)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors"
+                  title={`Xóa cuốn "${activeBook.title}" và toàn bộ node`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa cuốn này</span>
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -980,6 +1059,71 @@ export default function AdminCurriculumPage() {
             </table>
           </div>
         </section>
+      )}
+        </div>
+      )}
+
+      {/* Modal xác nhận xóa sách */}
+      {bookToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  Xác nhận xóa sách
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Thao tác này sẽ xóa vĩnh viễn và không thể khôi phục.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3.5 text-xs text-slate-600 dark:text-slate-300 space-y-1.5 border border-slate-100 dark:border-slate-800">
+              <p>
+                <strong>Cuốn sách:</strong> {bookToDelete.title}
+              </p>
+              <p>
+                <strong>Môn · Khối:</strong> {bookToDelete.subject_code} · Khối {bookToDelete.grade_number}
+                {bookToDelete.semester_number ? ` · HK${bookToDelete.semester_number}` : ""}
+              </p>
+              <p className="text-rose-600 dark:text-rose-400 font-medium">
+                ⚠️ Toàn bộ <strong>{bookToDelete.unit_count} node chương/bài</strong> thuộc cuốn sách này cùng các ma trận liên quan sẽ bị xóa sạch khỏi hệ thống.
+              </p>
+            </div>
+
+            {deleteErr && (
+              <p className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <X className="w-3.5 h-3.5" /> {deleteErr}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={deletingBook}
+                onClick={() => {
+                  setBookToDelete(null);
+                  setDeleteErr(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={deletingBook}
+                onClick={confirmDeleteBook}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {deletingBook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                {deletingBook ? "Đang xóa..." : "Xác nhận xóa"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
