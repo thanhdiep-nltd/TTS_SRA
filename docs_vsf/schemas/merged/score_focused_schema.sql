@@ -1488,6 +1488,80 @@ CREATE INDEX IF NOT EXISTS idx_skg_student ON public.student_knowledge_gaps(stud
 CREATE INDEX IF NOT EXISTS idx_skg_unit ON public.student_knowledge_gaps(unit_id);
 
 -- ============================================================
+-- ĐỘ THÀNH THẠO THEO CHƯƠNG TỪ LMS ITEM-LEVEL (item_mastery)
+-- Nguồn: docs_vsf/plan_lms_item_mastery.md (đã duyệt plan-approval)
+-- 3 bảng: lms_question_bank, lms_question_response, student_unit_mastery.
+-- Chỉ dùng `IF NOT EXISTS`, áp qua mini_migrations (dev), KHÔNG dùng Alembic.
+-- ============================================================
+
+-- 0. (idempotent: đảm bảo schema public tồn tại) — no-op, giữ chỉ để tham chiếu.
+
+-- 1. Danh mục câu hỏi LMS (có subject_id để lọc nhanh theo môn, không cần JOIN qua curriculum_units)
+CREATE TABLE IF NOT EXISTS public.lms_question_bank (
+    question_id   BIGINT PRIMARY KEY,          -- id hệ đối tác (el)
+    assignment_id BIGINT NOT NULL,
+    so_school_id  INTEGER NOT NULL,            -- tenant isolation
+    subject_id    INTEGER NOT NULL,            -- lọc theo môn siêu nhanh
+    unit_id       BIGINT REFERENCES public.curriculum_units(id), -- NULL nếu chưa map
+    bloom_level   SMALLINT DEFAULT 3,          -- 1..6
+    question_type VARCHAR(20) DEFAULT 'MCQ',   -- MCQ | ESSAY
+    item_weight   NUMERIC(5,2),
+    is_active     INTEGER DEFAULT 1,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lqb_subject ON public.lms_question_bank(subject_id, unit_id);
+
+-- 2. Staging Fact: phản hồi từng câu của từng học sinh (Item-Response Matrix)
+CREATE TABLE IF NOT EXISTS public.lms_question_response (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    so_school_id INTEGER NOT NULL,
+    student_code VARCHAR(50) NOT NULL,
+    assignment_id BIGINT NOT NULL,
+    question_id  BIGINT NOT NULL,
+    unit_id      BIGINT REFERENCES public.curriculum_units(id),  -- denormalized để query nhanh
+    bloom_level  SMALLINT NOT NULL DEFAULT 3,
+    question_type VARCHAR(20) DEFAULT 'MCQ',
+    attempt_number SMALLINT DEFAULT 1,         -- lượt làm thứ mấy (multi-attempt)
+    is_best_attempt BOOLEAN DEFAULT TRUE,      -- lần tốt nhất để tính mastery
+    is_correct   BOOLEAN NOT NULL,
+    score_received NUMERIC(5,2) NOT NULL,
+    max_score    NUMERIC(5,2) NOT NULL,
+    response_time_seconds INTEGER,             -- phát hiện đoán mò siêu tốc (lms_evidence)
+    response_payload JSONB,                    -- {'chosen_option':'B', 'text':...} (ESSAY để sau)
+    integrity_flag SMALLINT DEFAULT 0,         -- 0 Normal | 1 Suspected | 2 Flagged
+    attempt_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lqr_calc ON public.lms_question_response(student_code, unit_id, is_best_attempt, integrity_flag);
+CREATE INDEX IF NOT EXISTS idx_lqr_assign ON public.lms_question_response(assignment_id, question_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_lqr_attempt ON public.lms_question_response(student_code, assignment_id, question_id, attempt_number);
+
+-- 3. Bảng tổng hợp Mastery theo chương + đối soát chống gian lận
+CREATE TABLE IF NOT EXISTS public.student_unit_mastery (
+    student_code     VARCHAR(50) NOT NULL,
+    subject_id       INTEGER NOT NULL,
+    so_school_id     INTEGER NOT NULL,
+    unit_id          BIGINT NOT NULL REFERENCES public.curriculum_units(id),
+    semester_index   INTEGER NOT NULL,
+    raw_mastery      NUMERIC(5,4),
+    n_items          INT DEFAULT 0,
+    n_correct        INT DEFAULT 0,
+    coverage         NUMERIC(4,3) DEFAULT 0,
+    lm_weight        NUMERIC(3,2),             -- w_lms
+    exam_weight      NUMERIC(3,2),             -- w_exam
+    adjusted_mastery NUMERIC(5,4),
+    confidence       SMALLINT DEFAULT 1,       -- 1 LOW | 2 MEDIUM | 3 HIGH
+    evidence_source  VARCHAR(20),              -- LMS | HYBRID | EXAM | PRIOR | INSUFFICIENT
+    integrity_status VARCHAR(20),              -- OK | SUSPECTED_CHEATING | LOW_ENGAGEMENT | FLAGGED | LMS_ONLY
+    evidence_detail  JSONB,
+    detected_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_sum_mastery UNIQUE (so_school_id, student_code, subject_id, unit_id, semester_index)
+);
+CREATE INDEX IF NOT EXISTS idx_sum_std ON public.student_unit_mastery(student_code, subject_id, unit_id);
+CREATE INDEX IF NOT EXISTS idx_sum_unit ON public.student_unit_mastery(unit_id);
+
+-- ============================================================
 -- HỆ THỐNG SOẠN GIÁO ÁN (cm_*) — 8 bảng
 -- Nguồn: docs_vsf/schemas/new/Schema Hệ thống Soạn Giáo Án.csv
 -- Cấu trúc phân cấp: cm_course → cm_unit → cm_lesson → cm_lessonplan/cm_lessontarget

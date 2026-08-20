@@ -32,6 +32,84 @@ _MINI_MIGRATIONS: list[tuple[str, str]] = [
         "ALTER TABLE public.curriculum_ingest_jobs ADD COLUMN IF NOT EXISTS enrich BOOLEAN NOT NULL DEFAULT TRUE",
         "curriculum_ingest_jobs.enrich (cờ làm giàu nội dung khi nạp sách)",
     ),
+    (
+        """CREATE TABLE IF NOT EXISTS public.lms_question_bank (
+            question_id BIGINT PRIMARY KEY,
+            assignment_id BIGINT NOT NULL,
+            so_school_id INTEGER NOT NULL,
+            subject_id INTEGER NOT NULL,
+            unit_id BIGINT REFERENCES public.curriculum_units(id),
+            bloom_level SMALLINT DEFAULT 3,
+            question_type VARCHAR(20) DEFAULT 'MCQ',
+            item_weight NUMERIC(5,2),
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "lms_question_bank (danh mục câu hỏi LMS item-level)",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_lqb_subject ON public.lms_question_bank(subject_id, unit_id)",
+        "lms_question_bank (subject_id, unit_id) index",
+    ),
+    (
+        """CREATE TABLE IF NOT EXISTS public.lms_question_response (
+            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            so_school_id INTEGER NOT NULL,
+            student_code VARCHAR(50) NOT NULL,
+            assignment_id BIGINT NOT NULL,
+            question_id BIGINT NOT NULL,
+            unit_id BIGINT REFERENCES public.curriculum_units(id),
+            bloom_level SMALLINT NOT NULL DEFAULT 3,
+            question_type VARCHAR(20) DEFAULT 'MCQ',
+            attempt_number SMALLINT DEFAULT 1,
+            is_best_attempt BOOLEAN DEFAULT TRUE,
+            is_correct BOOLEAN NOT NULL,
+            score_received NUMERIC(5,2) NOT NULL,
+            max_score NUMERIC(5,2) NOT NULL,
+            response_time_seconds INTEGER,
+            response_payload JSONB,
+            integrity_flag SMALLINT DEFAULT 0,
+            attempt_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )""",
+        "lms_question_response (item-response từng câu học sinh)",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_lqr_calc ON public.lms_question_response(student_code, unit_id, is_best_attempt, integrity_flag)",
+        "lms_question_response (student, unit, best_attempt, integrity) index",
+    ),
+    (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_lqr_attempt ON public.lms_question_response(student_code, assignment_id, question_id, attempt_number)",
+        "lms_question_response unique (student, assignment, question, attempt)",
+    ),
+    (
+        """CREATE TABLE IF NOT EXISTS public.student_unit_mastery (
+            student_code VARCHAR(50) NOT NULL,
+            subject_id INTEGER NOT NULL,
+            so_school_id INTEGER NOT NULL,
+            unit_id BIGINT NOT NULL REFERENCES public.curriculum_units(id),
+            semester_index INTEGER NOT NULL,
+            raw_mastery NUMERIC(5,4),
+            n_items INT DEFAULT 0,
+            n_correct INT DEFAULT 0,
+            coverage NUMERIC(4,3) DEFAULT 0,
+            lm_weight NUMERIC(3,2),
+            exam_weight NUMERIC(3,2),
+            adjusted_mastery NUMERIC(5,4),
+            confidence SMALLINT DEFAULT 1,
+            evidence_source VARCHAR(20),
+            integrity_status VARCHAR(20),
+            evidence_detail JSONB,
+            detected_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            CONSTRAINT uq_sum_mastery UNIQUE (so_school_id, student_code, subject_id, unit_id, semester_index)
+        )""",
+        "student_unit_mastery (bảng tổng hợp mastery theo chương)",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_sum_std ON public.student_unit_mastery(student_code, subject_id, unit_id)",
+        "student_unit_mastery (student, subject, unit) index",
+    ),
 ]
 
 

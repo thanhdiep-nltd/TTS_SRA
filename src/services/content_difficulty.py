@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import or_, select
 
@@ -231,26 +232,35 @@ def build_node_listing(shortlist: list[CurriculumUnit]) -> str:
 
 
 _MAP_HEADER_LINES = [
-    "Bạn là chuyên gia phân tích đề thi. Tách đề dưới đây thành các câu hỏi/ý lớn, với MỖI Ý xác định:",
-    "- nodes: chọn các node kiến thức từ DANH SÁCH (node_id) là TRỌNG TÂM MỤC TIÊU ĐÁNH GIÁ (Core Target) của ý; mỗi node kèm weight (0..1) là tỉ trọng điểm của phần kiến thức đó trong ý",
-    "- QUY TẮC TRỌNG TÂM: Chỉ chọn các node là mục tiêu kiến thức chính mà câu hỏi sinh ra để tập trung kiểm tra kiến thức đó.",
-    "- off_curriculum_weight: tỉ trọng phần kiến thức của ý KHÔNG nằm trong danh sách (0..1). Toàn bộ ngoài danh sách → nodes = [] và off_curriculum_weight = 1",
-    "- bloom_level: mức Bloom CỦA CẢ Ý (1=Nhớ, 2=Hiểu, 3=Vận dụng, 4=Phân tích, 5=Đánh giá, 6=Sáng tạo)",
-    "- excerpt: TRÍCH NGUYÊN VĂN 1–2 câu tiêu biểu của ý từ đề (không diễn đạt lại)",
-    "- confidence: 0..1 mức tự tin; reason: 1 câu giải thích vì sao chọn node đó",
+    "Bạn là chuyên gia khảo thí và phân tích chuẩn ma trận đề thi. Dưới lăng kính của KHUNG CHƯƠNG TRÌNH HỌC được cung cấp (DANH SÁCH NODE), hãy đối chiếu nội dung đề thi/câu hỏi để phân tích thành các ĐƠN VỊ ĐÁNH GIÁ ĐỘC LẬP (mỗi đơn vị là một nhiệm vụ giải quyết vấn đề chứa đựng các yếu tố tri thức của một chương hoặc cụm chương cụ thể).",
+    "Với MỖI ĐƠN VỊ ĐÁNH GIÁ, hãy xác định:",
+    "- topic: mô tả ngắn gọn trọng tâm năng lực hoặc nhiệm vụ gắn với chuyên đề kiến thức cần thực hiện",
+    "- excerpt: TRÍCH NGUYÊN VĂN phần nội dung hoặc yêu cầu tương ứng từ đề bài",
+    "- nodes: danh sách các đơn vị kiến thức từ DANH SÁCH (node_id) là NỘI DUNG ĐÁNH GIÁ CỐT LÕI (Focal Targets) của nhiệm vụ này. Mỗi node kèm weight (0..1) là tỉ trọng đóng góp thực chất của đơn vị tri thức đó:",
+    "  + Nếu nhiệm vụ chỉ tập trung vào một nội dung đơn lẻ: Gán đúng 1 node trọng tâm (weight = 1.0).",
+    "  + Nếu nhiệm vụ tích hợp liên chuyên đề (kết hợp các yếu tố tri thức từ nhiều bài học/chương cùng đóng vai trò chủ đạo): Gán các node kiến thức cấu thành tương ứng kèm tỉ trọng đóng góp tương xứng (tổng weight của các node = 1.0 - off_curriculum_weight).",
+    "  + NGUYÊN TẮC: Chỉ chọn các đơn vị kiến thức thực sự là đối tượng được đánh giá; KHÔNG gán các kỹ năng thao tác nền tảng hay công cụ phụ trợ hiển nhiên được dùng làm phương tiện.",
+    "- off_curriculum_weight: tỉ trọng phần kiến thức nằm ngoài danh sách chương trình (0..1). Toàn bộ ngoài danh sách → nodes = [] và off_curriculum_weight = 1.0",
+    "- bloom_level: mức độ nhận thức Bloom của nhiệm vụ (1=Nhớ, 2=Hiểu, 3=Vận dụng, 4=Phân tích, 5=Đánh giá, 6=Sáng tạo)",
+    "- confidence: 0..1 mức tự tin; reason: 1 câu giải thích ngắn gọn căn cứ xác định các nội dung trên",
 ]
 
 
-def build_map_prompt(text: str, shortlist: list[CurriculumUnit]) -> str:
-    """Dựng prompt constrained: LLM chọn node_id TỪ shortlist (không tự đặt tên chủ đề)."""
+def build_map_system_prompt(shortlist: list[CurriculumUnit]) -> str:
+    """Dựng System Prompt cố định (instructions + shortlist node) để tối ưu hóa Prompt Caching."""
     lines = list(_MAP_HEADER_LINES)
     if shortlist:
         lines.append(f"\nDANH SÁCH NODE:\n{build_node_listing(shortlist)}")
     example = (
         '[{"topic": "...", "nodes": [{"node_id": 1, "weight": 0.6}, {"node_id": 2, "weight": 0.4}], '
-        '"bloom_level": 3, "off_curriculum_weight": 0.0, "excerpt": "...", "confidence": 0.8, "reason": "..."}]'
+        '"bloom_level": 4, "off_curriculum_weight": 0.0, "excerpt": "...", "confidence": 0.9, "reason": "..."}]'
     )
-    return "\n".join(lines) + f"\n\nCHỈ trả về 1 JSON array, không giải thích, không markdown:\n{example}\n\nNội dung đề:\n{text}"
+    return "\n".join(lines) + f"\n\nCHỈ trả về 1 JSON array, không giải thích, không markdown:\n{example}"
+
+
+def build_map_prompt(text: str, shortlist: list[CurriculumUnit]) -> str:
+    """Dựng prompt chuỗi đơn (dành cho fallback / kiểm thử)."""
+    return build_map_system_prompt(shortlist) + f"\n\nNội dung đề:\n{text}"
 
 
 def parse_mapped_items(raw: str, valid_ids: set[int]) -> list[MappedItem]:
@@ -277,13 +287,39 @@ def parse_mapped_items(raw: str, valid_ids: set[int]) -> list[MappedItem]:
     return result
 
 
-def _invoke_map(model: Any, text: str, shortlist: list[CurriculumUnit]) -> str:
-    """Gọi LLM 1 lần trả raw JSON; lỗi → "" (không crash pipeline nền)."""
+def _invoke_map(
+    model: Any,
+    text: str,
+    shortlist: list[CurriculumUnit],
+    system_override: str | None = None,
+) -> str:
+    """Gọi LLM 1 lần với cấu trúc [SystemMessage, HumanMessage] tối ưu Prompt Caching (DeepSeek/OpenAI).
+
+    Phần SystemMessage (instructions + danh sách node) cố định cho cùng môn/khối → DeepSeek tự động hit
+    Context Cache (giảm 90% chi phí và giảm 80% latency).
+    """
+    system_content = system_override or build_map_system_prompt(shortlist)
+    user_content = f"Nội dung đề/câu hỏi cần phân tích:\n{text[:8000]}"
+    messages = [
+        SystemMessage(content=system_content),
+        HumanMessage(content=user_content),
+    ]
+
     try:
-        response = model.invoke(build_map_prompt(text[:8000], shortlist))
-    except Exception:  # noqa: BLE001 - lỗi LLM (auth/network/rate-limit) không kéo sập pipeline
-        logger.warning("Gọi LLM map đề thất bại.", exc_info=True)
-        return ""
+        invoker = model.bind(temperature=0.1) if hasattr(model, "bind") else model
+        response = invoker.invoke(messages)
+    except Exception:
+        try:
+            # Fallback 1: gọi không bind
+            response = model.invoke(messages)
+        except Exception:
+            try:
+                # Fallback 2: gọi dạng string đơn nếu model là wrapper cũ
+                fallback_prompt = f"{system_content}\n\n{user_content}"
+                response = model.invoke(fallback_prompt)
+            except Exception:  # noqa: BLE001 - lỗi LLM (auth/network/rate-limit) không kéo sập pipeline
+                logger.warning("Gọi LLM map đề thất bại.", exc_info=True)
+                return ""
     return response.content if isinstance(response.content, str) else str(response.content)
 
 
@@ -308,14 +344,17 @@ def rejudge_null_items(
         return items
     model = llm or get_llm()
     valid_ids = {unit.id for unit in shortlist}
-    prompt = (
-        "Các ý sau bị đánh giá 'ngoài chương trình' (không khớp node nào trong danh sách). "
-        "Xem lại THẬT KỸ: nếu ý thực chất thuộc node nào đó (dù diễn đạt khác / đổi ngữ cảnh đời thực) "
-        "thì map lại đúng format JSON array như trước; nếu thật sự ngoài chương trình thì giữ nodes = [] "
-        f"và off_curriculum_weight = 1.\n\nDANH SÁCH NODE:\n{build_node_listing(shortlist)}\n\nCác ý cần xem lại:\n"
-        + "\n".join(f"- {item.topic}: {item.excerpt or ''} ({item.reason or 'không có lý do'})" for item in nulls)
+    rejudge_system = (
+        "Bạn là chuyên gia khảo thí. Các ý dưới đây bị đánh giá 'ngoài chương trình' (không khớp node nào trong danh sách). "
+        "Xem lại THẬT KỸ dưới lăng kính của Khung chương trình học được cung cấp:\n"
+        "- Nếu ý thực chất thuộc node nào đó (dù diễn đạt khác / đổi ngữ cảnh đời thực) thì map lại đúng format JSON array như trước.\n"
+        "- Nếu thật sự ngoài chương trình thì giữ nodes = [] và off_curriculum_weight = 1.0.\n\n"
+        f"DANH SÁCH NODE:\n{build_node_listing(shortlist)}"
     )
-    second = parse_mapped_items(_invoke_map(model, prompt, shortlist), valid_ids)
+    rejudge_user = "Các ý cần xem lại:\n" + "\n".join(
+        f"- {item.topic}: {item.excerpt or ''} ({item.reason or 'không có lý do'})" for item in nulls
+    )
+    second = parse_mapped_items(_invoke_map(model, rejudge_user, shortlist, system_override=rejudge_system), valid_ids)
     by_topic = {item.topic: item for item in second}
     result: list[MappedItem] = []
     for item in items:

@@ -1362,9 +1362,14 @@ export interface LmsEvidencePattern {
 export interface KnowledgeGapItem {
   unit_id: number;
   unit_name: string | null;
+  chapter: string | null;
+  lesson: string | null;
   gap_score: number; // 0..1, cao = hổng nặng
   mastery: number; // 0..1
-  evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR
+  confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
+  coverage?: number | null; // 0..1, độ phủ câu hỏi LMS cho chương
+  integrity_status?: string | null; // OK | SUSPECTED_CHEATING | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
+  evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR | INSUFFICIENT
   evidence_detail: Record<string, unknown> | null;
 }
 

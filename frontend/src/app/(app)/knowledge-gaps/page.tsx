@@ -17,6 +17,23 @@ function gapLevel(gap: number): { label: string; cls: string } {
     return { label: "Nhẹ", cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" };
 }
 
+// Badge độ tin cậy (confidence) — HIGH xanh, MEDIUM vàng, LOW đỏ, INSUFFICIENT xám
+const CONFIDENCE_META: Record<string, { label: string; cls: string }> = {
+    HIGH: { label: "Độ tin cậy cao", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
+    MEDIUM: { label: "Độ tin cậy TB", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
+    LOW: { label: "Độ tin cậy thấp", cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
+    INSUFFICIENT: { label: "Chưa đủ dữ liệu", cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" },
+};
+
+// Badge trạng thái đối soát (integrity) — cảnh báo gian lận/lười
+const INTEGRITY_META: Record<string, { label: string; cls: string }> = {
+    OK: { label: "Khớp với trên lớp", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
+    SUSPECTED_CHEATING: { label: "Nghi gian lận", cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
+    LOW_ENGAGEMENT: { label: "Tham gia LMS thấp", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
+    LMS_ONLY: { label: "Chỉ từ LMS", cls: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" },
+    FLAGGED: { label: "Cần kiểm chứng", cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
+};
+
 export default function KnowledgeGapsPage() {
     const router = useRouter();
     const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
@@ -32,43 +49,36 @@ export default function KnowledgeGapsPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Load subjects (s360.dim_subject qua /ews/meta rồi lọc duy nhất theo name)
+    // Load subjects từ s360.dim_subject (danh mục dùng chung) — /knowledge-gaps/subject-options
     useEffect(() => {
         api
-            .get<{ subjects: { id: number; name: string }[] }>("/ews/meta")
-            .then((meta) => {
-                const seen = new Map<string, string>();
-                for (const s of meta.subjects) {
-                    if (!seen.has(s.name)) seen.set(s.name, String(s.id));
-                }
-                setSubjects(Array.from(seen, ([name, id]) => ({ id, name })));
+            .get<{ id: number; name: string }[]>("/knowledge-gaps/subject-options")
+            .then((list) => {
+                setSubjects((list ?? []).map((s) => ({ id: String(s.id), name: s.name })));
             })
             .catch(() => setError("Không tải được danh sách môn học."));
     }, []);
 
-    // Load classes (s360.dim_homeroom_class qua /students hoặc /school)
+    // Load classes từ s360 (dữ liệu thật: dim_homeroom_class) — /knowledge-gaps/class-options
     useEffect(() => {
         api
-            .get<{ items?: { id: string; name: string }[] }>("/school/classes")
-            .then((res) => {
-                const list = (res.items ?? []).map((c) => ({ id: c.id, name: c.name }));
-                setClasses(list);
+            .get<{ class_id: number; class_name: string }[]>("/knowledge-gaps/class-options")
+            .then((list) => {
+                setClasses((list ?? []).map((c) => ({ id: String(c.class_id), name: c.class_name })));
             })
             .catch(() => setError("Không tải được danh sách lớp."));
     }, []);
 
-    // Load students of selected class (dùng /students?class_id=)
+    // Load students of selected class (s360: dim_homeroom_class_student)
     useEffect(() => {
         if (!classId) {
             setStudents([]);
             return;
         }
         api
-            .get<{ items?: { student_code: string; full_name: string }[] }>(
-                `/students?class_id=${classId}`
-            )
+            .get<{ student_code: string; student_name: string }[]>(`/knowledge-gaps/classes/${classId}/students`)
             .then((res) => {
-                setStudents((res.items ?? []).map((s) => ({ code: s.student_code, name: s.full_name })));
+                setStudents((res ?? []).map((s) => ({ code: s.student_code, name: s.student_name })));
             })
             .catch(() => setStudents([]));
     }, [classId]);
@@ -110,7 +120,8 @@ export default function KnowledgeGapsPage() {
             <header>
                 <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Lỗ hổng kiến thức</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Phát hiện học sinh hổng chương/bài nào dựa trên đề thi đã map chuẩn chương trình + điểm.
+                    Ước lượng mức độ thành thạo theo chương từ kết quả bài tập LMS (item-level) kết hợp đối soát
+                    với điểm thi trên lớp để chống gian lận.
                 </p>
             </header>
 
@@ -185,7 +196,8 @@ export default function KnowledgeGapsPage() {
                         <GapTable gaps={studentGaps.gaps} />
                     ) : (
                         <div className="px-5 py-8 text-center text-sm text-slate-400">
-                            Học sinh không có lỗ hổng kiến thức đáng kể ở môn này.
+                            Chưa đủ dữ liệu để đánh giá học sinh này ở môn đã chọn — cần điểm thi trên lớp
+                            hoặc kết quả bài tập LMS đã map chương.
                         </div>
                     )}
                 </section>
@@ -225,12 +237,16 @@ function GapTable({ gaps }: { gaps: KnowledgeGapItem[] }) {
                     <th className="px-5 py-3">Chương / Bài</th>
                     <th className="px-5 py-3">Mức hổng</th>
                     <th className="px-5 py-3">Thành thạo</th>
+                    <th className="px-5 py-3">Độ tin cậy</th>
+                    <th className="px-5 py-3">Đối soát</th>
                     <th className="px-5 py-3">Nguồn</th>
                 </tr>
             </thead>
             <tbody>
                 {gaps.map((g) => {
                     const lvl = gapLevel(g.gap_score);
+                    const conf = CONFIDENCE_META[g.confidence ?? "LOW"] ?? CONFIDENCE_META.LOW;
+                    const integ = INTEGRITY_META[g.integrity_status ?? "OK"] ?? INTEGRITY_META.OK;
                     return (
                         <tr
                             key={g.unit_id}
@@ -238,6 +254,7 @@ function GapTable({ gaps }: { gaps: KnowledgeGapItem[] }) {
                         >
                             <td className="px-5 py-3 font-medium text-slate-800 dark:text-slate-200">
                                 {g.unit_name ?? `Unit ${g.unit_id}`}
+                                {g.chapter && <div className="text-xs text-slate-400 font-normal">{g.chapter}</div>}
                             </td>
                             <td className="px-5 py-3">
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${lvl.cls}`}>
@@ -245,7 +262,22 @@ function GapTable({ gaps }: { gaps: KnowledgeGapItem[] }) {
                                 </span>{" "}
                                 <span className="text-slate-500 text-xs">{g.gap_score.toFixed(2)}</span>
                             </td>
-                            <td className="px-5 py-3 text-slate-600 dark:text-slate-300">{(g.mastery * 100).toFixed(0)}%</td>
+                            <td className="px-5 py-3 text-slate-600 dark:text-slate-300">
+                                {(g.mastery * 100).toFixed(0)}%
+                                {g.coverage !== null && g.coverage !== undefined && (
+                                    <span className="ml-1 text-[10px] text-slate-400">(phủ {Math.round(g.coverage * 100)}%)</span>
+                                )}
+                            </td>
+                            <td className="px-5 py-3">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${conf.cls}`}>
+                                    {conf.label}
+                                </span>
+                            </td>
+                            <td className="px-5 py-3">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${integ.cls}`}>
+                                    {integ.label}
+                                </span>
+                            </td>
                             <td className="px-5 py-3 text-xs text-slate-500">{g.evidence_source ?? "—"}</td>
                         </tr>
                     );

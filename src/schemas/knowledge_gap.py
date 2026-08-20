@@ -15,7 +15,10 @@ class KnowledgeGapItem(BaseModel):
     keywords: list[str] | None = None
     gap_score: float = Field(..., description="0..1, cao = hổng nặng")
     mastery: float = Field(..., description="0..1, mức thành thạo")
-    evidence_source: str | None = None  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR'
+    confidence: str | None = None  # 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT'
+    coverage: float | None = None  # 0..1, độ phủ câu hỏi LMS cho chương này
+    integrity_status: str | None = None  # 'OK' | 'SUSPECTED_CHEATING' | 'LOW_ENGAGEMENT' | 'LMS_ONLY' | 'FLAGGED'
+    evidence_source: str | None = None  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR' | 'INSUFFICIENT'
     evidence_detail: dict | None = None
 
 
@@ -37,3 +40,19 @@ class ClassKnowledgeGaps(BaseModel):
     school_year_id: int
     semester_index: int
     gaps: list[KnowledgeGapItem] = Field(default_factory=list)
+
+
+class ClassOption(BaseModel):
+    """1 lớp từ s360.dim_homeroom_class (chọn bộ lọc trên trang knowledge-gaps)."""
+
+    class_id: int
+    class_name: str
+    grade_id: int | None = None
+    code: str | None = None
+
+
+class StudentOption(BaseModel):
+    """1 học sinh từ s360.dim_homeroom_class_student (dropdown học sinh)."""
+
+    student_code: str
+    student_name: str
