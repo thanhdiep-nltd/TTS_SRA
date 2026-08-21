@@ -12,13 +12,28 @@ from src.api.deps import CurrentUser, get_db
 from src.schemas.knowledge_gap import (
     ClassKnowledgeGaps,
     ClassOption,
+    ClassRosterResponse,
     KnowledgeGapItem,
+    LmsQuestionBankItem,
+    LmsQuestionUnitRef,
     StudentKnowledgeGaps,
     StudentOption,
+    StudentRosterSummary,
 )
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
 
 router = APIRouter(prefix="/knowledge-gaps", tags=["Knowledge Gaps"])
+
+# student_unit_mastery.confidence là SMALLINT (1 LOW | 2 MEDIUM | 3 HIGH) theo DDL
+# — map sang chuỗi API/frontend (HIGH/MEDIUM/LOW); chuỗi (test/fake) giữ nguyên.
+_CONFIDENCE_LABELS = {1: "LOW", 2: "MEDIUM", 3: "HIGH"}
+
+
+def _confidence_label(value) -> str:
+    """Chuẩn hóa confidence từ SMALLINT (1/2/3) hoặc chuỗi → 'HIGH'/'MEDIUM'/'LOW'."""
+    if isinstance(value, int):
+        return _CONFIDENCE_LABELS.get(value, "LOW")
+    return value or "LOW"
 
 
 @router.get("/subject-options", response_model=list[dict])
@@ -105,6 +120,107 @@ def list_s360_students(
     ]
 
 
+@router.get("/lms-question-bank", response_model=list[LmsQuestionBankItem])
+def list_lms_question_bank(
+    subject_id: int | None = Query(None, description="Lọc theo môn (s360.dim_subject.id)"),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Ngân hàng câu hỏi LMS (lms_question_bank) kèm thống kê làm bài.
+
+    Trả về toàn bộ câu hỏi LMS đã map môn, kèm tên BÀI (curriculum_units — unit_id
+    trỏ tới bài con, parent_id = chương) và thống kê từ lms_question_response
+    (số học sinh đã trả lời best-attempt + độ đúng) để xem "ngân hàng câu hỏi"
+    và hiệu quả từng câu. Câu tổng hợp nhiều bài có `units` với weight phân bổ.
+    """
+    school_id = getattr(current_user, "so_school_id", None)
+    cond = "lqb.so_school_id = :school_id"
+    params: dict = {"school_id": school_id} if school_id is not None else {}
+    if not school_id:
+        # Không có tenant filter (vd chưa login) — không nên trả toàn bộ; để rỗng.
+        return []
+    if subject_id:
+        cond += " AND lqb.subject_id = :sid"
+        params["sid"] = subject_id
+
+    rows = db.execute(
+        text(f"""
+            SELECT lqb.question_id, lqb.assignment_id, lqb.so_school_id, lqb.subject_id,
+                   lqb.unit_id, lqb.lesson_id, lqb.bloom_level, lqb.question_type, lqb.question_text,
+                   lqb.item_weight, lqb.is_active,
+                   cu.name AS unit_name, p.name AS chapter_name,
+                   les.name AS lesson_name,
+                   r.n_responses, r.n_correct
+            FROM public.lms_question_bank lqb
+            LEFT JOIN public.curriculum_units cu ON cu.id = lqb.unit_id
+            LEFT JOIN public.curriculum_units p ON p.id = cu.parent_id
+            LEFT JOIN public.curriculum_units les ON les.id = lqb.lesson_id
+            LEFT JOIN (
+                SELECT question_id,
+                       COUNT(*) AS n_responses,
+                       COUNT(*) FILTER (WHERE is_correct) AS n_correct
+                FROM public.lms_question_response
+                WHERE is_best_attempt = TRUE
+                GROUP BY question_id
+            ) r ON r.question_id = lqb.question_id
+            WHERE {cond}
+            ORDER BY lqb.subject_id, lqb.unit_id NULLS LAST, lqb.question_id
+        """),
+        params,
+    ).fetchall()
+
+    # Map câu → [(bài_id, weight)] — câu multi-bài đóng góp vào nhiều bài.
+    unit_rows = db.execute(
+        text("""
+            SELECT lqu.question_id, lqu.unit_id, lqu.weight,
+                   cu.name AS unit_name, p.name AS chapter_name
+            FROM public.lms_question_unit lqu
+            LEFT JOIN public.curriculum_units cu ON cu.id = lqu.unit_id
+            LEFT JOIN public.curriculum_units p ON p.id = cu.parent_id
+            ORDER BY lqu.question_id, lqu.weight DESC
+        """)
+    ).fetchall()
+    units_by_q: dict[int, list[LmsQuestionUnitRef]] = {}
+    for qid, uid, weight, uname, pname in unit_rows:
+        units_by_q.setdefault(qid, []).append(
+            LmsQuestionUnitRef(
+                unit_id=int(uid),
+                unit_name=uname,
+                chapter=(pname if pname else uname) if uid is not None else None,
+                weight=float(weight),
+            )
+        )
+
+    items = []
+    for r in rows:
+        n_resp = int(r.n_responses) if r.n_responses is not None else None
+        n_correct = int(r.n_correct) if r.n_correct is not None else None
+        accuracy = round(n_correct / n_resp, 4) if n_resp else None
+        items.append(
+            LmsQuestionBankItem(
+                question_id=int(r.question_id),
+                assignment_id=int(r.assignment_id),
+                subject_id=int(r.subject_id),
+                so_school_id=int(r.so_school_id),
+                unit_id=int(r.unit_id) if r.unit_id is not None else None,
+                unit_name=r.unit_name,
+                chapter=(r.chapter_name if r.chapter_name else r.unit_name) if r.unit_id is not None else None,
+                lesson_id=int(r.lesson_id) if r.lesson_id is not None else None,
+                lesson_name=r.lesson_name,
+                bloom_level=int(r.bloom_level) if r.bloom_level is not None else None,
+                question_type=r.question_type,
+                question_text=r.question_text,
+                item_weight=float(r.item_weight) if r.item_weight is not None else None,
+                is_active=int(r.is_active) if r.is_active is not None else None,
+                n_responses=n_resp,
+                n_correct=n_correct,
+                accuracy=accuracy,
+                units=units_by_q.get(int(r.question_id), []),
+            )
+        )
+    return items
+
+
 def _resolve_school_year(db: Session, school_year_id: int | None) -> int:
     """Lấy năm học hiện hành nếu không truyền."""
     if school_year_id and school_year_id > 0:
@@ -150,8 +266,8 @@ def _load_exam_units(
 
 def _unit_meta(
     db: Session, unit_ids: list[int]
-) -> dict[int, tuple[str | None, str | None, str | None, str | None, list[str] | None]]:
-    """Map unit_id → (name, chapter, lesson, summary, keywords).
+) -> dict[int, tuple[str | None, str | None, str | None, str | None, list[str] | None, int | None]]:
+    """Map unit_id → (name, chapter, lesson, summary, keywords, parent_id).
 
     chapter = tên node cha (parent_id) nếu unit là bài con, ngược lại chính tên unit (node chương);
     lesson = tên unit nếu là bài con, None nếu là chương. summary/keywords là nội dung làm giàu
@@ -177,9 +293,63 @@ def _unit_meta(
             r.name if r.parent_id else None,
             r.summary,
             list(r.keywords) if r.keywords else None,
+            r.parent_id,
         )
         for r in rows
     }
+
+
+def _build_mastery_tree(items: list[KnowledgeGapItem]) -> list[KnowledgeGapItem]:
+    """Tổ chức danh sách các unit thành Cây Thành thạo (Chương -> Bài học con)."""
+    if not items:
+        return []
+
+    chapters_by_id: dict[int, KnowledgeGapItem] = {}
+    lessons_by_parent: dict[int, list[KnowledgeGapItem]] = {}
+
+    for item in items:
+        if item.parent_id is None:
+            item.is_chapter = True
+            chapters_by_id[item.unit_id] = item
+        else:
+            item.is_chapter = False
+            lessons_by_parent.setdefault(item.parent_id, []).append(item)
+
+    result_chapters: list[KnowledgeGapItem] = []
+    for cid, ch_item in chapters_by_id.items():
+        child_lessons = lessons_by_parent.get(cid, [])
+        child_lessons.sort(key=lambda lesson: lesson.unit_id)
+        ch_item.lessons = child_lessons
+        ch_item.total_lessons_count = len(child_lessons)
+        ch_item.gap_lessons_count = sum(1 for lesson in child_lessons if lesson.mastery < 0.60)
+        result_chapters.append(ch_item)
+
+    # Nếu có bài học mà chapter chưa có trong danh sách, tạo node chapter bao bọc
+    for pid, ch_lessons in lessons_by_parent.items():
+        if pid not in chapters_by_id:
+            ch_name = ch_lessons[0].chapter or f"Chương {pid}"
+            avg_m = round(sum(lesson.mastery for lesson in ch_lessons) / len(ch_lessons), 3) if ch_lessons else 0.0
+            synthetic_ch = KnowledgeGapItem(
+                unit_id=pid,
+                parent_id=None,
+                unit_name=ch_name,
+                chapter=ch_name,
+                lesson=None,
+                is_chapter=True,
+                gap_score=round(1.0 - avg_m, 3),
+                mastery=avg_m,
+                confidence=ch_lessons[0].confidence,
+                coverage=1.0,
+                integrity_status=ch_lessons[0].integrity_status,
+                evidence_source=ch_lessons[0].evidence_source,
+                lessons=ch_lessons,
+                gap_lessons_count=sum(1 for lesson in ch_lessons if lesson.mastery < 0.60),
+                total_lessons_count=len(ch_lessons),
+            )
+            result_chapters.append(synthetic_ch)
+
+    result_chapters.sort(key=lambda c: c.unit_id)
+    return result_chapters
 
 
 @router.get("/students/{student_code}", response_model=StudentKnowledgeGaps)
@@ -191,16 +361,15 @@ def get_student_knowledge_gaps(
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
-    """Liệt kê các unit hổng kiến thức của 1 học sinh theo môn + học kỳ.
+    """Liệt kê các unit hổng kiến thức của 1 học sinh theo môn + học kỳ (dạng Cây Thành thạo).
 
-    Nguồn 1: student_unit_mastery (mastery theo chương từ LMS item-level + đối soát) — ưu tiên.
-    Nguồn 2 (fallback): điểm tổng + exam_competencies (hành vi cũ, ill-posed) khi chưa có LMS.
+    Nguồn 1: student_unit_mastery (mastery theo bài & chương từ LMS item-level + đối soát) — ưu tiên.
+    Nguồn 2 (fallback): điểm tổng + exam_competencies khi chưa có LMS.
     """
     sy_id = _resolve_school_year(db, school_year_id)
     school_id = getattr(current_user, "so_school_id", None)
 
     # === Nguồn 1: student_unit_mastery (LMS item-level, đối soát) — ưu tiên nếu có. ===
-    # Lưu ý: bảng student_unit_mastery không có school_year_id; lọc theo semester_index + tenant.
     sum_cond = "AND sum.so_school_id = :school_id" if school_id else ""
     sum_params = {"sc": student_code, "sid": subject_id, "sem": semester_index}
     if school_id:
@@ -208,8 +377,8 @@ def get_student_knowledge_gaps(
     sum_rows = db.execute(
         text(f"""
             SELECT sum.unit_id, sum.raw_mastery, sum.adjusted_mastery, sum.n_items,
-                   sum.coverage, sum.confidence, sum.evidence_source, sum.integrity_status,
-                   sum.evidence_detail
+                   sum.n_correct, sum.coverage, sum.confidence, sum.evidence_source,
+                   sum.integrity_status, sum.evidence_detail, sum.lm_weight, sum.exam_weight
             FROM public.student_unit_mastery sum
             WHERE sum.student_code = :sc AND sum.subject_id = :sid
               AND sum.semester_index = :sem
@@ -221,35 +390,41 @@ def get_student_knowledge_gaps(
     mastery_units = [r for r in sum_rows if r.adjusted_mastery is not None]
     if mastery_units:
         meta = _unit_meta(db, [r.unit_id for r in mastery_units])
-        gaps = [
+        raw_items = [
             KnowledgeGapItem(
                 unit_id=r.unit_id,
-                unit_name=meta.get(r.unit_id, (None, None, None, None, None))[0],
-                chapter=meta.get(r.unit_id, (None, None, None, None, None))[1],
-                lesson=meta.get(r.unit_id, (None, None, None, None, None))[2],
+                parent_id=meta.get(r.unit_id, (None, None, None, None, None, None))[5],
+                unit_name=meta.get(r.unit_id, (None, None, None, None, None, None))[0],
+                chapter=meta.get(r.unit_id, (None, None, None, None, None, None))[1],
+                lesson=meta.get(r.unit_id, (None, None, None, None, None, None))[2],
                 gap_score=round(1.0 - float(r.adjusted_mastery), 3),
                 mastery=round(float(r.adjusted_mastery), 3),
-                confidence=r.confidence or "LOW",
+                confidence=_confidence_label(r.confidence),
                 coverage=float(r.coverage) if r.coverage is not None else None,
                 integrity_status=r.integrity_status,
                 evidence_source=(r.evidence_source or "LMS"),
                 evidence_detail=dict(r.evidence_detail) if r.evidence_detail else None,
+                raw_mastery=float(r.raw_mastery) if r.raw_mastery is not None else None,
+                n_items=int(r.n_items) if r.n_items is not None else None,
+                n_correct=int(r.n_correct) if r.n_correct is not None else None,
+                lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
+                exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
             )
             for r in mastery_units
         ]
+        tree_gaps = _build_mastery_tree(raw_items)
         return StudentKnowledgeGaps(
             student_code=student_code,
             subject_id=subject_id,
             school_year_id=sy_id,
             semester_index=semester_index,
-            gaps=gaps,
+            gaps=tree_gaps,
         )
 
     # === Nguồn 2 (fallback): điểm tổng + exam_competencies — chỉ khi chưa có LMS mastery. ===
     units = _load_exam_units(db, subject_id, semester_index, school_id)
     score_row = _latest_locked_score(db, student_code, subject_id, sy_id, semester_index, school_id)
     if not units or score_row is None or score_row.final_grade is None:
-        # Chưa đủ dữ liệu: không có LMS, không có điểm thi → không đánh giá được học sinh.
         return StudentKnowledgeGaps(
             student_code=student_code,
             subject_id=subject_id,
@@ -262,29 +437,31 @@ def get_student_knowledge_gaps(
     max_score = float(score_row.max_grade) if score_row.max_grade else 10.0
     mastery_list = compute_unit_mastery(total_score, max_score, units)
     meta = _unit_meta(db, [m.unit_id for m in mastery_list])
-    gaps = [
+    raw_items = [
         KnowledgeGapItem(
             unit_id=m.unit_id,
-            unit_name=meta.get(m.unit_id, (None, None, None, None, None))[0],
-            chapter=meta.get(m.unit_id, (None, None, None, None, None))[1],
-            lesson=meta.get(m.unit_id, (None, None, None, None, None))[2],
-            summary=meta.get(m.unit_id, (None, None, None, None, None))[3],
-            keywords=meta.get(m.unit_id, (None, None, None, None, None))[4],
+            parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
+            unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
+            chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
+            lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
+            summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
+            keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
             gap_score=m.gap_score,
             mastery=m.mastery,
             confidence="LOW",
             evidence_source="EXAM",
         )
         for m in mastery_list
-        if m.is_gap
     ]
+    tree_gaps = _build_mastery_tree(raw_items)
     return StudentKnowledgeGaps(
         student_code=student_code,
         subject_id=subject_id,
         school_year_id=sy_id,
         semester_index=semester_index,
-        gaps=gaps,
+        gaps=tree_gaps,
     )
+
 
 
 def _latest_locked_score(db: Session, student_code: str, subject_id: int, sy: int, sem: int, school_id: int | None):
@@ -386,7 +563,249 @@ def get_class_knowledge_gaps(
     return ClassKnowledgeGaps(
         class_id=class_id,
         subject_id=subject_id,
-        school_year_id=school_year_id,
+        school_year_id=sy_id,
         semester_index=semester_index,
         gaps=gaps,
     )
+
+
+@router.get("/classes/{class_id}/roster", response_model=ClassRosterResponse)
+def get_class_diagnostic_roster(
+    class_id: int,
+    subject_id: int = Query(..., description="ID môn học (s360.dim_subject.id)"),
+    school_year_id: int | None = Query(None, description="Năm học (để trống để lấy năm hiện tại)"),
+    semester_index: int = Query(1),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Danh sách chẩn đoán toàn bộ học sinh trong lớp theo môn học + học kỳ.
+
+    Phục vụ giao diện Roster tổng quan của lớp: hiển thị % thành thạo từng em,
+    số chương hổng, cờ đối soát (nghi gian lận/tham gia LMS thấp) để giáo viên
+    click vào xem chi tiết từng em.
+    """
+    sy_id = _resolve_school_year(db, school_year_id)
+    school_id = getattr(current_user, "so_school_id", None)
+
+    # 1. Lấy thông tin lớp và môn
+    class_row = db.execute(
+        text("SELECT id, fullname, code FROM s360.dim_homeroom_class WHERE id = :cid"),
+        {"cid": class_id},
+    ).fetchone()
+    class_name = class_row.fullname if class_row else f"Lớp {class_id}"
+
+    subject_row = db.execute(
+        text("SELECT id, name FROM s360.dim_subject WHERE id = :sid"),
+        {"sid": subject_id},
+    ).fetchone()
+    subject_name = subject_row.name if subject_row else f"Môn {subject_id}"
+
+    # 2. Lấy danh sách học sinh của lớp
+    school_cond = "AND s.so_school_id = :school_id" if school_id else ""
+    st_params = {"cid": class_id, "sy": sy_id}
+    if school_id:
+        st_params["school_id"] = school_id
+    students_rows = db.execute(
+        text(f"""
+            SELECT s.student_code, s.student_name
+            FROM s360.dim_homeroom_class_student s
+            WHERE s.homeroom_class_id = :cid AND s.school_year_id = :sy
+              {school_cond}
+            ORDER BY s.student_code ASC
+        """),
+        st_params,
+    ).fetchall()
+
+    if not students_rows:
+        return ClassRosterResponse(
+            class_id=class_id,
+            class_name=class_name,
+            subject_id=subject_id,
+            subject_name=subject_name,
+            school_year_id=sy_id,
+            semester_index=semester_index,
+            total_students=0,
+            mastered_all_count=0,
+            need_support_count=0,
+            cheating_alert_count=0,
+            low_engagement_count=0,
+            students=[],
+        )
+
+    student_codes = [r.student_code for r in students_rows]
+
+    # 3. Lấy dữ liệu student_unit_mastery của toàn bộ học sinh trong lớp (batch)
+    sum_cond = "AND sum.so_school_id = :school_id" if school_id else ""
+    sum_params = {"codes": student_codes, "sid": subject_id, "sem": semester_index}
+    if school_id:
+        sum_params["school_id"] = school_id
+    sum_rows = db.execute(
+        text(f"""
+            SELECT sum.student_code, sum.unit_id, sum.raw_mastery, sum.adjusted_mastery,
+                   sum.n_items, sum.n_correct, sum.coverage, sum.confidence,
+                   sum.evidence_source, sum.integrity_status, sum.evidence_detail,
+                   sum.lm_weight, sum.exam_weight
+            FROM public.student_unit_mastery sum
+            WHERE sum.student_code = ANY(:codes) AND sum.subject_id = :sid
+              AND sum.semester_index = :sem
+              {sum_cond}
+        """),
+        sum_params,
+    ).fetchall()
+
+    # Gom mastery theo student_code
+    sum_by_student: dict[str, list] = {}
+    all_unit_ids: set[int] = set()
+    for r in sum_rows:
+        if r.adjusted_mastery is not None:
+            sum_by_student.setdefault(r.student_code, []).append(r)
+            all_unit_ids.add(r.unit_id)
+
+    # 4. Fallback: Đề thi cho học sinh chưa có LMS
+    exam_units = _load_exam_units(db, subject_id, semester_index, school_id)
+    all_unit_ids.update(u.unit_id for u in exam_units)
+
+    # Metadata của toàn bộ unit
+    meta = _unit_meta(db, list(all_unit_ids)) if all_unit_ids else {}
+
+    # 5. Xây dựng hồ sơ chẩn đoán cho từng học sinh
+    roster: list[StudentRosterSummary] = []
+    for s in students_rows:
+        sc = s.student_code
+        s_name = s.student_name or sc
+        s_sum_rows = sum_by_student.get(sc, [])
+
+        raw_items: list[KnowledgeGapItem] = []
+        if s_sum_rows:
+            # Nguồn 1: student_unit_mastery
+            raw_items = [
+                KnowledgeGapItem(
+                    unit_id=r.unit_id,
+                    parent_id=meta.get(r.unit_id, (None, None, None, None, None, None))[5],
+                    unit_name=meta.get(r.unit_id, (None, None, None, None, None, None))[0],
+                    chapter=meta.get(r.unit_id, (None, None, None, None, None, None))[1],
+                    lesson=meta.get(r.unit_id, (None, None, None, None, None, None))[2],
+                    gap_score=round(1.0 - float(r.adjusted_mastery), 3),
+                    mastery=round(float(r.adjusted_mastery), 3),
+                    confidence=_confidence_label(r.confidence),
+                    coverage=float(r.coverage) if r.coverage is not None else None,
+                    integrity_status=r.integrity_status,
+                    evidence_source=(r.evidence_source or "LMS"),
+                    evidence_detail=dict(r.evidence_detail) if r.evidence_detail else None,
+                    raw_mastery=float(r.raw_mastery) if r.raw_mastery is not None else None,
+                    n_items=int(r.n_items) if r.n_items is not None else None,
+                    n_correct=int(r.n_correct) if r.n_correct is not None else None,
+                    lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
+                    exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
+                )
+                for r in s_sum_rows
+            ]
+        else:
+            # Nguồn 2: Fallback điểm thi trên lớp
+            score_row = _latest_locked_score(db, sc, subject_id, sy_id, semester_index, school_id)
+            if exam_units and score_row and score_row.final_grade is not None:
+                total_score = float(score_row.final_grade)
+                max_score = float(score_row.max_grade) if score_row.max_grade else 10.0
+                mastery_list = compute_unit_mastery(total_score, max_score, exam_units)
+                raw_items = [
+                    KnowledgeGapItem(
+                        unit_id=m.unit_id,
+                        parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
+                        unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
+                        chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
+                        lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
+                        summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
+                        keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
+                        gap_score=m.gap_score,
+                        mastery=m.mastery,
+                        confidence="LOW",
+                        evidence_source="EXAM",
+                    )
+                    for m in mastery_list
+                ]
+
+        tree_gaps = _build_mastery_tree(raw_items)
+
+        # Tính toán các chỉ số cho học sinh
+        if tree_gaps:
+            # Thu thập toàn bộ các bài học con hoặc chương để tính trung bình
+            all_leaf_units: list[KnowledgeGapItem] = []
+            weak_u: list[str] = []
+            for ch in tree_gaps:
+                if ch.lessons:
+                    all_leaf_units.extend(ch.lessons)
+                    for lesson in ch.lessons:
+                        if lesson.mastery < 0.60:
+                            weak_u.append(lesson.lesson or lesson.unit_name or f"Bài {lesson.unit_id}")
+                else:
+                    all_leaf_units.append(ch)
+                    if ch.mastery < 0.60:
+                        weak_u.append(ch.unit_name or f"Chương {ch.unit_id}")
+
+            total_u = len(all_leaf_units)
+            avg_m = round(sum(g.mastery for g in all_leaf_units) / total_u, 3) if total_u > 0 else 0.0
+            gap_c = sum(1 for g in all_leaf_units if g.mastery < 0.60)
+            mastered_c = sum(1 for g in all_leaf_units if g.mastery >= 0.60)
+
+            # Xác định trạng thái đối soát tổng thể của em
+            if any(g.integrity_status == "SUSPECTED_CHEATING" for g in raw_items):
+                overall_integ = "SUSPECTED_CHEATING"
+            elif any(g.integrity_status == "LOW_ENGAGEMENT" for g in raw_items):
+                overall_integ = "LOW_ENGAGEMENT"
+            elif any(g.integrity_status == "FLAGGED" for g in raw_items):
+                overall_integ = "FLAGGED"
+            elif any(g.integrity_status == "LMS_ONLY" for g in raw_items):
+                overall_integ = "LMS_ONLY"
+            else:
+                overall_integ = "OK"
+
+            # Xác định độ tin cậy chung
+            if any(g.confidence == "LOW" for g in raw_items):
+                overall_conf = "LOW"
+            elif any(g.confidence == "MEDIUM" for g in raw_items):
+                overall_conf = "MEDIUM"
+            else:
+                overall_conf = "HIGH"
+
+            ev_src = raw_items[0].evidence_source if raw_items else "HYBRID"
+        else:
+            avg_m = 0.0
+            gap_c = 0
+            mastered_c = 0
+            total_u = 0
+            weak_u = []
+            overall_integ = "INSUFFICIENT"
+            overall_conf = "INSUFFICIENT"
+            ev_src = "INSUFFICIENT"
+
+        roster.append(
+            StudentRosterSummary(
+                student_code=sc,
+                student_name=s_name,
+                avg_mastery=avg_m,
+                gap_count=gap_c,
+                mastered_count=mastered_c,
+                total_units=total_u,
+                weak_units=weak_u,
+                integrity_status=overall_integ,
+                confidence=overall_conf,
+                evidence_source=ev_src,
+                gaps=tree_gaps,
+            )
+        )
+
+    return ClassRosterResponse(
+        class_id=class_id,
+        class_name=class_name,
+        subject_id=subject_id,
+        subject_name=subject_name,
+        school_year_id=sy_id,
+        semester_index=semester_index,
+        total_students=len(roster),
+        mastered_all_count=sum(1 for s in roster if s.gap_count == 0 and s.total_units > 0),
+        need_support_count=sum(1 for s in roster if s.gap_count > 0),
+        cheating_alert_count=sum(1 for s in roster if s.integrity_status == "SUSPECTED_CHEATING"),
+        low_engagement_count=sum(1 for s in roster if s.integrity_status == "LOW_ENGAGEMENT"),
+        students=roster,
+    )
+

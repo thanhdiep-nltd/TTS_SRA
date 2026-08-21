@@ -54,6 +54,51 @@ def test_raw_coverage_full_high_confidence():
     assert r.confidence == "HIGH"
 
 
+# === multi-chapter (lms_question_unit): 1 câu đóng góp vào nhiều chương theo trọng số ===
+
+
+def test_raw_multi_chapter_weighted_mastery():
+    # Câu multi-chapter 60% chương này + 40% chương khác, đúng 1.0:
+    # câu này đóng góp vào chương hiện tại với unit_weight=0.6.
+    items = [ItemResult(unit_id=1, bloom_level=3, score_received=1.0, max_score=1.0, unit_weight=0.6)]
+    r = raw_unit_mastery(items)
+    # Tử = 1.0 * 1.0 * 0.6; Mẫu = 1.0 * 1.0 * 0.6 → mastery 1.0 (câu đúng).
+    assert r.raw_mastery == 1.0
+    assert r.n_items == 1
+
+
+def test_raw_multi_chapter_weighted_wrong_answer():
+    # Câu multi-chapter sai: đóng góp 0 vào chương dù có weight → mastery 0.
+    items = [ItemResult(unit_id=1, bloom_level=3, score_received=0.0, max_score=1.0, unit_weight=0.6)]
+    r = raw_unit_mastery(items)
+    assert r.raw_mastery == 0.0
+    assert r.n_correct == 0
+
+
+def test_raw_multi_chapter_weighted_partial_share():
+    # 2 câu cùng chương: câu A đúng weight 1.0 (1 chương), câu B đúng weight 0.4
+    # (câu multi-chapter đóng góp 40% vào chương này). Cả 2 đúng → mastery 1.0
+    # nhưng n_correct tính theo số ItemResult (2).
+    items = [
+        ItemResult(unit_id=1, bloom_level=3, score_received=1.0, max_score=1.0, unit_weight=1.0),
+        ItemResult(unit_id=1, bloom_level=3, score_received=1.0, max_score=1.0, unit_weight=0.4),
+    ]
+    r = raw_unit_mastery(items)
+    assert r.raw_mastery == 1.0
+    assert r.n_items == 2
+    assert r.n_correct == 2
+
+
+def test_finalize_mastery_multi_chapter():
+    # Pipeline đầy đủ với câu multi-chapter: raw weighted + đối soát exam.
+    items = [ItemResult(unit_id=1, bloom_level=3, score_received=1.0, max_score=1.0, unit_weight=0.6)] * 5
+    out = finalize_mastery(items, exam_mastery=0.75)
+    assert out.raw_mastery == 1.0
+    # Δ = 1.0 - 0.75 = 0.25 → trong (0.15, 0.30] → MEDIUM.
+    assert out.confidence == "MEDIUM"
+    assert out.integrity_status == "OK"
+
+
 # === merge_onclass_adjustment (đối soát bất cân xứng) ===
 
 
@@ -163,11 +208,14 @@ def _sum_row(unit_id=7, adjusted=0.8, confidence="HIGH", coverage=1.0, status="O
         raw_mastery=0.9,
         adjusted_mastery=adjusted,
         n_items=5,
+        n_correct=4,
         coverage=coverage,
         confidence=confidence,
         evidence_source=source,
         integrity_status=status,
-        evidence_detail={"delta": 0.1},
+        evidence_detail={"delta": 0.1, "exam_mastery": 0.8},
+        lm_weight=0.8,
+        exam_weight=0.2,
     )
 
 
@@ -203,3 +251,33 @@ def test_endpoint_skips_invalid_mastery_rows():
         db=db,
     )
     assert res.gaps == []
+
+
+# === mapper confidence: SMALLINT (1/2/3) → chuỗi HIGH/MEDIUM/LOW ===
+
+
+def test_endpoint_maps_smallint_confidence():
+    # DB student_unit_mastery.confidence là SMALLINT (1 LOW | 2 MEDIUM | 3 HIGH).
+    db = _fake_db(sum_rows=[_sum_row(confidence=3)])
+    res = get_student_knowledge_gaps(
+        student_code="HS001",
+        subject_id=2,
+        school_year_id=2025,
+        semester_index=1,
+        current_user=SimpleNamespace(so_school_id=1),
+        db=db,
+    )
+    assert res.gaps[0].confidence == "HIGH"
+
+
+def test_endpoint_maps_medium_confidence():
+    db = _fake_db(sum_rows=[_sum_row(confidence=2)])
+    res = get_student_knowledge_gaps(
+        student_code="HS001",
+        subject_id=2,
+        school_year_id=2025,
+        semester_index=1,
+        current_user=SimpleNamespace(so_school_id=1),
+        db=db,
+    )
+    assert res.gaps[0].confidence == "MEDIUM"

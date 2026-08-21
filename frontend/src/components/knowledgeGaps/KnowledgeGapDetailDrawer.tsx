@@ -1,0 +1,509 @@
+"use client";
+
+// Drawer giải thích "TẠI SAO có kết quả lỗ hổng kiến thức này" — Cây Thành thạo (Mastery Tree) theo Bài học & Chương.
+// Cho phép giáo viên xem tổng quan theo Chương và mở rộng từng Bài học con bên trong.
+
+import React, { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Award,
+  BookOpen,
+  Brain,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  FileText,
+  FolderOpen,
+  Info,
+  Laptop,
+  Layers,
+  Lightbulb,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  User,
+  X,
+} from "lucide-react";
+import type { KnowledgeGapItem } from "@/lib/types";
+
+interface Props {
+  studentCode: string;
+  studentName: string | null;
+  className: string | null;
+  subjectName: string;
+  gaps: KnowledgeGapItem[];
+  onClose: () => void;
+}
+
+const CONFIDENCE_META: Record<string, { label: string; cls: string; dotCls: string }> = {
+  HIGH: {
+    label: "Tin cậy cao",
+    cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20",
+    dotCls: "bg-emerald-500",
+  },
+  MEDIUM: {
+    label: "Tin cậy TB",
+    cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20",
+    dotCls: "bg-amber-500",
+  },
+  LOW: {
+    label: "Tin cậy thấp",
+    cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
+    dotCls: "bg-rose-500",
+  },
+  INSUFFICIENT: {
+    label: "Chưa đủ dữ liệu",
+    cls: "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700",
+    dotCls: "bg-slate-400",
+  },
+};
+
+const INTEGRITY_META: Record<string, { label: string; cls: string; icon: React.ReactNode; desc: string }> = {
+  OK: {
+    label: "Khớp trên lớp",
+    cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20",
+    icon: <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />,
+    desc: "Kết quả làm bài online và điểm thi trên lớp phản ánh đồng nhất năng lực thật.",
+  },
+  SUSPECTED_CHEATING: {
+    label: "Nghi gian lận",
+    cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
+    icon: <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-rose-500" />,
+    desc: "LMS đạt điểm rất cao nhưng bài thi trực tiếp lại thấp. Hệ thống ưu tiên điểm thi thật để chống gian lận.",
+  },
+  LOW_ENGAGEMENT: {
+    label: "Tham gia LMS thấp",
+    cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20",
+    icon: <Laptop className="w-3.5 h-3.5 shrink-0 text-amber-500" />,
+    desc: "Điểm thi trên lớp tốt nhưng ít làm bài tập online. Hệ thống ghi nhận năng lực thi nhưng cảnh báo thái độ tự học.",
+  },
+  LMS_ONLY: {
+    label: "Chỉ từ LMS",
+    cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20",
+    icon: <Laptop className="w-3.5 h-3.5 shrink-0 text-sky-500" />,
+    desc: "Đánh giá dựa trên bài tập trực tuyến (chưa có điểm thi trực tiếp để đối soát).",
+  },
+  FLAGGED: {
+    label: "Cần kiểm chứng",
+    cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
+    icon: <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-500" />,
+    desc: "Có dấu hiệu bất thường về thời gian hoặc phân phối câu hỏi, cần giáo viên kiểm tra lại.",
+  },
+};
+
+const GAP_THRESHOLD = 0.6;
+
+const fmtPct = (v: number | null | undefined): string =>
+  v === null || v === undefined || isNaN(v) ? "—" : `${(v * 100).toFixed(1)}%`;
+
+// Khuyến nghị sư phạm thiết thực cho giáo viên
+function getPedagogicalAdvice(g: KnowledgeGapItem, isGap: boolean): { diagnosis: string; recommendation: string } {
+  const integ = g.integrity_status;
+  const raw = g.raw_mastery ?? 0;
+  const detail = (g.evidence_detail ?? {}) as Record<string, number | undefined>;
+  const exam = detail.exam_mastery ?? 0;
+
+  if (integ === "SUSPECTED_CHEATING") {
+    return {
+      diagnosis: `Học sinh đạt kết quả LMS rất cao (${fmtPct(raw)}) nhưng bài thi trên lớp chỉ đạt ${fmtPct(exam)}. Có dấu hiệu nhờ giải hộ hoặc chép bài khi tự học.`,
+      recommendation: "Giáo viên nên kiểm tra miệng hoặc cho học sinh làm lại 1 bài test ngắn trực tiếp trên lớp để xác nhận năng lực thực tế.",
+    };
+  }
+
+  if (integ === "LOW_ENGAGEMENT") {
+    return {
+      diagnosis: `Học sinh nắm bài trên lớp khá tốt (${fmtPct(exam)}) nhưng làm rất ít hoặc làm qua loa bài tập online (${fmtPct(raw)}).`,
+      recommendation: "Học sinh có tố chất hiểu bài nhưng thiếu tính chuyên cần. Cần nhắc nhở em hoàn thành đầy đủ bài tập LMS để rèn luyện thói quen tự học.",
+    };
+  }
+
+  if (isGap) {
+    if (g.n_items && g.n_items > 0 && g.n_correct !== undefined) {
+      return {
+        diagnosis: `Học sinh gặp khó khăn thực sự ở bài/chương này (chỉ đúng ${g.n_correct}/${g.n_items} câu LMS và điểm thi cũng thấp).`,
+        recommendation: "Cần xếp vào nhóm phụ đạo chuyên đề. Hướng dẫn ôn tập lại các khái niệm cơ bản và làm các bài tập mức Nhận biết - Thông hiểu trước.",
+      };
+    }
+    return {
+      diagnosis: "Điểm số bài thi ở các câu hỏi thuộc nội dung này chưa đạt yêu cầu.",
+      recommendation: "Đề xuất giao phiếu bài tập củng cố và hướng dẫn học sinh xem lại lý thuyết trong SGK.",
+    };
+  }
+
+  return {
+    diagnosis: "Học sinh nắm vững kiến thức trọng tâm, kết quả bài tập và bài thi đều đạt chuẩn tốt.",
+    recommendation: "Khuyến khích học sinh thử sức với các bài tập vận dụng cao hoặc hỗ trợ các bạn còn yếu trong nhóm.",
+  };
+}
+
+export default function KnowledgeGapDetailDrawer({
+  studentCode,
+  studentName,
+  className,
+  subjectName,
+  gaps,
+  onClose,
+}: Props) {
+  // Trạng thái mở rộng các chương (mặc định mở các chương có bài hổng)
+  const [expandedChapters, setExpandedChapters] = useState<Record<number, boolean>>(() => {
+    const init: Record<number, boolean> = {};
+    gaps.forEach((g) => {
+      // Mở sẵn nếu chương đó có bài hổng hoặc bản thân chương < 60%
+      if (g.gap_lessons_count > 0 || g.mastery < GAP_THRESHOLD) {
+        init[g.unit_id] = true;
+      }
+    });
+    return init;
+  });
+
+  const [openAccordion, setOpenAccordion] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  const toggleChapter = (unitId: number) => {
+    setExpandedChapters((prev) => ({ ...prev, [unitId]: !prev[unitId] }));
+  };
+
+  const toggleAccordion = (unitId: number) => {
+    setOpenAccordion((prev) => ({ ...prev, [unitId]: !prev[unitId] }));
+  };
+
+  // Đếm tổng số bài hổng trên toàn bộ các chương
+  let totalGapLessons = 0;
+  let totalLessons = 0;
+  gaps.forEach((ch) => {
+    if (ch.lessons && ch.lessons.length > 0) {
+      totalLessons += ch.lessons.length;
+      totalGapLessons += ch.lessons.filter((l) => l.mastery < GAP_THRESHOLD).length;
+    } else {
+      totalLessons += 1;
+      if (ch.mastery < GAP_THRESHOLD) totalGapLessons += 1;
+    }
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-sm flex justify-end transition-opacity">
+      {/* Backdrop */}
+      <div className="absolute inset-0" onClick={onClose} />
+
+      {/* Drawer Panel */}
+      <div className="relative w-full max-w-3xl bg-white dark:bg-slate-900 shadow-2xl h-full flex flex-col border-l border-slate-200 dark:border-slate-800 z-10 animate-in slide-in-from-right duration-300">
+        {/* HEADER */}
+        <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/70 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-brand-600 flex items-center justify-center text-white shrink-0 shadow-md">
+              <User className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                  {studentName || studentCode}
+                </h3>
+                <span className="px-2 py-0.5 text-xs font-mono font-semibold rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {studentCode}
+                </span>
+                {totalGapLessons > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                    {totalGapLessons} bài cần củng cố
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                    Đạt chuẩn toàn bộ bài học
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-wrap">
+                <span>
+                  Lớp: <strong className="text-slate-700 dark:text-slate-200">{className || "—"}</strong>
+                </span>
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span>
+                  Môn: <strong className="text-brand-600 dark:text-brand-400">{subjectName}</strong>
+                </span>
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span>
+                  Cây tri thức: <strong>{gaps.length} chương ({totalLessons} bài học)</strong>
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+            title="Đóng (Esc)"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* BODY */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+          {/* Hướng dẫn Cây Thành thạo */}
+          <div className="p-4 rounded-2xl bg-brand-50/50 dark:bg-brand-950/20 border border-brand-100 dark:border-brand-900/40 flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-brand-600 dark:text-brand-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+              <p className="font-bold text-slate-900 dark:text-slate-100 mb-0.5">
+                Cây Thành Thạo Phân Cấp (Mastery Tree)
+              </p>
+              Độ khó và kết quả làm bài LMS được đo lường chi tiết đến từng <strong>Bài học con</strong> trong SGK và tổng hợp lên <strong>Chương</strong>. Nhấp vào chương để mở rộng/thu gọn các bài học bên trong.
+            </div>
+          </div>
+
+          {/* CÂY THÀNH THẠO: DANH SÁCH CHƯƠNG & BÀI HỌC */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <Brain className="w-4 h-4 text-brand-500" />
+                Cây Năng Lực theo Chương & Bài Học ({gaps.length} chương)
+              </h4>
+              <span className="text-xs text-slate-400">
+                {totalGapLessons} bài cần củng cố • {totalLessons - totalGapLessons} bài vững vàng
+              </span>
+            </div>
+
+            {gaps.map((chapter) => {
+              const isChGap = chapter.mastery < GAP_THRESHOLD;
+              const hasWeakLessons = (chapter.gap_lessons_count ?? 0) > 0;
+              const isExpanded = !!expandedChapters[chapter.unit_id];
+              const childLessons = chapter.lessons ?? [];
+
+              return (
+                <div
+                  key={chapter.unit_id}
+                  className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
+                    hasWeakLessons || isChGap
+                      ? "border-rose-200/80 dark:border-rose-900/50 bg-white dark:bg-slate-900 shadow-sm"
+                      : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs"
+                  }`}
+                >
+                  {/* CHAPTER HEADER (NODE CHA) */}
+                  <div
+                    onClick={() => toggleChapter(chapter.unit_id)}
+                    className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-950/50 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-900/80 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-slate-400 hover:text-slate-600 transition-colors">
+                        {isExpanded ? (
+                          <ChevronDown className="w-5 h-5 text-brand-600 dark:text-brand-400" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                          hasWeakLessons || isChGap
+                            ? "bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400"
+                            : "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400"
+                        }`}
+                      >
+                        {hasWeakLessons || isChGap ? (
+                          <Target className="w-5 h-5" />
+                        ) : (
+                          <Award className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                          {chapter.unit_name ?? `Chương ${chapter.unit_id}`}
+                        </h5>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {childLessons.length > 0
+                            ? `${childLessons.length} bài học • ${chapter.gap_lessons_count ?? 0} bài cần củng cố`
+                            : "Đánh giá cấp chương"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Chương Mastery Badge & Progress */}
+                    <div className="flex items-center gap-4">
+                      <div className="hidden sm:block text-right">
+                        <span className="text-xs text-slate-400 block">Thành thạo chung:</span>
+                        <span
+                          className={`font-black text-sm ${
+                            chapter.mastery >= 0.7
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : chapter.mastery >= 0.5
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-rose-600 dark:text-rose-400"
+                          }`}
+                        >
+                          {fmtPct(chapter.mastery)}
+                        </span>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                          hasWeakLessons || isChGap
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
+                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                        }`}
+                      >
+                        {hasWeakLessons ? `Hổng ${chapter.gap_lessons_count} bài` : "Đạt chuẩn"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* EXPANDED CONTENT: DANH SÁCH BÀI HỌC CON */}
+                  {isExpanded && (
+                    <div className="p-4 sm:p-5 space-y-4 bg-slate-50/20 dark:bg-slate-950/20">
+                      {childLessons.length > 0 ? (
+                        <div className="space-y-3">
+                          {childLessons.map((lesson) => {
+                            const isLessonGap = lesson.mastery < GAP_THRESHOLD;
+                            const conf = CONFIDENCE_META[lesson.confidence ?? "LOW"] ?? CONFIDENCE_META.LOW;
+                            const integ = INTEGRITY_META[lesson.integrity_status ?? "OK"] ?? INTEGRITY_META.OK;
+                            const advice = getPedagogicalAdvice(lesson, isLessonGap);
+                            const isAccOpen = !!openAccordion[lesson.unit_id];
+
+                            return (
+                              <div
+                                key={lesson.unit_id}
+                                className={`p-4 rounded-xl border transition-all ${
+                                  isLessonGap
+                                    ? "bg-white dark:bg-slate-900 border-rose-200 dark:border-rose-900/60 shadow-xs"
+                                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                                }`}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                                  <div className="flex items-start gap-2.5">
+                                    <FileText className={`w-4 h-4 mt-0.5 shrink-0 ${isLessonGap ? "text-rose-500" : "text-emerald-500"}`} />
+                                    <div>
+                                      <h6 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                                        {lesson.lesson || lesson.unit_name}
+                                      </h6>
+                                      {lesson.summary && (
+                                        <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
+                                          {lesson.summary}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 flex-wrap sm:justify-end">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${conf.cls}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${conf.dotCls}`} />
+                                      {conf.label}
+                                    </span>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${integ.cls}`}>
+                                      {integ.icon}
+                                      {integ.label}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${isLessonGap ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"}`}>
+                                      {fmtPct(lesson.mastery)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Progress Bar 3 Tầng cho Bài học */}
+                                <div className="pt-3 space-y-2.5">
+                                  {/* 1. LMS */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                                        <Laptop className="w-3.5 h-3.5 text-sky-500" />
+                                        Bài tập LMS: {lesson.n_items ? `(Đúng ${lesson.n_correct ?? 0}/${lesson.n_items} câu)` : "(Chưa có câu hỏi)"}
+                                      </span>
+                                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                        {fmtPct(lesson.raw_mastery)}
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-sky-500 rounded-full"
+                                        style={{ width: `${Math.min(100, Math.max(0, (lesson.raw_mastery ?? 0) * 100))}%` }}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* 2. Thành thạo chốt */}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="font-bold text-slate-700 dark:text-slate-200">
+                                        Độ thành thạo chốt (Adjusted):
+                                      </span>
+                                      <span className={`font-black ${isLessonGap ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                        {fmtPct(lesson.mastery)}
+                                      </span>
+                                    </div>
+                                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${isLessonGap ? "bg-gradient-to-r from-rose-500 to-amber-500" : "bg-emerald-500"}`}
+                                        style={{ width: `${Math.min(100, Math.max(5, (lesson.mastery ?? 0) * 100))}%` }}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Khuyến nghị sư phạm */}
+                                  <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
+                                    <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
+                                      <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                      Hướng can thiệp sư phạm:
+                                    </div>
+                                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed pl-5">
+                                      {advice.recommendation}
+                                    </p>
+                                  </div>
+
+                                  {/* Accordion công thức */}
+                                  <button
+                                    onClick={() => toggleAccordion(lesson.unit_id)}
+                                    className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1 pt-1"
+                                  >
+                                    <Info className="w-3 h-3" />
+                                    {isAccOpen ? "Ẩn công thức đối soát" : "Xem công thức đối soát"}
+                                  </button>
+
+                                  {isAccOpen && (
+                                    <div className="p-3 rounded-lg bg-slate-100/70 dark:bg-slate-800/80 font-mono text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
+                                      <div>• Trọng số LMS: {lesson.lm_weight ?? 0.6} | Điểm thi: {lesson.exam_weight ?? 0.4}</div>
+                                      <div>• Công thức: adjusted = {lesson.lm_weight ?? 0.6} × LMS + {lesson.exam_weight ?? 0.4} × Thi = {fmtPct(lesson.mastery)}</div>
+                                      <div>• Mức hổng (gap_score): {lesson.gap_score.toFixed(2)}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* Nếu chương chưa có bài con (fallback) */
+                        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-700 dark:text-slate-200">
+                                Độ thành thạo chương:
+                              </span>
+                              <span className={`font-black ${isChGap ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                {fmtPct(chapter.mastery)}
+                              </span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${isChGap ? "bg-rose-500" : "bg-emerald-500"}`}
+                                style={{ width: `${Math.min(100, Math.max(5, chapter.mastery * 100))}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

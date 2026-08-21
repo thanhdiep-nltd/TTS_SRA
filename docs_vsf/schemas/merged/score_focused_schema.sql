@@ -1502,14 +1502,31 @@ CREATE TABLE IF NOT EXISTS public.lms_question_bank (
     assignment_id BIGINT NOT NULL,
     so_school_id  INTEGER NOT NULL,            -- tenant isolation
     subject_id    INTEGER NOT NULL,            -- lọc theo môn siêu nhanh
-    unit_id       BIGINT REFERENCES public.curriculum_units(id), -- NULL nếu chưa map
+    unit_id       BIGINT REFERENCES public.curriculum_units(id), -- NULL nếu chưa map (bài chính; parent_id = chương)
+    lesson_id     BIGINT REFERENCES public.curriculum_units(id), -- bài con trong chương (khớp pipeline test câu hỏi: chương + bài)
     bloom_level   SMALLINT DEFAULT 3,          -- 1..6
     question_type VARCHAR(20) DEFAULT 'MCQ',   -- MCQ | ESSAY
+    question_text TEXT,                        -- nội dung câu hỏi (đề bài tiếng Việt)
     item_weight   NUMERIC(5,2),
     is_active     INTEGER DEFAULT 1,
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_lqb_subject ON public.lms_question_bank(subject_id, unit_id);
+CREATE INDEX IF NOT EXISTS idx_lqb_lesson ON public.lms_question_bank(lesson_id);
+
+-- 1b. Map câu hỏi LMS ↔ NHIỀU BÀI con (multi-bài, có trọng số; parent_id = chương).
+-- 1 câu tổng hợp (vd bài toán ghép 2 chương, câu ôn tập cuối kỳ) đóng góp
+-- vào TỪNG BÀI theo weight (tổng weight của 1 câu = 1.0); câu 1 bài có 1 dòng weight 1.0.
+-- `lms_question_bank.unit_id` giữ làm "bài chính" (hiển thị/denormalize = bài trọng số cao
+-- nhất), mastery thật tính qua bảng này. Nguồn: docs_vsf/plan_lms_item_mastery.md (Cách A).
+CREATE TABLE IF NOT EXISTS public.lms_question_unit (
+    question_id BIGINT NOT NULL REFERENCES public.lms_question_bank(question_id) ON DELETE CASCADE,
+    unit_id     BIGINT NOT NULL REFERENCES public.curriculum_units(id),
+    weight      NUMERIC(5,3) NOT NULL DEFAULT 1.0 CHECK (weight > 0),
+    PRIMARY KEY (question_id, unit_id)
+);
+CREATE INDEX IF NOT EXISTS idx_lqu_unit ON public.lms_question_unit(unit_id);
+CREATE INDEX IF NOT EXISTS idx_lqu_question ON public.lms_question_unit(question_id);
 
 -- 2. Staging Fact: phản hồi từng câu của từng học sinh (Item-Response Matrix)
 CREATE TABLE IF NOT EXISTS public.lms_question_response (

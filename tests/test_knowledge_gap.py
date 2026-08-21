@@ -14,8 +14,8 @@ def test_unit_meta_maps_chapter_and_lesson():
         SimpleNamespace(id=2, name="Chương X", parent_id=None, chapter_name=None, summary="Tóm tắt chương X", keywords=["số học"]),
     ]
     meta = _unit_meta(fake, [1, 2])
-    assert meta[1] == ("Nguyên hàm", "Nguyên hàm – Tích phân", "Nguyên hàm", None, None)
-    assert meta[2] == ("Chương X", "Chương X", None, "Tóm tắt chương X", ["số học"])
+    assert meta[1] == ("Nguyên hàm", "Nguyên hàm – Tích phân", "Nguyên hàm", None, None, 101)
+    assert meta[2] == ("Chương X", "Chương X", None, "Tóm tắt chương X", ["số học"], None)
     assert _unit_meta(fake, []) == {}
 
 

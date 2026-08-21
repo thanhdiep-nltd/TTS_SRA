@@ -48,8 +48,33 @@ _MINI_MIGRATIONS: list[tuple[str, str]] = [
         "lms_question_bank (danh mục câu hỏi LMS item-level)",
     ),
     (
+        "ALTER TABLE public.lms_question_bank ADD COLUMN IF NOT EXISTS lesson_id BIGINT REFERENCES public.curriculum_units(id)",
+        "lms_question_bank.lesson_id (bài con trong chương — khớp pipeline test câu hỏi)",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_lqb_lesson ON public.lms_question_bank(lesson_id)",
+        "lms_question_bank (lesson_id) index",
+    ),
+    (
+        "ALTER TABLE public.lms_question_bank ADD COLUMN IF NOT EXISTS question_text TEXT",
+        "lms_question_bank.question_text (nội dung đề bài câu hỏi)",
+    ),
+    (
         "CREATE INDEX IF NOT EXISTS idx_lqb_subject ON public.lms_question_bank(subject_id, unit_id)",
         "lms_question_bank (subject_id, unit_id) index",
+    ),
+    (
+        """CREATE TABLE IF NOT EXISTS public.lms_question_unit (
+            question_id BIGINT NOT NULL REFERENCES public.lms_question_bank(question_id) ON DELETE CASCADE,
+            unit_id     BIGINT NOT NULL REFERENCES public.curriculum_units(id),
+            weight      NUMERIC(5,3) NOT NULL DEFAULT 1.0 CHECK (weight > 0),
+            PRIMARY KEY (question_id, unit_id)
+        )""",
+        "lms_question_unit (map câu LMS ↔ nhiều bài con, có trọng số; parent_id = chương)",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_lqu_unit ON public.lms_question_unit(unit_id)",
+        "lms_question_unit (unit_id) index",
     ),
     (
         """CREATE TABLE IF NOT EXISTS public.lms_question_response (

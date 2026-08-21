@@ -1361,9 +1361,13 @@ export interface LmsEvidencePattern {
 
 export interface KnowledgeGapItem {
   unit_id: number;
+  parent_id?: number | null;
   unit_name: string | null;
   chapter: string | null;
   lesson: string | null;
+  is_chapter?: boolean;
+  summary: string | null; // tóm tắt SGK (làm giàu khi nạp sách)
+  keywords: string[] | null; // từ khóa/khái niệm chính
   gap_score: number; // 0..1, cao = hổng nặng
   mastery: number; // 0..1
   confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
@@ -1371,6 +1375,16 @@ export interface KnowledgeGapItem {
   integrity_status?: string | null; // OK | SUSPECTED_CHEATING | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
   evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR | INSUFFICIENT
   evidence_detail: Record<string, unknown> | null;
+  // Bằng chứng chi tiết (từ student_unit_mastery) — giải thích "tại sao có kết quả này"
+  raw_mastery?: number | null; // mastery LMS thô (Bloom-weighted)
+  n_items?: number | null; // số câu LMS hợp lệ của chương
+  n_correct?: number | null; // số câu đúng
+  lm_weight?: number | null; // trọng số LMS trong adjusted
+  exam_weight?: number | null; // trọng số điểm thi trong adjusted
+  // Cây phân cấp Bài học con (nếu đây là node Chương)
+  lessons?: KnowledgeGapItem[];
+  gap_lessons_count?: number;
+  total_lessons_count?: number;
 }
 
 export interface StudentKnowledgeGaps {
@@ -1388,6 +1402,64 @@ export interface ClassKnowledgeGaps {
   semester_index: number;
   gaps: KnowledgeGapItem[];
 }
+
+export interface LmsQuestionUnitRef {
+  unit_id: number;
+  unit_name: string | null;
+  chapter: string | null;
+  weight: number; // 0..1
+}
+
+export interface LmsQuestionBankItem {
+  question_id: number;
+  assignment_id: number;
+  subject_id: number;
+  so_school_id: number;
+  unit_id: number | null;
+  unit_name: string | null;
+  chapter: string | null;
+  lesson_id: number | null; // bài con trong chương (khớp pipeline test câu hỏi)
+  lesson_name: string | null;
+  bloom_level: number | null; // 1..6
+  question_type: string | null;
+  question_text: string | null; // nội dung đề bài câu hỏi
+  item_weight: number | null;
+  is_active: number | null;
+  n_responses: number | null; // số HS đã trả lời (best attempt)
+  n_correct: number | null; // số HS trả lời đúng
+  accuracy: number | null; // n_correct / n_responses (0..1)
+  units: LmsQuestionUnitRef[]; // map chương đầy đủ (multi-chapter có weight)
+}
+
+export interface StudentRosterSummary {
+  student_code: string;
+  student_name: string;
+  avg_mastery: number; // 0..1
+  gap_count: number;
+  mastered_count: number;
+  total_units: number;
+  weak_units: string[];
+  integrity_status?: string | null; // OK | SUSPECTED_CHEATING | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
+  confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
+  evidence_source: string; // HYBRID | LMS | EXAM | INSUFFICIENT
+  gaps: KnowledgeGapItem[];
+}
+
+export interface ClassRosterResponse {
+  class_id: number;
+  class_name: string;
+  subject_id: number;
+  subject_name: string;
+  school_year_id: number;
+  semester_index: number;
+  total_students: number;
+  mastered_all_count: number;
+  need_support_count: number;
+  cheating_alert_count: number;
+  low_engagement_count: number;
+  students: StudentRosterSummary[];
+}
+
 
 export interface StudentForecastRow {
   student_code: string;

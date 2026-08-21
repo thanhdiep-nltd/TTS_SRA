@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
+  Database,
   FileQuestion,
   Gauge,
   Layers,
@@ -14,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
+import LmsQuestionBankTab from "@/components/exam-difficulty/LmsQuestionBankTab";
 import QuestionTestTab from "@/components/exam-difficulty/QuestionTestTab";
 import { api } from "@/lib/api";
 import { ExamContentAnalysis, ExamValidityRow, SchoolValidityOverview } from "@/lib/types";
@@ -40,14 +42,16 @@ const FLAG_CONFIG: Record<string, { label: string; cls: string; desc: string; ic
   },
 };
 
-// Tab bar giống Dashboard: tab 1 = bảng tam giác hóa TEVI, tab 2 = test 1 câu hỏi.
-const TABS: { key: "tevi" | "question-test"; label: string; icon: React.ElementType }[] = [
+// Tab bar giống Dashboard: tab 1 = bảng tam giác hóa TEVI, tab 2 = test 1 câu hỏi,
+// tab 3 = ngân hàng câu hỏi LMS.
+const TABS: { key: "tevi" | "question-test" | "lms-bank"; label: string; icon: React.ElementType }[] = [
   { key: "tevi", label: "Phân tích độ khó đề thi (TEVI)", icon: Gauge },
   { key: "question-test", label: "Kiểm tra câu hỏi", icon: FileQuestion },
+  { key: "lms-bank", label: "Ngân hàng câu hỏi LMS", icon: Database },
 ];
 
 export default function ExamDifficultyPage() {
-  const [activeTab, setActiveTab] = useState<"tevi" | "question-test">("tevi");
+  const [activeTab, setActiveTab] = useState<"tevi" | "question-test" | "lms-bank">("tevi");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [subjectId, setSubjectId] = useState<string>("");
   const [gradeId, setGradeId] = useState<string>("");
@@ -622,6 +626,8 @@ export default function ExamDifficultyPage() {
       )}
 
       {activeTab === "question-test" && <QuestionTestTab />}
+
+      {activeTab === "lms-bank" && <LmsQuestionBankTab />}
     </div>
   );
 }

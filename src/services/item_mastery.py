@@ -32,12 +32,19 @@ Confidence = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
 
 @dataclass(frozen=True)
 class ItemResult:
-    """1 câu response hợp lệ (đã lọc nhiễu) dùng để tính mastery."""
+    """1 câu response hợp lệ (đã lọc nhiễu) dùng để tính mastery.
+
+    unit_id: chương được tính (với câu multi-chapter, mỗi chương có 1 ItemResult riêng).
+    unit_weight: trọng số của câu này đóng góp vào chương (mặc định 1.0 = câu 1 chương).
+        Với câu map nhiều chương (lms_question_unit), weight phân bổ theo trọng số
+        (vd câu 60% chương A + 40% chương B) và tổng các weight của 1 câu = 1.0.
+    """
 
     unit_id: int
     bloom_level: int = 3
     score_received: float = 0.0
     max_score: float = 1.0
+    unit_weight: float = 1.0
 
 
 @dataclass
@@ -66,16 +73,21 @@ def _clamp01(x: float) -> float:
 def raw_unit_mastery(items: list[ItemResult]) -> UnitMastery:
     """Tính mastery thô Bloom-weighted + coverage cho 1 chương từ các item đã lọc.
 
-    items: các câu response của học sinh thuộc 1 unit (đã chọn is_best, bỏ nhiễu).
-    raw_u = Σ(score_received × bloom_factor) / Σ(max_score × bloom_factor).
+    items: các câu response của học sinh thuộc 1 unit (đã chọn is_best, bỏ nhiễu);
+    với câu multi-chapter, mỗi chương có ItemResult riêng với unit_weight theo lms_question_unit.
+    raw_u = Σ(score_received × bloom_factor × unit_weight) / Σ(max_score × bloom_factor × unit_weight).
     """
     n = len(items)
     if n == 0:
         return UnitMastery(unit_id=0)
-    total_max = sum(i.max_score * _BLOOM_DIFFICULTY.get(i.bloom_level, 1.0) for i in items)
+    total_max = sum(
+        i.max_score * _BLOOM_DIFFICULTY.get(i.bloom_level, 1.0) * i.unit_weight for i in items
+    )
     if total_max <= 0:
         return UnitMastery(unit_id=items[0].unit_id, n_items=n)
-    total_earned = sum(i.score_received * _BLOOM_DIFFICULTY.get(i.bloom_level, 1.0) for i in items)
+    total_earned = sum(
+        i.score_received * _BLOOM_DIFFICULTY.get(i.bloom_level, 1.0) * i.unit_weight for i in items
+    )
     n_correct = sum(1 for i in items if i.score_received > 0)
     coverage = min(1.0, n / MIN_ITEMS)
     raw = _clamp01(total_earned / total_max)
