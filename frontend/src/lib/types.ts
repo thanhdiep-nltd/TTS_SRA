@@ -1461,11 +1461,19 @@ export interface ClassRosterResponse {
 }
 
 
+export interface WeakUnitInfo {
+  unit_name: string;
+  ability: number | null;   // 0..10
+  exam_weight: number;      // 0..1
+}
+
 export interface StudentForecastRow {
   student_code: string;
   student_name: string | null;
-  predicted_score: number;
-  verdict: "PASS" | "FAIL" | "BORDERLINE";
+  class_name: string | null;
+  predicted_score: number | null; // null = INSUFFICIENT (không đủ dữ liệu LMS)
+  verdict: "PASS" | "FAIL" | "BORDERLINE" | "INSUFFICIENT";
+  weak_units: WeakUnitInfo[];     // top 2 bài yếu nhất gây mất điểm
 }
 
 export interface PassFailForecastResult {
@@ -1475,6 +1483,7 @@ export interface PassFailForecastResult {
   pass_count: number;
   fail_count: number;
   borderline_count: number;
+  insufficient_count: number;
   fail_rate: number;
   students: StudentForecastRow[];
 }

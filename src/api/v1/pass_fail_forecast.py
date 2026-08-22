@@ -1,7 +1,8 @@
 """src/api/v1/pass_fail_forecast.py — API dự đoán pass/fail đề cuối kỳ (M4).
 
-GV upload đề cuối kỳ (đã map unit qua exam_competencies) → dự đoán bao nhiêu học
-sinh trượt/pass dựa năng lực từng unit (từ fact_gradebooks) + độ khó CDI.
+GV upload đề cuối kỳ (đã map unit qua exam_competencies, cấp bài) → dự đoán bao
+nhiêu học sinh trượt/pass dựa năng lực LMS cấp bài (student_unit_mastery.raw_mastery)
++ trọng số unit của đề + độ khó CDI.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -10,7 +11,14 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import CurrentUser, get_db
 from src.schemas.pass_fail_forecast import PassFailForecastResult, StudentForecastRow
-from src.services.pass_fail_forecast import ExamUnit, StudentAbility, forecast_exam, summarize
+from src.services.pass_fail_forecast import (
+    ExamUnit,
+    StudentAbility,
+    compute_weak_units,
+    forecast_exam,
+    resolve_abilities,
+    summarize,
+)
 
 router = APIRouter(prefix="/pass-fail-forecast", tags=["Pass/Fail Forecast"])
 
@@ -55,41 +63,126 @@ def _calculate_forecast(
     if not units:
         return PassFailForecastResult(exam_paper_id=exam_paper_id, cdi=cdi, total=0, pass_count=0, fail_count=0)
 
-    # Năng lực từng unit của mọi học sinh (từ fact_gradebooks đã khoá) kèm Tenant isolation.
-    school_cond = "AND fg.so_school_id = :school_id" if school_id else ""
-    params = {"sid": subject_id, "sy": school_year_id, "sem": semester_index}
-    if school_id:
-        params["school_id"] = school_id
+    lesson_ids = [u.unit_id for u in units]
 
-    rows = db.execute(
-        text(f"""
-            SELECT fg.student_code, fg.final_grade, fg.max_grade
-            FROM s360.fact_gradebooks fg
-            WHERE fg.subject_id = :sid
-              AND fg.school_year_id = :sy AND fg.semester_index = :sem
-              AND fg.is_locked = 1
-              {school_cond}
-        """),
-        params,
+    # Map bài → chương (để fallback TB chương) — 1 query batch.
+    parent_rows = db.execute(
+        text(
+            """
+            SELECT id, parent_id FROM public.curriculum_units
+            WHERE id = ANY(:ids) AND parent_id IS NOT NULL
+            """
+        ),
+        {"ids": lesson_ids},
+    ).fetchall()
+    lesson_to_chapter = {int(r.id): int(r.parent_id) for r in parent_rows}
+
+    # Năng lực LMS cấp bài — 1 query batch cho toàn bộ học sinh (không N+1), kèm tenant.
+    school_cond_sum = "AND sum.so_school_id = :school_id" if school_id else ""
+    sum_params: dict = {"sid": subject_id, "sem": semester_index, "ids": lesson_ids}
+    if school_id:
+        sum_params["school_id"] = school_id
+    sum_rows = db.execute(
+        text(
+            f"""
+            SELECT sum.student_code, sum.unit_id, sum.raw_mastery
+            FROM public.student_unit_mastery sum
+            WHERE sum.subject_id = :sid AND sum.semester_index = :sem
+              AND sum.unit_id = ANY(:ids)
+              AND sum.raw_mastery IS NOT NULL
+              {school_cond_sum}
+            """
+        ),
+        sum_params,
     ).fetchall()
 
-    if not rows:
+    raw_by_student: dict[str, dict[int, float]] = {}
+    for r in sum_rows:
+        raw_by_student.setdefault(r.student_code, {})[int(r.unit_id)] = float(r.raw_mastery)
+    lms_students = set(raw_by_student)
+
+    # Roster = distinct (LMS ∪ fact_gradebooks khoá); giữ HS không-LMS hiện diện → INSUFFICIENT.
+    school_cond_fg = "AND fg.so_school_id = :school_id" if school_id else ""
+    fg_params: dict = {"sid": subject_id, "sy": school_year_id, "sem": semester_index}
+    if school_id:
+        fg_params["school_id"] = school_id
+    roster = db.execute(
+        text(
+            f"""
+            SELECT DISTINCT ON (fg.student_code) fg.student_code
+            FROM s360.fact_gradebooks fg
+            WHERE fg.subject_id = :sid AND fg.school_year_id = :sy
+              AND fg.semester_index = :sem AND fg.is_locked = 1
+              {school_cond_fg}
+            ORDER BY fg.student_code
+            """
+        ),
+        fg_params,
+    ).fetchall()
+    roster_codes = sorted(lms_students | {r.student_code for r in roster})
+    if not roster_codes:
         return PassFailForecastResult(exam_paper_id=exam_paper_id, cdi=cdi, total=0, pass_count=0, fail_count=0)
 
     students: list[StudentAbility] = []
-    for r in rows:
-        grade = float(r.final_grade) if r.final_grade is not None else 0.0
-        ability = {u.unit_id: grade for u in units}
-        students.append(StudentAbility(student_code=r.student_code, ability=ability))
+    for code in roster_codes:
+        raw = raw_by_student.get(code, {})
+        abilities = resolve_abilities(raw, lesson_ids, lesson_to_chapter)
+        # abilities=None → toàn bộ bài = None (HS không LMS) → predict trả None → INSUFFICIENT.
+        students.append(
+            StudentAbility(
+                student_code=code,
+                ability={u.unit_id: (abilities.get(u.unit_id) if abilities else None) for u in units},
+            )
+        )
 
     forecasts = forecast_exam(students, units, cdi)
     summary = summarize(forecasts)
 
+    # Batch tra tên HS và lớp — 1 query từ dim_homeroom_class_student.
+    code_to_info: dict[str, dict] = {}
+    if roster_codes:
+        info_rows = db.execute(
+            text(
+                """
+                SELECT DISTINCT ON (dhcs.student_code)
+                       dhcs.student_code,
+                       COALESCE(dhcs.student_name, st.full_name, dhcs.student_code) AS student_name,
+                       dhcs.class_name
+                FROM s360.dim_homeroom_class_student dhcs
+                LEFT JOIN public.students st ON dhcs.student_code = st.student_code
+                WHERE dhcs.student_code = ANY(:codes)
+                ORDER BY dhcs.student_code, dhcs.id DESC
+                """
+            ),
+            {"codes": roster_codes},
+        ).fetchall()
+        code_to_info = {
+            r.student_code: {
+                "student_name": r.student_name,
+                "class_name": r.class_name,
+            }
+            for r in info_rows
+        }
+
+    # Batch tra tên unit — 1 query.
+    unit_name_rows = db.execute(
+        text("SELECT id, name FROM public.curriculum_units WHERE id = ANY(:ids)"),
+        {"ids": lesson_ids},
+    ).fetchall()
+    unit_names: dict[int, str] = {int(r.id): str(r.name) for r in unit_name_rows if r.name}
+
     student_rows = [
         StudentForecastRow(
             student_code=f.student_code,
+            student_name=code_to_info.get(f.student_code, {}).get("student_name"),
+            class_name=code_to_info.get(f.student_code, {}).get("class_name"),
             predicted_score=f.predicted_score,
             verdict=f.verdict,
+            weak_units=compute_weak_units(
+                next((s for s in students if s.student_code == f.student_code), students[0]),
+                units,
+                unit_names,
+            ),
         )
         for f in forecasts
     ]
@@ -101,6 +194,7 @@ def _calculate_forecast(
         pass_count=summary["pass"],
         fail_count=summary["fail"],
         borderline_count=summary["borderline"],
+        insufficient_count=summary["insufficient"],
         fail_rate=summary["fail_rate"],
         students=student_rows,
     )

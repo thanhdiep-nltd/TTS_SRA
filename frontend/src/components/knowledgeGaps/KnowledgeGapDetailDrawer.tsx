@@ -5,19 +5,14 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  AlertTriangle,
   Award,
-  BookOpen,
   Brain,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   FileText,
-  FolderOpen,
   Info,
   Laptop,
-  Layers,
   Lightbulb,
   ShieldAlert,
   ShieldCheck,
@@ -60,80 +55,30 @@ const CONFIDENCE_META: Record<string, { label: string; cls: string; dotCls: stri
   },
 };
 
-const INTEGRITY_META: Record<string, { label: string; cls: string; icon: React.ReactNode; desc: string }> = {
-  OK: {
-    label: "Khớp trên lớp",
-    cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20",
-    icon: <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />,
-    desc: "Kết quả làm bài online và điểm thi trên lớp phản ánh đồng nhất năng lực thật.",
-  },
-  SUSPECTED_CHEATING: {
-    label: "Nghi gian lận",
-    cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
-    icon: <ShieldAlert className="w-3.5 h-3.5 shrink-0 text-rose-500" />,
-    desc: "LMS đạt điểm rất cao nhưng bài thi trực tiếp lại thấp. Hệ thống ưu tiên điểm thi thật để chống gian lận.",
-  },
-  LOW_ENGAGEMENT: {
-    label: "Tham gia LMS thấp",
-    cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20",
-    icon: <Laptop className="w-3.5 h-3.5 shrink-0 text-amber-500" />,
-    desc: "Điểm thi trên lớp tốt nhưng ít làm bài tập online. Hệ thống ghi nhận năng lực thi nhưng cảnh báo thái độ tự học.",
-  },
-  LMS_ONLY: {
-    label: "Chỉ từ LMS",
-    cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20",
-    icon: <Laptop className="w-3.5 h-3.5 shrink-0 text-sky-500" />,
-    desc: "Đánh giá dựa trên bài tập trực tuyến (chưa có điểm thi trực tiếp để đối soát).",
-  },
-  FLAGGED: {
-    label: "Cần kiểm chứng",
-    cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20",
-    icon: <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-500" />,
-    desc: "Có dấu hiệu bất thường về thời gian hoặc phân phối câu hỏi, cần giáo viên kiểm tra lại.",
-  },
-};
-
 const GAP_THRESHOLD = 0.6;
 
 const fmtPct = (v: number | null | undefined): string =>
   v === null || v === undefined || isNaN(v) ? "—" : `${(v * 100).toFixed(1)}%`;
 
-// Khuyến nghị sư phạm thiết thực cho giáo viên
+// Khuyến nghị sư phạm thiết thực cho giáo viên (dựa trên năng lực LMS theo bài)
 function getPedagogicalAdvice(g: KnowledgeGapItem, isGap: boolean): { diagnosis: string; recommendation: string } {
-  const integ = g.integrity_status;
   const raw = g.raw_mastery ?? 0;
-  const detail = (g.evidence_detail ?? {}) as Record<string, number | undefined>;
-  const exam = detail.exam_mastery ?? 0;
-
-  if (integ === "SUSPECTED_CHEATING") {
-    return {
-      diagnosis: `Học sinh đạt kết quả LMS rất cao (${fmtPct(raw)}) nhưng bài thi trên lớp chỉ đạt ${fmtPct(exam)}. Có dấu hiệu nhờ giải hộ hoặc chép bài khi tự học.`,
-      recommendation: "Giáo viên nên kiểm tra miệng hoặc cho học sinh làm lại 1 bài test ngắn trực tiếp trên lớp để xác nhận năng lực thực tế.",
-    };
-  }
-
-  if (integ === "LOW_ENGAGEMENT") {
-    return {
-      diagnosis: `Học sinh nắm bài trên lớp khá tốt (${fmtPct(exam)}) nhưng làm rất ít hoặc làm qua loa bài tập online (${fmtPct(raw)}).`,
-      recommendation: "Học sinh có tố chất hiểu bài nhưng thiếu tính chuyên cần. Cần nhắc nhở em hoàn thành đầy đủ bài tập LMS để rèn luyện thói quen tự học.",
-    };
-  }
 
   if (isGap) {
     if (g.n_items && g.n_items > 0 && g.n_correct !== undefined) {
       return {
-        diagnosis: `Học sinh gặp khó khăn thực sự ở bài/chương này (chỉ đúng ${g.n_correct}/${g.n_items} câu LMS và điểm thi cũng thấp).`,
+        diagnosis: `Học sinh gặp khó khăn ở bài/chương này (chỉ đúng ${g.n_correct}/${g.n_items} câu LMS → năng lực ${fmtPct(raw)}).`,
         recommendation: "Cần xếp vào nhóm phụ đạo chuyên đề. Hướng dẫn ôn tập lại các khái niệm cơ bản và làm các bài tập mức Nhận biết - Thông hiểu trước.",
       };
     }
     return {
-      diagnosis: "Điểm số bài thi ở các câu hỏi thuộc nội dung này chưa đạt yêu cầu.",
+      diagnosis: `Năng lực LMS bài/chương này chưa đạt yêu cầu (${fmtPct(raw)}).`,
       recommendation: "Đề xuất giao phiếu bài tập củng cố và hướng dẫn học sinh xem lại lý thuyết trong SGK.",
     };
   }
 
   return {
-    diagnosis: "Học sinh nắm vững kiến thức trọng tâm, kết quả bài tập và bài thi đều đạt chuẩn tốt.",
+    diagnosis: `Học sinh nắm kiến thức tốt trên LMS (${fmtPct(raw)}).`,
     recommendation: "Khuyến khích học sinh thử sức với các bài tập vận dụng cao hoặc hỗ trợ các bạn còn yếu trong nhóm.",
   };
 }
@@ -182,7 +127,7 @@ export default function KnowledgeGapDetailDrawer({
   gaps.forEach((ch) => {
     if (ch.lessons && ch.lessons.length > 0) {
       totalLessons += ch.lessons.length;
-      totalGapLessons += ch.lessons.filter((l) => l.mastery < GAP_THRESHOLD).length;
+      totalGapLessons += ch.lessons.filter((l) => (l.raw_mastery ?? l.mastery) < GAP_THRESHOLD).length;
     } else {
       totalLessons += 1;
       if (ch.mastery < GAP_THRESHOLD) totalGapLessons += 1;
@@ -359,9 +304,8 @@ export default function KnowledgeGapDetailDrawer({
                       {childLessons.length > 0 ? (
                         <div className="space-y-3">
                           {childLessons.map((lesson) => {
-                            const isLessonGap = lesson.mastery < GAP_THRESHOLD;
+                            const isLessonGap = (lesson.raw_mastery ?? lesson.mastery) < GAP_THRESHOLD;
                             const conf = CONFIDENCE_META[lesson.confidence ?? "LOW"] ?? CONFIDENCE_META.LOW;
-                            const integ = INTEGRITY_META[lesson.integrity_status ?? "OK"] ?? INTEGRITY_META.OK;
                             const advice = getPedagogicalAdvice(lesson, isLessonGap);
                             const isAccOpen = !!openAccordion[lesson.unit_id];
 
@@ -394,53 +338,36 @@ export default function KnowledgeGapDetailDrawer({
                                       <span className={`w-1.5 h-1.5 rounded-full ${conf.dotCls}`} />
                                       {conf.label}
                                     </span>
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${integ.cls}`}>
-                                      {integ.icon}
-                                      {integ.label}
-                                    </span>
                                     <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${isLessonGap ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"}`}>
-                                      {fmtPct(lesson.mastery)}
+                                      {fmtPct(lesson.raw_mastery ?? lesson.mastery)}
                                     </span>
                                   </div>
                                 </div>
 
-                                {/* Progress Bar 3 Tầng cho Bài học */}
+                                {/* Năng lực LMS (theo bài) — số chính */}
                                 <div className="pt-3 space-y-2.5">
-                                  {/* 1. LMS */}
-                                  <div className="space-y-1">
                                     <div className="flex items-center justify-between text-xs">
-                                      <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-200 font-semibold">
                                         <Laptop className="w-3.5 h-3.5 text-sky-500" />
-                                        Bài tập LMS: {lesson.n_items ? `(Đúng ${lesson.n_correct ?? 0}/${lesson.n_items} câu)` : "(Chưa có câu hỏi)"}
-                                      </span>
-                                      <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                        {fmtPct(lesson.raw_mastery)}
-                                      </span>
-                                    </div>
-                                    <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                      <div
-                                        className="h-full bg-sky-500 rounded-full"
-                                        style={{ width: `${Math.min(100, Math.max(0, (lesson.raw_mastery ?? 0) * 100))}%` }}
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* 2. Thành thạo chốt */}
-                                  <div className="space-y-1">
-                                    <div className="flex items-center justify-between text-xs">
-                                      <span className="font-bold text-slate-700 dark:text-slate-200">
-                                        Độ thành thạo chốt (Adjusted):
+                                        Năng lực LMS (theo bài): {lesson.n_items ? `(Đúng ${lesson.n_correct ?? 0}/${lesson.n_items} câu)` : "(Chưa có câu hỏi)"}
                                       </span>
                                       <span className={`font-black ${isLessonGap ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                                        {fmtPct(lesson.mastery)}
+                                        {fmtPct(lesson.raw_mastery)}
                                       </span>
                                     </div>
                                     <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                       <div
-                                        className={`h-full rounded-full transition-all ${isLessonGap ? "bg-gradient-to-r from-rose-500 to-amber-500" : "bg-emerald-500"}`}
-                                        style={{ width: `${Math.min(100, Math.max(5, (lesson.mastery ?? 0) * 100))}%` }}
+                                        className={`h-full rounded-full ${isLessonGap ? "bg-gradient-to-r from-rose-500 to-amber-500" : "bg-emerald-500"}`}
+                                        style={{ width: `${Math.min(100, Math.max(5, (lesson.raw_mastery ?? 0) * 100))}%` }}
                                       />
                                     </div>
+                                    {/* Tham chiếu đối soát cũ (không phán xét gian lận) */}
+                                    {lesson.mastery !== undefined && lesson.mastery !== null && (
+                                      <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                                        <span>• Tham chiếu đối soát cũ: {fmtPct(lesson.mastery)}</span>
+                                        <span className="text-slate-300 dark:text-slate-600">(đã bỏ — chỉ tham khảo)</span>
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Khuyến nghị sư phạm */}
@@ -462,15 +389,6 @@ export default function KnowledgeGapDetailDrawer({
                                     <Info className="w-3 h-3" />
                                     {isAccOpen ? "Ẩn công thức đối soát" : "Xem công thức đối soát"}
                                   </button>
-
-                                  {isAccOpen && (
-                                    <div className="p-3 rounded-lg bg-slate-100/70 dark:bg-slate-800/80 font-mono text-[11px] text-slate-600 dark:text-slate-300 space-y-1">
-                                      <div>• Trọng số LMS: {lesson.lm_weight ?? 0.6} | Điểm thi: {lesson.exam_weight ?? 0.4}</div>
-                                      <div>• Công thức: adjusted = {lesson.lm_weight ?? 0.6} × LMS + {lesson.exam_weight ?? 0.4} × Thi = {fmtPct(lesson.mastery)}</div>
-                                      <div>• Mức hổng (gap_score): {lesson.gap_score.toFixed(2)}</div>
-                                    </div>
-                                  )}
-                                </div>
                               </div>
                             );
                           })}

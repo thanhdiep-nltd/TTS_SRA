@@ -175,9 +175,9 @@ def _try_extract(fn) -> str:
 
 
 def _resolve_grade_number(db, paper: ExamPaper) -> int | None:
+    # exam_papers.grade_id là Integer lưu grade_number (VD: 6 = Khối 6) — không phải UUID.
     if paper.grade_id is not None:
-        grade = db.get(Grade, paper.grade_id)
-        return grade.grade_number if grade else None
+        return paper.grade_id
     mapping = db.execute(select(ExamColumnMapping).where(ExamColumnMapping.exam_paper_id == paper.id)).scalars().first()
     if mapping is None or mapping.class_id is None:
         return None
@@ -439,6 +439,58 @@ def merge_by_unit(items: list[ResolvedCompetency]) -> dict[int, tuple[int, float
     return merged
 
 
+def _split_even_preserving_total(weight: float, n: int) -> list[float]:
+    """Chia đều `weight` cho `n` phần, bảo toàn tổng (largest-remainder, 3 chữ số thập phân).
+
+    VD chiếc 0.40/3 → [0.133, 0.133, 0.134] (tổng đúng 0.400) để khớp NUMERIC(5,3).
+    """
+    if n <= 0:
+        return []
+    base = round(weight / n, 3)
+    parts = [base] * n
+    diff = round(weight - base * n, 3)  # phần dư sau khi cắt đều (có thể âm/dương)
+    for i in range(n):
+        if abs(diff) < 1e-9:
+            break
+        step = 0.001 if diff > 0 else -0.001
+        parts[i] = round(parts[i] + step, 3)
+        diff = round(diff - step, 3)
+    return parts
+
+
+def roll_chapter_to_lessons(
+    merged: dict[int, tuple[int, float]],
+    catalog_by_id: dict[int, Any],
+) -> dict[int, tuple[int, float]]:
+    """Khi ma trận đề map vào CHƯƠNG, tách xuống các bài con (chia đều weight).
+
+    `merged`: {unit_id: (bloom, weight)} từ merge_by_unit.
+    `catalog_by_id`: {unit_id: CurriculumUnit} của shortlist (gồm cả chương + bài).
+    Node đã là BÀI → giữ nguyên; chương không có bài con trong catalog → giữ chương + log.
+    """
+    lesson_ids_by_chapter: dict[int, list[int]] = {}
+    for uid, unit in catalog_by_id.items():
+        if unit.parent_id is not None:
+            lesson_ids_by_chapter.setdefault(unit.parent_id, []).append(uid)
+
+    out: dict[int, tuple[int, float]] = {}
+    for unit_id, (bloom_level, weight) in merged.items():
+        unit = catalog_by_id.get(unit_id)
+        is_chapter = unit is not None and unit.parent_id is None
+        if not is_chapter:
+            out[unit_id] = (bloom_level, weight)
+            continue
+        children = lesson_ids_by_chapter.get(unit_id, [])
+        if not children:
+            logger.warning("Chương %s không có bài con trong catalog — giữ nguyên weight.", unit_id)
+            out[unit_id] = (bloom_level, weight)
+            continue
+        parts = _split_even_preserving_total(weight, len(children))
+        for lesson_id, part in zip(children, parts, strict=False):
+            out[lesson_id] = (bloom_level, part)
+    return out
+
+
 def _analysis_items(items: list[ResolvedCompetency]) -> list[AnalysisItemRead]:
     return [
         AnalysisItemRead(
@@ -581,6 +633,7 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
         resolved = _expand_mapped(items, shortlist)
         resolved, items = _normalize_resolved(resolved, items)
         merged = merge_by_unit(resolved)
+        merged = roll_chapter_to_lessons(merged, {u.id: u for u in shortlist})
         if merged:
             _persist_competencies(db, paper.id, merged)
         else:
@@ -590,13 +643,20 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
         analysis = build_content_analysis(
             AnalysisBuildInput(items=resolved, catalog=shortlist, cdi=paper.content_difficulty, model=None)
         )
-        paper.ai_analysis = {**(paper.ai_analysis or {}), _ANALYSIS_KEY: analysis.model_dump(mode="json")}
+        paper.ai_analysis = {**(paper.ai_analysis or {}), _ANALYSIS_KEY: analysis.model_dump(mode="json"), "raw_text": text}
         paper.content_analyzed_at = _now()
         paper.content_source = paper.file_type
         db.commit()
     except Exception:  # noqa: BLE001 - lỗi nền không được làm crash app
         logger.exception("Lỗi khi phân tích CDI cho đề %s", exam_paper_id)
         db.rollback()
+        # Đánh dấu hoàn tất (dù lỗi) để frontend không poll mãi.
+        paper = db.get(ExamPaper, exam_paper_id)
+        if paper is not None:
+            paper.content_analyzed_at = _now()
+            paper.content_source = paper.file_type
+            paper.ai_analysis = {**(paper.ai_analysis or {}), "error": "LLM analysis failed"}
+            db.commit()
     finally:
         logger.info("CDI[%s] tổng thời gian: %.2fs", exam_paper_id, time.monotonic() - t_start)
         db.close()

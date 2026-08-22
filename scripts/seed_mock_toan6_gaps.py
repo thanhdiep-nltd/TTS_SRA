@@ -503,8 +503,24 @@ def gd0_cleanup(cur) -> None:
     )
 
 
-def gd1_exam_papers(cur) -> int:
-    """GĐ 1 — 6 đề khối 6 + map competencies (chỉ GK1). Trả id đề GK1."""
+def _split_even_preserving_total(weight: float, n: int) -> list[float]:
+    """Chia đều `weight` cho `n` phần, bảo toàn tổng (largest-remainder, 3 số thập phân)."""
+    if n <= 0:
+        return []
+    base = round(weight / n, 3)
+    parts = [base] * n
+    diff = round(weight - base * n, 3)
+    for i in range(n):
+        if abs(diff) < 1e-9:
+            break
+        step = 0.001 if diff > 0 else -0.001
+        parts[i] = round(parts[i] + step, 3)
+        diff = round(diff - step, 3)
+    return parts
+
+
+def gd1_exam_papers(cur, lessons_by_chapter: dict[int, list[int]]) -> int:
+    """GĐ 1 — 6 đề khối 6 + map competencies cấp BÀI (chỉ GK1). Trả id đề GK1."""
     print("[GĐ 1] Seed 6 đề khối 6 (exam_papers)...")
     papers = [
         ("Đề thi Giữa kỳ 1 Toán 6 Khối 6 (GK1)", "MIDTERM", 10, 10.0),
@@ -531,17 +547,24 @@ def gd1_exam_papers(cur) -> int:
             gk1_id = pid
 
     assert gk1_id is not None, "Không tạo được đề GK1 (MIDTERM)"
-    # Map competencies CHỈ trên GK1 — tránh trùng unit khi API gộp competencies theo subject+semester
-    for unit_id, weight in EXAM_COMPETENCIES:
-        cur.execute(
-            """
-            INSERT INTO public.exam_competencies (exam_paper_id, unit_id, weight, bloom_level)
-            VALUES (%s, %s, %s, 3)
-            ON CONFLICT (exam_paper_id, unit_id) DO UPDATE
-              SET weight = EXCLUDED.weight, bloom_level = EXCLUDED.bloom_level
-            """,
-            (gk1_id, unit_id, weight),
-        )
+    # Map competencies CHỈ trên GK1 (cấp BÀI): mỗi chương → các bài con, chia đều weight.
+    # Tránh trùng unit khi API gộp competencies theo subject+semester.
+    comp_rows: list[tuple] = []
+    for chapter_id, weight in EXAM_COMPETENCIES:
+        lessons = lessons_by_chapter.get(chapter_id) or [chapter_id]
+        parts = _split_even_preserving_total(weight, len(lessons))
+        for lesson_id, part in zip(lessons, parts, strict=False):
+            comp_rows.append((gk1_id, lesson_id, part))
+    cur.executemany(
+        """
+        INSERT INTO public.exam_competencies (exam_paper_id, unit_id, weight, bloom_level)
+        VALUES (%s, %s, %s, 3)
+        ON CONFLICT (exam_paper_id, unit_id) DO UPDATE
+          SET weight = EXCLUDED.weight, bloom_level = EXCLUDED.bloom_level
+        """,
+        comp_rows,
+    )
+    print(f"  → {len(comp_rows)} competency (đề GK1, cấp bài, bloom=3)")
     return gk1_id
 
 
@@ -904,10 +927,9 @@ def main() -> None:
         profiles = [profile_for(i) for i in range(len(students))]
 
         gd0_cleanup(cur)
-        gk1_id = gd1_exam_papers(cur)
-        gd2_gradebooks(cur, students, profiles)
 
-        # Bản đồ chương → các bài con (curriculum_units) để chọn bài cho câu multi-bài.
+        # Bản đồ chương → các bài con (curriculum_units) — dùng cho ma trận đề cấp bài (gd1)
+        # và chọn bài cho câu multi-bài (gd3).
         cur.execute(
             "SELECT id, parent_id FROM public.curriculum_units WHERE subject_id = %s",
             (SUBJECT_ID,),
@@ -916,6 +938,9 @@ def main() -> None:
         for uid, pid in cur.fetchall():
             if pid is not None:
                 lessons_by_chapter.setdefault(pid, []).append(uid)
+
+        gk1_id = gd1_exam_papers(cur, lessons_by_chapter)
+        gd2_gradebooks(cur, students, profiles)
 
         assignments = build_assignments()
         questions = build_bank_questions(assignments, lessons_by_chapter)
@@ -928,7 +953,7 @@ def main() -> None:
         ]
         gd5_mastery(cur, students, profiles, gk1_units)
         gd6_summary(cur, students, profiles)
-        print(f"[INFO] GK1 exam_paper id = {gk1_id} (map competencies 4 chương)")
+        print(f"[INFO] GK1 exam_paper id = {gk1_id} (competencies cấp bài theo 4 chương)")
     finally:
         cur.close()
         conn.close()

@@ -413,3 +413,33 @@ def test_build_content_analysis_concentration():
     )
     assert analysis.concentration.is_concentrated is True
     assert analysis.concentration.top_share == pytest.approx(0.65)
+
+
+# === roll_chapter_to_lessons: ma trận đề cấp chương → cấp bài (chia đều bảo toàn tổng) ===
+
+
+def test_roll_chapter_lesson_children_even_split_preserves_total():
+    # Chương 1 (0.40) có 3 bài con; bài 2 đã là bài (0.25) giữ nguyên.
+    catalog_by_id = {
+        1: _unit(1, "C1", "Chương 1"),  # chương
+        11: _unit(11, "L1", "Bài 1", parent_id=1),
+        12: _unit(12, "L2", "Bài 2", parent_id=1),
+        13: _unit(13, "L3", "Bài 3", parent_id=1),
+        2: _unit(2, "B2", "Bài X"),  # node bài (parent_id None → coi như có parent riêng nhưng is_chapter bằng parent_id None)
+    }
+    # Bài 2 có parent None → coi như chương trong hàm (no children) → giữ nguyên.
+    merged = {1: (3, 0.40), 2: (2, 0.25)}
+    out = cd.roll_chapter_to_lessons(merged, catalog_by_id)
+    # Chương 1 tách 3 bài: 0.40/3 = 0.133/0.133/0.134 (phần dư 0.001 đặt ở phần đầu).
+    assert out[11][1] + out[12][1] + out[13][1] == pytest.approx(0.40, abs=1e-3)
+    assert out[11][1] == pytest.approx(0.134)
+    assert out[12][1] == pytest.approx(0.133)
+    assert out[13][1] == pytest.approx(0.133)
+    # Bài 2 chỉ là node không con → giữ nguyên
+    assert out[2] == (2, 0.25)
+
+
+def test_roll_chapter_keeps_lesson_and_chapter_without_children():
+    catalog_by_id = {5: _unit(5, "L5", "Bài 5")}  # node thường, không parent
+    merged = {5: (3, 0.5)}
+    assert cd.roll_chapter_to_lessons(merged, catalog_by_id) == {5: (3, 0.5)}
