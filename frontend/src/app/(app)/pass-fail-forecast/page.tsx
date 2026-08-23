@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
+    AlertCircle,
     AlertTriangle,
     Award,
     BarChart3,
@@ -10,7 +12,10 @@ import {
     ChevronDown,
     ChevronRight,
     FileText,
+    FolderOpen,
+    HelpCircle,
     Layers,
+    Lightbulb,
     Loader2,
     Search,
     Sparkles,
@@ -32,6 +37,24 @@ const STEP_LABELS: Record<TeviStep, string> = {
     forecast: "Dự báo Pass/Fail cả lớp",
 };
 
+const BLOOM_LABELS: Record<number, string> = {
+    1: "Nhớ",
+    2: "Hiểu",
+    3: "Vận dụng",
+    4: "Phân tích",
+    5: "Đánh giá",
+    6: "Sáng tạo",
+};
+
+const BLOOM_COLORS: Record<number, string> = {
+    1: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200",
+    2: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 border-sky-200",
+    3: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 border-amber-200",
+    4: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300 border-purple-200",
+    5: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 border-rose-200",
+    6: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 border-indigo-200",
+};
+
 type FilterKey = "all" | "fail" | "borderline" | "pass" | "insufficient";
 
 function removeVietnameseTones(str: string): string {
@@ -43,12 +66,25 @@ function removeVietnameseTones(str: string): string {
         .toLowerCase();
 }
 
+interface GroupedQuestion {
+    id: string;
+    questionNumber: number;
+    questionText: string;
+    totalWeight: number;
+    subItems: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
+}
+
 export default function PassFailForecastPage() {
+    const searchParams = useSearchParams();
+    const queryExamId = searchParams.get("exam_paper_id");
+    const querySubjectId = searchParams.get("subject_id");
+    const querySemester = searchParams.get("semester");
+
     // ——— Shared filter state ———
     const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
-    const [subjectId, setSubjectId] = useState<string>("");
+    const [subjectId, setSubjectId] = useState<string>(querySubjectId ?? "");
     const [gradeLevel, setGradeLevel] = useState<string>("");
-    const [semester, setSemester] = useState<string>("1");
+    const [semester, setSemester] = useState<string>(querySemester ?? "1");
     const [activeTab, setActiveTab] = useState<"existing" | "upload">("existing");
 
     // ——— Forecast state ———
@@ -75,17 +111,16 @@ export default function PassFailForecastPage() {
 
     // ——— Exam list ———
     const [examPapers, setExamPapers] = useState<ExamPaper[]>([]);
-    const [selectedExamId, setSelectedExamId] = useState<string>("");
+    const [selectedExamId, setSelectedExamId] = useState<string>(queryExamId ?? "");
 
     // ——— Exam analysis data (cho Panel Trái) ———
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisData, setAnalysisData] = useState<{
         cdi: number | null;
-        items: { topic: string; bloom_level: number; weight: number; unit_name: string | null }[];
+        items: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
         coverage: { catalog_total: number; matched: number; ratio: number | null };
         concentration: { top_unit_name: string | null; top_share: number | null; is_concentrated: boolean };
         bloom_distribution: Record<string, number> | null;
-        raw_text: string | null;  // nguyên văn đề (LaTeX)
     } | null>(null);
 
     // Load subjects
@@ -99,8 +134,10 @@ export default function PassFailForecastPage() {
                 }
                 const list = Array.from(seen, ([name, id]) => ({ id, name }));
                 setSubjects(list);
-                const toan = list.find((s) => s.name.toLowerCase().includes("toán"));
-                if (toan) setSubjectId(toan.id);
+                if (!subjectId) {
+                    const toan = list.find((s) => s.name.toLowerCase().includes("toán"));
+                    if (toan) setSubjectId(toan.id);
+                }
             })
             .catch(() => setError("Không tải được danh sách môn học."));
     }, []);
@@ -117,24 +154,28 @@ export default function PassFailForecastPage() {
                 `/exam-papers?subject_id=${subjectId}&semester_id=${semester}`
             );
             setExamPapers(papers);
-            const finals = papers.filter(
-                (p) =>
-                    p.title.toLowerCase().includes("cuối kỳ") ||
-                    p.title.toLowerCase().includes("cuối kì") ||
-                    p.title.toLowerCase().includes("final")
-            );
-            if (finals.length > 0) {
-                setSelectedExamId(finals[0].id);
-            } else if (papers.length > 0) {
-                setSelectedExamId(papers[0].id);
+            if (queryExamId && papers.some((p) => String(p.id) === queryExamId)) {
+                setSelectedExamId(queryExamId);
             } else {
-                setSelectedExamId("");
+                const finals = papers.filter(
+                    (p) =>
+                        p.title.toLowerCase().includes("cuối kỳ") ||
+                        p.title.toLowerCase().includes("cuối kì") ||
+                        p.title.toLowerCase().includes("final")
+                );
+                if (finals.length > 0) {
+                    setSelectedExamId(finals[0].id);
+                } else if (papers.length > 0) {
+                    setSelectedExamId(papers[0].id);
+                } else {
+                    setSelectedExamId("");
+                }
             }
         } catch {
             setExamPapers([]);
             setSelectedExamId("");
         }
-    }, [subjectId, semester]);
+    }, [subjectId, semester, queryExamId]);
 
     useEffect(() => {
         loadExams();
@@ -177,34 +218,33 @@ export default function PassFailForecastPage() {
         if (selectedExamId) runForecastWithId(selectedExamId);
     }, [selectedExamId, runForecastWithId]);
 
-    // Tự động load Ma trận đề thi + raw_text cho Panel Trái khi có đề
-    const [analysisDetail, setAnalysisDetail] = useState<{ raw_text: string | null } | null>(null);
+    // Tự động chạy dự đoán nếu được điều hướng từ trang exam-difficulty
+    useEffect(() => {
+        if (queryExamId && selectedExamId === queryExamId && subjectId && !result && !loading) {
+            runForecastWithId(queryExamId);
+        }
+    }, [queryExamId, selectedExamId, subjectId]);
+
+    // Tự động load Ma trận đề thi cho Panel Trái khi có đề
     useEffect(() => {
         const examId = result?.exam_paper_id ? String(result.exam_paper_id) : selectedExamId;
         if (!examId) {
             setAnalysisData(null);
-            setAnalysisDetail(null);
             return;
         }
         setAnalysisLoading(true);
-        Promise.all([
-            api.get<any>(`/exam-papers/${examId}/content-analysis`),
-            api.get<{ ai_analysis?: { raw_text?: string } }>(`/exam-papers/${examId}`),
-        ])
-            .then(([content, detail]) => {
+        api.get<any>(`/exam-papers/${examId}/content-analysis`)
+            .then((data) => {
                 setAnalysisData({
-                    cdi: content.cdi,
-                    items: content.items,
-                    coverage: content.coverage,
-                    concentration: content.concentration,
-                    bloom_distribution: content.bloom_distribution,
-                    raw_text: detail.ai_analysis?.raw_text ?? null,
+                    cdi: data.cdi,
+                    items: data.items,
+                    coverage: data.coverage,
+                    concentration: data.concentration,
+                    bloom_distribution: data.bloom_distribution,
                 });
-                setAnalysisDetail(detail.ai_analysis?.raw_text ? { raw_text: detail.ai_analysis.raw_text } : null);
             })
             .catch(() => {
                 setAnalysisData(null);
-                setAnalysisDetail(null);
             })
             .finally(() => {
                 setAnalysisLoading(false);
@@ -399,7 +439,8 @@ export default function PassFailForecastPage() {
                             : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                             }`}
                     >
-                        <span>📂</span> Chọn đề có sẵn trong thư viện ({examPapers.length})
+                        <FolderOpen className="w-4 h-4 text-brand-600" />
+                        <span>Chọn đề có sẵn trong thư viện ({examPapers.length})</span>
                     </button>
                     <button
                         onClick={() => setActiveTab("upload")}
@@ -408,7 +449,8 @@ export default function PassFailForecastPage() {
                             : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                             }`}
                     >
-                        <span>📤</span> Tải lên đề thi mới (AI phân tích)
+                        <Upload className="w-4 h-4 text-brand-600" />
+                        <span>Tải lên đề thi mới (AI phân tích)</span>
                     </button>
                 </div>
 
@@ -552,7 +594,7 @@ export default function PassFailForecastPage() {
             {/* ===== BỐ CỤC 2 CỘT SONG SONG (SPLIT-SCREEN MASTER-DETAIL) ===== */}
             {result && result.total > 0 && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                    {/* PANEL TRÁI (5/12): MA TRẬN & ĐỘ KHÓ ĐỀ THI */}
+                    {/* PANEL TRÁI (5/12): MA TRẬN & ĐỘ KHÓ ĐỀ THI (GOM NHÓM THÔNG MINH) */}
                     <div className="lg:col-span-5 space-y-4">
                         {analysisData ? (
                             <ExamIntelligencePanel analysisData={analysisData} />
@@ -587,10 +629,10 @@ export default function PassFailForecastPage() {
                             {/* KPI Chips */}
                             <div className="flex flex-wrap items-center gap-1.5 pt-1">
                                 <FilterChip label="Tất cả" count={result.total} active={filterKey === "all"} onClick={() => setFilterKey("all")} />
-                                <FilterChip label="🔴 Trượt" count={result.fail_count} active={filterKey === "fail"} onClick={() => setFilterKey("fail")} cls="text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300" />
-                                <FilterChip label="⚠️ Ranh giới" count={result.borderline_count} active={filterKey === "borderline"} onClick={() => setFilterKey("borderline")} cls="text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300" />
-                                <FilterChip label="🟢 Đậu" count={result.pass_count} active={filterKey === "pass"} onClick={() => setFilterKey("pass")} cls="text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300" />
-                                <FilterChip label="⚪ Thiếu LMS" count={result.insufficient_count} active={filterKey === "insufficient"} onClick={() => setFilterKey("insufficient")} cls="text-slate-600 bg-slate-100 border-slate-200 dark:bg-slate-800 dark:text-slate-400" />
+                                <FilterChip label="Trượt" icon={AlertCircle} count={result.fail_count} active={filterKey === "fail"} onClick={() => setFilterKey("fail")} cls="text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300" />
+                                <FilterChip label="Ranh giới" icon={AlertTriangle} count={result.borderline_count} active={filterKey === "borderline"} onClick={() => setFilterKey("borderline")} cls="text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300" />
+                                <FilterChip label="Đậu" icon={CheckCircle2} count={result.pass_count} active={filterKey === "pass"} onClick={() => setFilterKey("pass")} cls="text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300" />
+                                <FilterChip label="Thiếu LMS" icon={HelpCircle} count={result.insufficient_count} active={filterKey === "insufficient"} onClick={() => setFilterKey("insufficient")} cls="text-slate-600 bg-slate-100 border-slate-200 dark:bg-slate-800 dark:text-slate-400" />
                             </div>
 
                             {/* Search box */}
@@ -643,18 +685,44 @@ export default function PassFailForecastPage() {
     );
 }
 
-// ——— PANEL TRÁI: MA TRẬN & ĐỘ KHÓ ĐỀ THI ———
+// ——— PANEL TRÁI: MA TRẬN & ĐỘ KHÓ ĐỀ THI (GOM NHÓM THÔNG MINH) ———
 function ExamIntelligencePanel({
     analysisData,
 }: {
     analysisData: {
         cdi: number | null;
-        items: { topic: string; bloom_level: number; weight: number; unit_name: string | null }[];
+        items: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
         coverage: { catalog_total: number; matched: number; ratio: number | null };
         concentration: { top_unit_name: string | null; top_share: number | null; is_concentrated: boolean };
         bloom_distribution: Record<string, number> | null;
     };
 }) {
+    // Gom nhóm câu hỏi thông minh
+    const groupedQuestions = useMemo<GroupedQuestion[]>(() => {
+        const groups: GroupedQuestion[] = [];
+        const map = new Map<string, GroupedQuestion>();
+
+        analysisData.items.forEach((item) => {
+            const key = (item.excerpt?.trim() || item.topic.trim());
+            let group = map.get(key);
+            if (!group) {
+                group = {
+                    id: `q-${groups.length + 1}`,
+                    questionNumber: groups.length + 1,
+                    questionText: key,
+                    totalWeight: 0,
+                    subItems: [],
+                };
+                map.set(key, group);
+                groups.push(group);
+            }
+            group.totalWeight += item.weight;
+            group.subItems.push(item);
+        });
+
+        return groups;
+    }, [analysisData.items]);
+
     return (
         <div className="bg-white dark:bg-slate-900 border rounded-2xl shadow-sm overflow-hidden space-y-4 p-5">
             {/* Header */}
@@ -664,7 +732,7 @@ function ExamIntelligencePanel({
                     Ma Trận & Cấu Trúc Đề Thi
                 </h3>
                 <span className="text-xs text-slate-400 font-medium">
-                    {analysisData.items.length} ý / câu hỏi
+                    {groupedQuestions.length} câu lớn · {analysisData.items.length} ý đánh giá
                 </span>
             </div>
 
@@ -735,43 +803,63 @@ function ExamIntelligencePanel({
                 </div>
             )}
 
-            {/* Danh sách 19 Câu / Ý trong đề */}
+            {/* Danh sách Câu Hỏi Lớn Gom Nhóm */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                    <span>Chi tiết từng câu trong đề thi:</span>
-                    <span className="text-[11px] text-slate-400 font-normal">Cuộn để xem hết</span>
+                    <span>Chi tiết từng câu hỏi trong đề:</span>
+                    <span className="text-[11px] text-slate-400 font-normal">Gom nhóm thông minh</span>
                 </div>
 
-                <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
-                    {analysisData.items.map((item, i) => {
-                        const bloomCls = item.bloom_level === 4
-                            ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300"
-                            : item.bloom_level === 3
-                            ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
-                            : item.bloom_level === 2
-                            ? "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300";
+                <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                    {groupedQuestions.map((q) => {
+                        const isSingle = q.subItems.length === 1;
 
                         return (
                             <div
-                                key={i}
-                                className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800/60 hover:border-brand-200 text-xs space-y-1 transition-all"
+                                key={q.id}
+                                className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800/60 text-xs space-y-2 shadow-2xs"
                             >
+                                {/* Header Câu */}
                                 <div className="flex items-start justify-between gap-2">
-                                    <span className="font-bold text-slate-900 dark:text-white leading-tight">
-                                        {i + 1}. {item.topic}
-                                    </span>
-                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0 ${bloomCls}`}>
-                                        Bloom {item.bloom_level}
+                                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                                        <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+                                            #{q.questionNumber}
+                                        </span>
+                                        <span className="font-semibold text-slate-900 dark:text-white leading-tight">
+                                            {q.questionText}
+                                        </span>
+                                    </div>
+                                    <span className="text-brand-600 dark:text-brand-400 font-black shrink-0 text-[11px]">
+                                        {(q.totalWeight * 100).toFixed(1)}%
                                     </span>
                                 </div>
-                                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
-                                    <span className="truncate max-w-[200px]" title={item.unit_name ?? ""}>
-                                        📚 {item.unit_name ?? "Đang phân loại"}
-                                    </span>
-                                    <span className="font-semibold text-slate-700 dark:text-slate-300 shrink-0">
-                                        {(item.weight * 100).toFixed(0)}% điểm
-                                    </span>
+
+                                {/* Ý đánh giá con */}
+                                <div className="space-y-1.5 pl-2 border-l-2 border-slate-100 dark:border-slate-700/60">
+                                    {q.subItems.map((sub, idx) => {
+                                        const bloomCls = BLOOM_COLORS[sub.bloom_level] ?? "bg-slate-100 text-slate-600";
+                                        return (
+                                            <div
+                                                key={idx}
+                                                className="p-1.5 rounded-lg bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between gap-2 text-[11px]"
+                                            >
+                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                    <BookOpen className="w-3 h-3 text-brand-600 shrink-0" />
+                                                    <span className="text-slate-600 dark:text-slate-300 truncate">
+                                                        {sub.unit_name ?? sub.topic}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${bloomCls}`}>
+                                                        B{sub.bloom_level}
+                                                    </span>
+                                                    <span className="text-slate-500 font-medium">
+                                                        {(sub.weight * 100).toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         );
@@ -784,8 +872,8 @@ function ExamIntelligencePanel({
 
 // ——— Filter chip ———
 function FilterChip({
-    label, count, active, onClick, cls = "",
-}: { label: string; count: number; active: boolean; onClick: () => void; cls?: string }) {
+    label, count, active, onClick, cls = "", icon: Icon,
+}: { label: string; count: number; active: boolean; onClick: () => void; cls?: string; icon?: React.ElementType }) {
     return (
         <button
             onClick={onClick}
@@ -794,7 +882,9 @@ function FilterChip({
                 : `border border-slate-200 dark:border-slate-700 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 ${cls}`
                 }`}
         >
-            {label} <span className={`text-[11px] font-bold ${active ? "opacity-90" : ""}`}>{count}</span>
+            {Icon && <Icon className={`w-3.5 h-3.5 ${active ? "text-white" : ""}`} />}
+            <span>{label}</span>
+            <span className={`text-[11px] font-bold ${active ? "opacity-90" : ""}`}>{count}</span>
         </button>
     );
 }
@@ -921,8 +1011,9 @@ function ForecastRow({
                 <tr>
                     <td colSpan={5} className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
                         <div className="text-xs space-y-2">
-                            <p className="font-bold text-slate-700 dark:text-slate-300">
-                                🔍 Chi tiết chẩn đoán năng lực LMS đối chiếu với đề thi:
+                            <p className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                                <span>Chi tiết chẩn đoán năng lực LMS đối chiếu với đề thi:</span>
                             </p>
                             {student.weak_units.length > 0 ? (
                                 <div className="space-y-1.5">
@@ -951,8 +1042,9 @@ function ForecastRow({
                             ) : (
                                 <p className="text-slate-400 text-xs">Học sinh không có bài yếu trọng yếu nào trong đề thi này.</p>
                             )}
-                            <p className="text-[11px] text-slate-400 italic pt-0.5">
-                                💡 Lời khuyên sư phạm: Cần củng cố sớm các bài trên trước ngày thi để kéo điểm dự báo lên mức ĐẬU an toàn.
+                            <p className="text-[11px] text-slate-400 italic pt-0.5 flex items-center gap-1.5">
+                                <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>Lời khuyên sư phạm: Cần củng cố sớm các bài trên trước ngày thi để kéo điểm dự báo lên mức ĐẬU an toàn.</span>
                             </p>
                         </div>
                     </td>

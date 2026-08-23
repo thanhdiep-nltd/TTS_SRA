@@ -26,6 +26,8 @@ class AnalysisItemRead(BaseModel):
     node_ref: NodeRef | None = None
     off_curriculum: bool | None = None
     off_curriculum_weight: float = 0.0
+    confidence: float | None = None
+    reason: str | None = None
 
 
 class CoverageUnitRead(BaseModel):

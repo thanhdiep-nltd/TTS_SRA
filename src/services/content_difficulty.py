@@ -94,6 +94,8 @@ class ResolvedCompetency(BaseModel):
     chapter: str | None = None
     lesson: str | None = None
     candidates: list[int] = []
+    confidence: float | None = None
+    reason: str | None = None
 
 
 class AnalysisBuildInput(BaseModel):
@@ -415,6 +417,8 @@ def _expand_mapped(items: list[MappedItem], shortlist: list[CurriculumUnit]) -> 
                     chapter=chapter,
                     lesson=lesson,
                     candidates=item.candidates,
+                    confidence=item.confidence,
+                    reason=item.reason,
                 )
             )
     return resolved
@@ -504,6 +508,8 @@ def _analysis_items(items: list[ResolvedCompetency]) -> list[AnalysisItemRead]:
             node_ref=NodeRef(node_id=item.unit_id, chapter=item.chapter, lesson=item.lesson) if item.unit_id else None,
             off_curriculum=item.off_curriculum,
             off_curriculum_weight=item.off_curriculum_weight,
+            confidence=item.confidence,
+            reason=item.reason,
         )
         for item in items
     ]

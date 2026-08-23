@@ -538,6 +538,8 @@ export interface ExamAnalysisItem {
   node_ref: ExamContentNodeRef | null;
   off_curriculum: boolean | null;
   off_curriculum_weight: number;
+  confidence: number | null;
+  reason: string | null;
 }
 
 export interface ExamCoverageUnit {
