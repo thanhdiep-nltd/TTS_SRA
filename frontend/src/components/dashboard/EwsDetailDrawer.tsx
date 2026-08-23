@@ -486,9 +486,14 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                       {displayLevel}
                     </div>
                     {hasLlm && llmChanged && (
-                      <p className="text-[11px] text-slate-400 font-mono">
-                        Gốc ML: <strong className="text-slate-600 dark:text-slate-300 font-medium">{item.risk_score.toFixed(2)}</strong>
-                      </p>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 pt-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>Điểm cơ sở: <strong>{item.risk_score.toFixed(1)}</strong></span>
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">
+                            (AI thẩm định {displayScore > item.risk_score ? `+${(displayScore - item.risk_score).toFixed(1)}đ` : `${(displayScore - item.risk_score).toFixed(1)}đ`} sau khi xét hoàn cảnh)
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -546,95 +551,139 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                 </div>
               </div>
 
-              {/* KHỐI 2: ĐÓNG GÓP THEO 4 NHÓM YẾU TỐ (TINH GỌN & THOÁNG MẮT) */}
-              {(item.model_version === "v2_ensemble" || item.model_version === "v1_single") && (
-                <div className="pt-1 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-0.5">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">
-                      Đóng góp theo 4 nhóm yếu tố
-                    </span>
-                    <span className="text-[11px] font-mono text-slate-400">Điểm rủi ro • Đóng góp</span>
-                  </div>
+              {/* KHỐI 2: ĐÁNH GIÁ THEO 4 NHÓM YẾU TỐ DỮ LIỆU */}
+              {(item.model_version === "v2_ensemble" || item.model_version === "v1_single") && (() => {
+                const factors = [
+                  {
+                    label: "Điểm số học tập",
+                    icon: GraduationCap,
+                    risk: item.score_risk,
+                    w: item.weight_score ?? 0.55,
+                  },
+                  {
+                    label: "Học tập LMS trực tuyến",
+                    icon: Laptop,
+                    risk: item.lms_risk,
+                    w: item.weight_lms ?? 0.15,
+                  },
+                  {
+                    label: "Chuyên cần & Đi học",
+                    icon: Clock,
+                    risk: item.attendance_risk,
+                    w: item.weight_attendance ?? 0.15,
+                  },
+                  {
+                    label: "Kỷ luật & Hạnh kiểm",
+                    icon: ShieldCheck,
+                    risk: item.behavior_risk,
+                    w: item.weight_behavior ?? 0.15,
+                  },
+                ];
 
-                  <div className="space-y-2.5 bg-slate-50/60 dark:bg-slate-800/30 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                    {[
-                      {
-                        label: "Điểm số",
-                        icon: GraduationCap,
-                        risk: item.score_risk,
-                        w: item.weight_score,
-                        def: 0.55,
-                      },
-                      {
-                        label: "Học tập LMS",
-                        icon: Laptop,
-                        risk: item.lms_risk,
-                        w: item.weight_lms,
-                        def: 0.15,
-                      },
-                      {
-                        label: "Chuyên cần",
-                        icon: Clock,
-                        risk: item.attendance_risk,
-                        w: item.weight_attendance,
-                        def: 0.15,
-                      },
-                      {
-                        label: "Kỷ luật & Hạnh kiểm",
-                        icon: ShieldCheck,
-                        risk: item.behavior_risk,
-                        w: item.weight_behavior,
-                        def: 0.15,
-                      },
-                    ].map((f) => {
-                      const w = f.w !== null && f.w !== undefined ? f.w : f.def;
-                      const rScore = f.risk !== null && f.risk !== undefined ? f.risk : 0;
-                      const contribution = (rScore * w).toFixed(1);
-                      const IconComp = f.icon;
+                const getFactorBadge = (score: number) => {
+                  if (score >= 70) {
+                    return {
+                      label: "Báo động nguy cơ",
+                      badgeClass: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200 dark:border-rose-800",
+                      barColor: "#e11d48",
+                      dotColor: "bg-rose-500",
+                    };
+                  }
+                  if (score >= 50) {
+                    return {
+                      label: "Cần theo dõi",
+                      badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+                      barColor: "#ea580c",
+                      dotColor: "bg-amber-500",
+                    };
+                  }
+                  if (score >= 30) {
+                    return {
+                      label: "Mức độ nhẹ",
+                      badgeClass: "bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800",
+                      barColor: "#ca8a04",
+                      dotColor: "bg-yellow-500",
+                    };
+                  }
+                  return {
+                    label: "Tốt / Ổn định",
+                    badgeClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+                    barColor: "#16a34a",
+                    dotColor: "bg-emerald-500",
+                  };
+                };
 
-                      const factorColor =
-                        rScore >= 70
-                          ? "#e11d48"
-                          : rScore >= 50
-                          ? "#ea580c"
-                          : rScore >= 30
-                          ? "#ca8a04"
-                          : "#16a34a";
+                const highRiskFactors = factors.filter(f => (f.risk ?? 0) >= 50).sort((a, b) => ((b.risk ?? 0) * b.w) - ((a.risk ?? 0) * a.w));
+                const summaryText = highRiskFactors.length > 0
+                  ? `Nguy cơ chính xuất phát từ ${highRiskFactors.map(f => f.label.toLowerCase()).join(" và ")}; các yếu tố còn lại duy trì ở mức an toàn.`
+                  : "Các nhóm yếu tố dữ liệu của học sinh hiện đều duy trì ở mức an toàn ổn định.";
 
-                      return (
-                        <div key={f.label} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                              <IconComp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="font-medium">{f.label}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">({(w * 100).toFixed(0)}%)</span>
+                return (
+                  <div className="pt-1 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-0.5">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                        Đánh giá chi tiết theo 4 nhóm yếu tố
+                      </span>
+                      <span className="text-[11px] text-slate-400">Trạng thái • Mức độ ảnh hưởng</span>
+                    </div>
+
+                    <div className="space-y-3 bg-slate-50/70 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                      {factors.map((f) => {
+                        const rScore = f.risk !== null && f.risk !== undefined ? f.risk : 0;
+                        const badge = getFactorBadge(rScore);
+                        const IconComp = f.icon;
+                        const weightPct = Math.round(f.w * 100);
+
+                        return (
+                          <div key={f.label} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+                              {/* Trái: Icon + Tên nhóm + Badge đánh giá */}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <IconComp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                  {f.label}
+                                </span>
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border ${badge.badgeClass}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${badge.dotColor}`} />
+                                  {badge.label}
+                                </span>
+                              </div>
+
+                              {/* Phải: Mức độ ảnh hưởng */}
+                              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-[11px]">
+                                <span className="text-slate-400">Mức ảnh hưởng:</span>
+                                <span className="font-bold text-slate-700 dark:text-slate-300">
+                                  {weightPct}%
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="flex items-center gap-3 font-mono text-xs">
-                              <span className="text-slate-500 dark:text-slate-400 text-[11px]">
-                                {f.risk !== null && f.risk !== undefined ? f.risk.toFixed(1) : "—"}
-                              </span>
-                              <span className="font-semibold text-brand-600 dark:text-brand-400 w-14 text-right">
-                                +{contribution} đ
-                              </span>
+                            {/* Thanh tiến trình nguy cơ */}
+                            <div className="h-1.5 w-full rounded-full bg-slate-200/80 dark:bg-slate-700/80 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, rScore))}%`,
+                                  backgroundColor: badge.barColor,
+                                }}
+                              />
                             </div>
                           </div>
+                        );
+                      })}
 
-                          <div className="h-1 w-full rounded-full bg-slate-200/70 dark:bg-slate-700/70 overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{
-                                width: `${Math.min(100, Math.max(0, rScore))}%`,
-                                backgroundColor: factorColor,
-                              }}
-                            />
-                          </div>
+                      {/* Ghi chú nhận xét sư phạm */}
+                      <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                        <Info className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-100">Nhận định sư phạm: </span>
+                          <span>{summaryText}</span>
                         </div>
-                      );
-                    })}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* CỜ NGUYÊN NHÂN BADGES — dùng primary_badge (fallback risk_factors cho backward compat) */}
               {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).length > 0 && (

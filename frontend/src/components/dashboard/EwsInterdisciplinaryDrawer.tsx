@@ -72,12 +72,9 @@ export default function EwsInterdisciplinaryDrawer({
   onClose: () => void;
   week: number;
 }) {
-  if (!item) return null;
-
-  const riskColor = RISK_COLORS[item.cluster_risk_level] || "#94a3b8";
   const activePillars = useMemo(
-    () => item.pillars.filter((p) => p.is_active),
-    [item.pillars]
+    () => (item ? item.pillars.filter((p) => p.is_active) : []),
+    [item]
   );
 
   // Tính toán tọa độ Radar SVG theo số đỉnh thực học (N >= 3)
@@ -126,6 +123,9 @@ export default function EwsInterdisciplinaryDrawer({
 
     return { size, center, gridPolygons, radialAxes, dataPoints, polygonPointsStr };
   }, [activePillars]);
+
+  if (!item) return null;
+  const riskColor = RISK_COLORS[item.cluster_risk_level] || "#94a3b8";
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-sm flex justify-end transition-opacity">
