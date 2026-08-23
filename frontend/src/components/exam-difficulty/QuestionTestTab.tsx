@@ -323,41 +323,70 @@ export default function QuestionTestTab() {
           <div className="p-5 space-y-4">
             {result.matched && result.items.length > 0 ? (
               <div className="space-y-2.5">
-                {result.items.map((it, i) => (
-                  <div
-                    key={i}
-                    className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800"
-                  >
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {it.chapter}
-                        {it.lesson ? (
-                          <>
-                            {" "}
-                            <span className="text-slate-400">›</span>{" "}
-                            <span className="text-brand-700 dark:text-brand-300">{it.lesson}</span>
-                          </>
-                        ) : null}
-                      </span>
-                      <span className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-300 text-[10px] font-bold">
-                          Bloom {it.bloom_level} · {BLOOM_LABELS[it.bloom_level] ?? ""}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold">
-                          {Math.round(it.weight * 100)}%
-                        </span>
-                        {it.confidence != null && (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 text-[10px] font-bold">
-                            Tin cậy {(it.confidence * 100).toFixed(0)}%
+                {result.items.map((it, i) => {
+                  const isMulti = result.items.length > 1;
+                  const isPrimary = it.is_primary ?? (i === 0 || (it.question_share ?? it.weight) >= 0.5);
+                  const sharePct = Math.round((it.question_share ?? it.weight) * 100);
+
+                  return (
+                    <div
+                      key={i}
+                      className={`p-3.5 rounded-xl border transition-colors ${
+                        isPrimary && isMulti
+                          ? "bg-brand-50/40 dark:bg-brand-950/20 border-brand-200/80 dark:border-brand-800/60"
+                          : "bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800"
+                      } space-y-1.5`}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {it.chapter}
+                            {it.lesson ? (
+                              <>
+                                {" "}
+                                <span className="text-slate-400">›</span>{" "}
+                                <span className="text-brand-700 dark:text-brand-300">{it.lesson}</span>
+                              </>
+                            ) : null}
                           </span>
-                        )}
-                      </span>
+                          {isMulti && (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                isPrimary
+                                  ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300 border border-brand-200 dark:border-brand-800"
+                                  : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-300/60 dark:border-slate-600"
+                              }`}
+                            >
+                              {isPrimary ? "🎯 Trọng tâm chính" : "🔗 Tích hợp / Bổ trợ"} ({sharePct}% câu)
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-300 text-[10px] font-bold">
+                            Bloom {it.bloom_level} · {BLOOM_LABELS[it.bloom_level] ?? ""}
+                          </span>
+                          {!isMulti && (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-bold">
+                              {sharePct}%
+                            </span>
+                          )}
+                          {it.confidence != null && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 text-[10px] font-bold">
+                              Tin cậy {(it.confidence * 100).toFixed(0)}%
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      {(it.reason || it.topic) && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          <span className="font-medium text-slate-600 dark:text-slate-300">Căn cứ:</span> {it.reason || it.topic}
+                        </p>
+                      )}
                     </div>
-                    {it.topic && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-2">{it.topic}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-sm text-amber-700 dark:text-amber-300">

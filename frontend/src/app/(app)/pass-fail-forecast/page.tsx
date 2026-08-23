@@ -72,7 +72,9 @@ interface GroupedQuestion {
     questionText: string;
     bloom_level: number;
     totalWeight: number;
-    subItems: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
+    image_url?: string | null;
+    has_figure?: boolean | null;
+    subItems: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null; image_url?: string | null; has_figure?: boolean | null }[];
 }
 
 export default function PassFailForecastPage() {
@@ -713,10 +715,18 @@ function ExamIntelligencePanel({
                     questionText: key,
                     bloom_level: item.bloom_level,
                     totalWeight: 0,
+                    image_url: item.image_url ?? null,
+                    has_figure: item.has_figure ?? null,
                     subItems: [],
                 };
                 map.set(key, group);
                 groups.push(group);
+            }
+            if (!group.image_url && item.image_url) {
+                group.image_url = item.image_url;
+            }
+            if (item.has_figure) {
+                group.has_figure = true;
             }
             group.totalWeight += item.weight;
             if (item.bloom_level > group.bloom_level) {

@@ -28,6 +28,10 @@ class AnalysisItemRead(BaseModel):
     off_curriculum_weight: float = 0.0
     confidence: float | None = None
     reason: str | None = None
+    image_url: str | None = None
+    has_figure: bool | None = None
+    question_share: float | None = None
+    is_primary: bool | None = None
 
 
 class CoverageUnitRead(BaseModel):

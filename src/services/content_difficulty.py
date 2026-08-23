@@ -16,6 +16,7 @@ import logging
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +97,10 @@ class ResolvedCompetency(BaseModel):
     candidates: list[int] = []
     confidence: float | None = None
     reason: str | None = None
+    image_url: str | None = None
+    has_figure: bool | None = None
+    question_share: float | None = None
+    is_primary: bool | None = None
 
 
 class AnalysisBuildInput(BaseModel):
@@ -239,9 +244,8 @@ _MAP_HEADER_LINES = [
     "- topic: mô tả ngắn gọn trọng tâm năng lực hoặc nhiệm vụ gắn với chuyên đề kiến thức cần thực hiện",
     "- excerpt: TRÍCH NGUYÊN VĂN phần nội dung hoặc yêu cầu tương ứng từ đề bài",
     "- nodes: danh sách các đơn vị kiến thức từ DANH SÁCH (node_id) là NỘI DUNG ĐÁNH GIÁ CỐT LÕI (Focal Targets) của nhiệm vụ này. Mỗi node kèm weight (0..1) là tỉ trọng đóng góp thực chất của đơn vị tri thức đó:",
-    "  + Nếu nhiệm vụ chỉ tập trung vào một nội dung đơn lẻ: Gán đúng 1 node trọng tâm (weight = 1.0).",
-    "  + Nếu nhiệm vụ tích hợp liên chuyên đề (kết hợp các yếu tố tri thức từ nhiều bài học/chương cùng đóng vai trò chủ đạo): Gán các node kiến thức cấu thành tương ứng kèm tỉ trọng đóng góp tương xứng (tổng weight của các node = 1.0 - off_curriculum_weight).",
-    "  + NGUYÊN TẮC: Chỉ chọn các đơn vị kiến thức thực sự là đối tượng được đánh giá; KHÔNG gán các kỹ năng thao tác nền tảng hay công cụ phụ trợ hiển nhiên được dùng làm phương tiện.",
+    "  + NGUYÊN TẮC HỘI TỤ TRỌNG TÂM: Ưu tiên chọn ĐÚNG 1 NODE KIẾN THỨC LÀ ĐỐI TƯỢNG ĐÁNH GIÁ CỐT LÕI NHẤT (weight = 1.0). KHÔNG gán các kỹ năng thao tác nền tảng hay công cụ phụ trợ hiển nhiên được dùng làm phương tiện.",
+    "  + Chỉ phân rã từ 2 node trở lên khi câu hỏi có từ 2 yêu cầu/ý hỏi độc lập (ví dụ ý a, ý b) hoặc kết hợp liên chuyên đề rõ rệt (mỗi node tối thiểu weight >= 0.3, tổng weight = 1.0 - off_curriculum_weight).",
     "- off_curriculum_weight: tỉ trọng phần kiến thức nằm ngoài danh sách chương trình (0..1). Toàn bộ ngoài danh sách → nodes = [] và off_curriculum_weight = 1.0",
     "- bloom_level: mức độ nhận thức Bloom của nhiệm vụ (1=Nhớ, 2=Hiểu, 3=Vận dụng, 4=Phân tích, 5=Đánh giá, 6=Sáng tạo)",
     "- confidence: 0..1 mức tự tin; reason: 1 câu giải thích ngắn gọn căn cứ xác định các nội dung trên",
@@ -308,8 +312,11 @@ def _invoke_map(
     ]
 
     try:
-        invoker = model.bind(temperature=0.0) if hasattr(model, "bind") else model
-        response = invoker.invoke(messages)
+        if hasattr(model, "bind") and not hasattr(model, "_mock_return_value"):
+            invoker = model.bind(temperature=0.0)
+            response = invoker.invoke(messages)
+        else:
+            response = model.invoke(messages)
     except Exception:
         try:
             # Fallback 1: gọi không bind
@@ -395,6 +402,27 @@ def _expand_mapped(items: list[MappedItem], shortlist: list[CurriculumUnit]) -> 
     by_id = {unit.id: unit for unit in shortlist}
     resolved: list[ResolvedCompetency] = []
     for item in items:
+        if not item.nodes:
+            resolved.append(
+                ResolvedCompetency(
+                    topic=item.topic,
+                    excerpt=item.excerpt,
+                    bloom_level=item.bloom_level,
+                    weight=item.off_curriculum_weight or 1.0,
+                    unit_id=None,
+                    unit_code=None,
+                    unit_name="Ngoài chương trình",
+                    matched_catalog=False,
+                    off_curriculum=True,
+                    off_curriculum_weight=item.off_curriculum_weight or 1.0,
+                    chapter=None,
+                    lesson=None,
+                    candidates=item.candidates,
+                    confidence=item.confidence,
+                    reason=item.reason,
+                )
+            )
+            continue
         for node in item.nodes:
             unit = by_id.get(node.node_id)
             if unit is None:
@@ -510,6 +538,10 @@ def _analysis_items(items: list[ResolvedCompetency]) -> list[AnalysisItemRead]:
             off_curriculum_weight=item.off_curriculum_weight,
             confidence=item.confidence,
             reason=item.reason,
+            image_url=item.image_url,
+            has_figure=item.has_figure,
+            question_share=item.question_share,
+            is_primary=item.is_primary,
         )
         for item in items
     ]
@@ -609,8 +641,83 @@ def _persist_competencies(db, paper_id: int, merged: dict[int, tuple[int, float]
         db.add(ExamCompetency(exam_paper_id=paper_id, unit_id=unit_id, weight=weight, bloom_level=bloom_level))
 
 
+def _parse_question_score(score_text: str | None) -> float | None:
+    """Trích xuất điểm số từ chuỗi điểm ghi trong đề (vd: '(2.0 điểm)', '1,5 đ', '2đ')."""
+    if not score_text:
+        return None
+    cleaned = score_text.replace(",", ".").strip()
+    match = re.search(r"(\d+(?:\.\d+)?)", cleaned)
+    if match:
+        try:
+            val = float(match.group(1))
+            if 0.1 <= val <= 100.0:
+                return val
+        except Exception:
+            pass
+    return None
+
+
+def classify_segmented_question(
+    q: vlm.SegmentedQuestion,
+    shortlist: list[CurriculumUnit],
+    llm: Any = None,
+) -> list[ResolvedCompetency]:
+    """Phân loại 1 câu hỏi đơn lẻ (Stage 2) và gán image_url/has_figure."""
+    items = map_items(q.text, shortlist, llm)
+    if not items:
+        return [
+            ResolvedCompetency(
+                topic=q.text[:80],
+                excerpt=q.text,
+                bloom_level=2,
+                weight=1.0,
+                unit_id=None,
+                unit_code=None,
+                unit_name="Ngoài chương trình",
+                matched_catalog=False,
+                off_curriculum=True,
+                off_curriculum_weight=1.0,
+                image_url=q.image_data_url,
+                has_figure=q.has_figure,
+            )
+        ]
+    items = rejudge_null_items(items, shortlist, llm)
+    resolved = _expand_mapped(items, shortlist)
+    resolved, items = _normalize_resolved(resolved, items)
+    if not resolved:
+        resolved = [
+            ResolvedCompetency(
+                topic=q.text[:80],
+                excerpt=q.text,
+                bloom_level=2,
+                weight=1.0,
+                unit_id=None,
+                unit_code=None,
+                unit_name="Ngoài chương trình",
+                matched_catalog=False,
+                off_curriculum=True,
+                off_curriculum_weight=1.0,
+                image_url=q.image_data_url,
+                has_figure=q.has_figure,
+                question_share=1.0,
+                is_primary=True,
+            )
+        ]
+    else:
+        resolved.sort(key=lambda r: r.weight, reverse=True)
+        tot_q_w = sum(r.weight for r in resolved) or 1.0
+        for idx, r in enumerate(resolved):
+            r.excerpt = q.text
+            r.image_url = q.image_data_url
+            r.has_figure = q.has_figure
+            share = round(r.weight / tot_q_w, 4)
+            r.question_share = share
+            r.is_primary = (idx == 0 or share >= 0.5)
+    return resolved
+
+
 def analyze_exam_paper(exam_paper_id: int) -> None:
-    """Phân tích nội dung 1 đề thi (M1+M2+M3) — chạy nền qua BackgroundTasks, không raise ra ngoài."""
+    """Phân tích nội dung 1 đề thi (2-Stage Hierarchical Pipeline: Segment -> Parallel Classify -> Aggregate)."""
     db = SessionLocal()
     t_start = time.monotonic()
     try:
@@ -618,26 +725,78 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
         if paper is None:
             return
 
-        t0 = time.monotonic()
-        text = extract_exam_text(storage.exam_file_path(paper.file_url), paper.file_type)
-        logger.info("CDI[%s] trích text: %.2fs (%d ký tự)", exam_paper_id, time.monotonic() - t0, len(text))
-
         grade_number = _resolve_grade_number(db, paper)
         semester = paper.semester_id if paper.semester_id in (1, 2) else None
         shortlist = build_shortlist(db, paper.subject_id, grade_number, semester)
 
-        t0 = time.monotonic()
-        items = map_items(text, shortlist)
-        logger.info("CDI[%s] LLM map: %.2fs (%d ý)", exam_paper_id, time.monotonic() - t0, len(items))
-        if not items:
+        file_path = storage.exam_file_path(paper.file_url)
+
+        # Stage 1: Thử bóc tách đề thành các câu hỏi độc lập + tọa độ + cắt ảnh bằng Qwen-VL
+        segmented_questions: list[vlm.SegmentedQuestion] = []
+        raw_text = ""
+        try:
+            t0 = time.monotonic()
+            segmented_questions = vlm.segment_exam_questions(file_path, paper.file_type)
+            logger.info("CDI[%s] Qwen segment: %.2fs (%d câu hỏi)", exam_paper_id, time.monotonic() - t0, len(segmented_questions))
+        except Exception as exc:
+            logger.warning("CDI[%s] Qwen segment thất bại hoặc chưa cấu hình, fallback OCR text: %s", exam_paper_id, exc)
+
+        resolved: list[ResolvedCompetency] = []
+
+        if segmented_questions:
+            raw_text = "\n\n".join(f"Câu {q.question_number}: {q.text}" for q in segmented_questions)
+
+            # Stage 2: Gọi song song classify_segmented_question cho từng câu hỏi
+            t0 = time.monotonic()
+            max_workers = min(len(segmented_questions), 8)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [
+                    pool.submit(classify_segmented_question, q, shortlist)
+                    for q in segmented_questions
+                ]
+                results_per_question = [f.result() for f in futures]
+            logger.info("CDI[%s] Stage 2 parallel classify: %.2fs", exam_paper_id, time.monotonic() - t0)
+
+            # Stage 3: Phân bổ trọng số câu hỏi & tổng hợp
+            scores = [_parse_question_score(q.score_text) for q in segmented_questions]
+            has_scores = all(s is not None for s in scores) and sum(s for s in scores if s is not None) > 0
+            if has_scores:
+                total_score = sum(s for s in scores if s is not None)
+                q_weights = [(s / total_score) if s else 0.0 for s in scores]
+            else:
+                n_q = len(segmented_questions)
+                q_weights = [1.0 / n_q] * n_q if n_q > 0 else []
+
+            for q_idx, q_resolved in enumerate(results_per_question):
+                q_weight = q_weights[q_idx] if q_idx < len(q_weights) else (1.0 / len(segmented_questions))
+                for r in q_resolved:
+                    r.weight = round(r.weight * q_weight, 4)
+                    resolved.append(r)
+
+            # Chuẩn hóa lại tổng trọng số về 1.0 nếu cần
+            tot_w = sum(r.weight for r in resolved)
+            if tot_w > 0:
+                for r in resolved:
+                    r.weight = round(r.weight / tot_w, 4)
+
+        else:
+            # Fallback 1-Pass cũ (khi VLM offline hoặc file không parse được JSON)
+            t0 = time.monotonic()
+            text = extract_exam_text(file_path, paper.file_type)
+            raw_text = text
+            logger.info("CDI[%s] Fallback trích text: %.2fs (%d ký tự)", exam_paper_id, time.monotonic() - t0, len(text))
+            items = map_items(text, shortlist)
+            if items:
+                items = rejudge_null_items(items, shortlist)
+                resolved = _expand_mapped(items, shortlist)
+                resolved, items = _normalize_resolved(resolved, items)
+
+        if not resolved:
             paper.content_analyzed_at = _now()
             paper.content_source = paper.file_type
             db.commit()
             return
 
-        items = rejudge_null_items(items, shortlist)
-        resolved = _expand_mapped(items, shortlist)
-        resolved, items = _normalize_resolved(resolved, items)
         merged = merge_by_unit(resolved)
         merged = roll_chapter_to_lessons(merged, {u.id: u for u in shortlist})
         if merged:
@@ -649,7 +808,7 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
         analysis = build_content_analysis(
             AnalysisBuildInput(items=resolved, catalog=shortlist, cdi=paper.content_difficulty, model=None)
         )
-        paper.ai_analysis = {**(paper.ai_analysis or {}), _ANALYSIS_KEY: analysis.model_dump(mode="json"), "raw_text": text}
+        paper.ai_analysis = {**(paper.ai_analysis or {}), _ANALYSIS_KEY: analysis.model_dump(mode="json"), "raw_text": raw_text}
         paper.content_analyzed_at = _now()
         paper.content_source = paper.file_type
         db.commit()

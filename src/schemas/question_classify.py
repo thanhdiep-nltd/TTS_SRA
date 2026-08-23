@@ -18,7 +18,10 @@ class ClassifiedItem(BaseModel):
     bloom_level: int
     weight: float
     confidence: float | None = None
+    reason: str | None = None
     excerpt: str | None = None
+    question_share: float | None = None
+    is_primary: bool | None = None
 
 
 class QuestionClassifyResult(BaseModel):

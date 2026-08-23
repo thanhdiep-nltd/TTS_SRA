@@ -42,7 +42,10 @@ def classify_question(
         if file_type == FileType.WORD:
             raise HTTPException(status_code=400, detail="Chỉ hỗ trợ ảnh hoặc PDF cho câu hỏi đơn.")
         try:
-            shortlist = question_classify.resolve_shortlist(db, subject_code, grade_number, semester_number)
+            if semester_number is not None:
+                shortlist = question_classify.resolve_shortlist(db, subject_code, grade_number, semester_number)
+            else:
+                shortlist = question_classify.resolve_shortlist(db, subject_code, grade_number)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:

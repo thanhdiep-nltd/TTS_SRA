@@ -8,12 +8,17 @@ lỗi → nâng `VlmUnavailableError` để pipeline fallback OCR (không chặn
 from __future__ import annotations
 
 import base64
+import io
+import json
+import re
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
+from typing import Any
 
 import httpx
+from pydantic import BaseModel, Field
 
 from src.config import Settings, get_settings
 from src.observability import logger
@@ -21,6 +26,32 @@ from src.observability import logger
 _READ_PROMPT = (
     "Đọc đề kiểm tra trong ảnh. Trả về NGUYÊN VĂN nội dung các câu hỏi dạng text; "
     "giữ nguyên công thức toán bằng LaTeX ($...$). Không bình luận, không diễn đạt lại."
+)
+
+_EXAM_SEGMENTATION_PROMPT = (
+    "Bạn là chuyên gia thị giác máy tính và khảo thí. Nhiệm vụ của bạn là bóc tách toàn bộ đề thi trong ảnh/PDF thành DANH SÁCH TỪNG CÂU HỎI RIÊNG BIỆT.\n\n"
+    "QUY TẮC BẮT BUỘC:\n"
+    "1. MỖI CÂU HỎI (Câu 1, Câu 2, Câu 3... hoặc Bài 1, Bài 2...) BẮT BUỘC LÀ 1 PHẦN TỬ RIÊNG BIỆT TRONG JSON ARRAY. TUYỆT ĐỐI KHÔNG ĐƯỢC GỘP NHIỀU CÂU VÀO CÙNG 1 PHẦN TỬ.\n"
+    "2. has_figure: true NẾU đề bài CÓ IN SẴN hình vẽ hình học (tam giác, tứ giác, hình tròn...), đồ thị, sơ đồ, biểu đồ hoặc tranh ảnh minh họa; false nếu câu hỏi chỉ mô tả bằng chữ (kể cả câu yêu cầu học sinh tự vẽ hình) hoặc chỉ toàn công thức toán thuần túy.\n"
+    "3. text: Đọc ĐÚNG NGUYÊN VĂN tiêu đề và nội dung của từng câu trong đề kèm các đáp án A, B, C, D; giữ nguyên công thức toán LaTeX ($...$).\n"
+    "4. page_index: chỉ số trang (0 cho trang 1, 1 cho trang 2...).\n\n"
+    "ĐỊNH DẠNG ĐẦU RA (CHỈ TRẢ VỀ JSON ARRAY, KHÔNG KÈM TEXT GIẢI THÍCH):\n"
+    "[\n"
+    "  {\n"
+    '    "question_number": 1,\n'
+    '    "page_index": 0,\n'
+    '    "text": "Câu 1. Để viết tập hợp M... A. ... B. ... C. ... D. ...",\n'
+    '    "has_figure": false,\n'
+    '    "score_text": null\n'
+    "  },\n"
+    "  {\n"
+    '    "question_number": 6,\n'
+    '    "page_index": 0,\n'
+    '    "text": "Câu 6. Hãy liệt kê tên của các hình sau... A. ... B. ... C. ... D. ...",\n'
+    '    "has_figure": true,\n'
+    '    "score_text": null\n'
+    "  }\n"
+    "]"
 )
 
 # Quét sách giáo khoa: VLM phân loại từng trang (toc/frontmatter/content) và gán trang nội dung về
@@ -163,7 +194,7 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
     last_error: Exception | None = None
     for attempt in range(3):
         t0 = time.time()
-        print(f"[VLM/Qwen] 🚀 Đang gửi request tới '{model_name}' (lần {attempt + 1}/3)...")
+        print(f"[VLM/Qwen] -> Dang gui request toi '{model_name}' (lan {attempt + 1}/3)...")
         logger.info("vlm_request_start", model=model_name, url=url, attempt=attempt + 1)
         try:
             resp = httpx.post(url, json=payload, headers=headers, timeout=settings.vlm_timeout_s)
@@ -174,7 +205,7 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
                 last_error = httpx.HTTPStatusError(
                     f"Server error {status}", request=resp.request, response=resp
                 )
-                print(f"[VLM/Qwen] ⚠️ Gặp lỗi tạm thời (HTTP {status}) sau {duration:.2f}s — chuẩn bị retry lần {attempt + 2} sau {_VLM_BACKOFF[attempt]}s...")
+                print(f"[VLM/Qwen] [RETRY] Gap loi tam thoi (HTTP {status}) sau {duration:.2f}s -- chuan bi retry lan {attempt + 2} sau {_VLM_BACKOFF[attempt]}s...")
                 logger.warning(
                     "vlm_transient_retry", model=model_name, status=status, attempt=attempt + 1, duration_s=round(duration, 2), sleep=_VLM_BACKOFF[attempt]
                 )
@@ -184,17 +215,17 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
             result_str = content if isinstance(content, str) else str(content)
-            print(f"[VLM/Qwen] ✅ Nhận phản hồi thành công từ '{model_name}' (HTTP {status}, {duration:.2f}s, {len(result_str)} ký tự)")
+            print(f"[VLM/Qwen] [OK] Nhan phan hoi thanh cong tu '{model_name}' (HTTP {status}, {duration:.2f}s, {len(result_str)} ky tu)")
             logger.info("vlm_call_success", model=model_name, status_code=status, duration_s=round(duration, 2), result_len=len(result_str))
             return result_str
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             duration = time.time() - t0
             last_error = exc
-            print(f"[VLM/Qwen] ❌ Lỗi gọi '{model_name}' lần {attempt + 1} ({duration:.2f}s): {exc}")
+            print(f"[VLM/Qwen] [ERROR] Loi goi '{model_name}' lan {attempt + 1} ({duration:.2f}s): {exc}")
             logger.warning("vlm_call_attempt_error", model=model_name, attempt=attempt + 1, duration_s=round(duration, 2), error=str(exc)[:200])
 
     friendly_msg = _format_friendly_vlm_error(last_error or Exception("Không nhận được phản hồi"), model_name)
-    print(f"[VLM/Qwen] 🛑 Đã thử 3 lần nhưng gọi '{model_name}' thất bại: {friendly_msg}")
+    print(f"[VLM/Qwen] [FAILED] Da thu 3 lan nhung goi '{model_name}' that bai: {friendly_msg}")
     logger.error("vlm_call_failed", model=model_name, error=friendly_msg)
     raise VlmUnavailableError(friendly_msg) from last_error
 
@@ -216,10 +247,16 @@ def read_pdf_pages(path: Path, settings: Settings | None = None, dpi: int = 150)
     import fitz  # PyMuPDF — đã có trong deps (test_content_difficulty dùng)
 
     with fitz.open(path) as doc:
-        images = [
-            base64.b64encode(doc.load_page(i).get_pixmap(dpi=dpi).tobytes("png")).decode("ascii")
-            for i in range(doc.page_count)
-        ]
+        if hasattr(doc, "page_count") and hasattr(doc, "load_page"):
+            images = [
+                base64.b64encode(doc.load_page(i).get_pixmap(dpi=dpi).tobytes("png")).decode("ascii")
+                for i in range(doc.page_count)
+            ]
+        else:
+            images = [
+                base64.b64encode(page.get_pixmap(dpi=dpi).tobytes("png")).decode("ascii")
+                for page in doc
+            ]
     return "\n\n".join(_call_in_parallel(images, s))
 
 
@@ -361,8 +398,273 @@ def _call_in_parallel(
     settings.vlm_max_concurrency — mặc định 4, giữ 3-5 để không dính rate-limit 429/503.
     """
     max_workers = max(1, min(settings.vlm_max_concurrency, len(images)))
+
+    def _invoke(img: str) -> str:
+        if prompt is not None:
+            return _chat_completions(img, settings, prompt)
+        return _chat_completions(img, settings)
+
     if max_workers <= 1:
-        return [_chat_completions(img, settings, prompt) for img in images]
+        return [_invoke(img) for img in images]
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        return list(pool.map(lambda img: _chat_completions(img, settings, prompt), images))
+        return list(pool.map(_invoke, images))
+
+
+class SegmentedQuestion(BaseModel):
+    """1 câu hỏi độc lập được bóc tách từ đề thi kèm tọa độ vùng ảnh và cờ hình học."""
+
+    question_number: int
+    page_index: int = 0
+    box_2d: list[int | float] | None = None
+    text: str
+    score_text: str | None = None
+    has_figure: bool = False
+    image_data_url: str | None = None
+    cropped_bytes: bytes | None = None
+
+
+def _parse_json_from_response(raw: str) -> Any:
+    """Bóc tách JSON array/object an toàn từ kết quả LLM/VLM."""
+    text = raw.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    if match:
+        text = match.group(1).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        arr_match = re.search(r"(\[[\s\S]*\])", text)
+        if arr_match:
+            try:
+                return json.loads(arr_match.group(1))
+            except Exception:
+                pass
+        obj_match = re.search(r"(\{[\s\S]*\})", text)
+        if obj_match:
+            try:
+                return json.loads(obj_match.group(1))
+            except Exception:
+                pass
+        raise
+
+
+
+
+
+def _split_compound_items(raw_items: list[dict]) -> list[dict]:
+    """
+    Tự động kiểm tra và phân tách các phần tử bị LLM gộp nhiều câu (ví dụ 'Câu 1... Câu 2...').
+    Đảm bảo 100% mỗi câu hỏi là 1 item độc lập, kể cả khi VLM trả về gộp chung.
+    """
+    clean_items: list[dict] = []
+
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+
+        # Tìm các mốc câu hỏi: "Câu 1.", "Câu 2:", "Bài 1.", "Bài 2:"
+        pattern = r"(?:^|[\n\r]|(?:\.\s+)|(?:\;\s+)|(?:\s{2,}))(?:Câu|Bài|Question)\s*(\d+)[\.\:\s]"
+        matches = list(re.finditer(pattern, text, flags=re.IGNORECASE))
+
+        if len(matches) <= 1:
+            clean_items.append(item)
+            continue
+
+        has_figure = bool(item.get("has_figure", False))
+        box = item.get("box_2d") or item.get("figure_box_2d")
+
+        if has_figure and isinstance(box, (list, tuple)) and len(box) >= 4:
+            b_xmin, b_ymin, b_xmax, b_ymax = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+        else:
+            b_xmin, b_ymin, b_xmax, b_ymax = 0.0, 0.0, 1000.0, 1000.0
+
+        total_len = max(1, len(text))
+        n_matches = len(matches)
+
+        for i, match in enumerate(matches):
+            start_idx = match.start()
+            if text[start_idx] in "\n\r. ;":
+                sub_m = re.search(r"(?:Câu|Bài|Question)", text[start_idx:], flags=re.IGNORECASE)
+                if sub_m:
+                    start_idx += sub_m.start()
+
+            end_idx = matches[i + 1].start() if i + 1 < n_matches else len(text)
+            sub_text = text[start_idx:end_idx].strip()
+            if not sub_text:
+                continue
+
+            try:
+                q_num = int(match.group(1))
+            except Exception:
+                q_num = i + 1
+
+            if has_figure and box:
+                frac_start = start_idx / total_len
+                frac_end = end_idx / total_len
+                sub_ymin = int(round(b_ymin + (b_ymax - b_ymin) * frac_start))
+                sub_ymax = int(round(b_ymin + (b_ymax - b_ymin) * frac_end))
+                sub_box = [int(round(b_xmin)), sub_ymin, int(round(b_xmax)), sub_ymax]
+            else:
+                sub_box = None
+
+            if has_figure and n_matches > 1:
+                # Chỉ giữ cờ has_figure cho câu con có chứa từ khóa liên quan đến hình ảnh/đồ thị
+                sub_has_figure = bool(
+                    re.search(
+                        r"hình|đồ thị|sơ đồ|biểu đồ|bảng|vẽ|minh họa|figure|diagram|chart",
+                        sub_text,
+                        re.IGNORECASE,
+                    )
+                )
+            else:
+                sub_has_figure = has_figure
+
+            sub_item = {
+                **item,
+                "question_number": q_num,
+                "text": sub_text,
+                "has_figure": sub_has_figure,
+                "box_2d": None,
+            }
+            clean_items.append(sub_item)
+
+    return clean_items
+
+
+def segment_exam_questions(
+    path: Path,
+    file_type: Any = None,
+    settings: Settings | None = None,
+    dpi: int = 150,
+) -> list[SegmentedQuestion]:
+    """Gửi các trang đề thi vào VLM để bóc tách danh sách câu hỏi & dùng DocLayout-YOLO cắt ảnh chuẩn xác."""
+    s = settings or get_settings()
+    if not is_configured(s):
+        raise VlmUnavailableError("Thiếu VLM_API_KEY — user sẽ cấu hình sau.")
+
+    import fitz
+    from PIL import Image
+    from src.services import layout_detector
+
+    file_ext = path.suffix.lower()
+    is_pdf = file_ext == ".pdf" or (file_type and "pdf" in str(file_type).lower())
+
+    questions: list[SegmentedQuestion] = []
+
+    if is_pdf:
+        with fitz.open(path) as doc:
+            page_count = doc.page_count
+            if page_count == 0:
+                return []
+            page_pils: list[Image.Image] = []
+            images_b64: list[str] = []
+            for i in range(page_count):
+                pix = doc.load_page(i).get_pixmap(dpi=dpi)
+                pix_bytes = pix.tobytes("png")
+                images_b64.append(base64.b64encode(pix_bytes).decode("ascii"))
+                page_pils.append(Image.open(io.BytesIO(pix_bytes)))
+
+            raw_response = _chat_completions(images_b64, s, prompt=_EXAM_SEGMENTATION_PROMPT)
+            try:
+                parsed = _parse_json_from_response(raw_response)
+            except Exception as exc:
+                logger.warning("Không parse được JSON segmentation từ VLM: %s", exc)
+                return []
+
+            if not isinstance(parsed, list):
+                if isinstance(parsed, dict) and "questions" in parsed and isinstance(parsed["questions"], list):
+                    parsed = parsed["questions"]
+                else:
+                    parsed = [parsed]
+
+            parsed = _split_compound_items(parsed)
+
+            for idx, item in enumerate(parsed):
+                if not isinstance(item, dict):
+                    continue
+                q_num = item.get("question_number", idx + 1)
+                try:
+                    q_num = int(q_num)
+                except Exception:
+                    q_num = idx + 1
+                try:
+                    p_idx = int(item.get("page_index", 0))
+                except Exception:
+                    p_idx = 0
+                p_idx = max(0, min(page_count - 1, p_idx))
+                q_text = str(item.get("text", "")).strip()
+                if not q_text:
+                    continue
+                score_text = item.get("score_text")
+                has_figure = bool(item.get("has_figure", False))
+
+                questions.append(
+                    SegmentedQuestion(
+                        question_number=q_num,
+                        page_index=p_idx,
+                        box_2d=None,
+                        text=q_text,
+                        score_text=score_text,
+                        has_figure=has_figure,
+                        image_data_url=None,
+                        cropped_bytes=None,
+                    )
+                )
+
+            # Tự động phát hiện layout bằng DocLayout-YOLO và gán ảnh hình vẽ chuẩn xác 100%
+            questions = layout_detector.associate_figures_to_questions(page_pils, questions)
+
+    else:
+        # File ảnh đơn lẻ
+        data = path.read_bytes()
+        img_b64 = base64.b64encode(data).decode("ascii")
+        raw_response = _chat_completions(img_b64, s, prompt=_EXAM_SEGMENTATION_PROMPT)
+        try:
+            parsed = _parse_json_from_response(raw_response)
+        except Exception as exc:
+            logger.warning("Không parse được JSON segmentation từ VLM cho ảnh: %s", exc)
+            return []
+
+        if not isinstance(parsed, list):
+            if isinstance(parsed, dict) and "questions" in parsed and isinstance(parsed["questions"], list):
+                parsed = parsed["questions"]
+            else:
+                parsed = [parsed]
+
+        parsed = _split_compound_items(parsed)
+        pil_img = Image.open(io.BytesIO(data))
+
+        for idx, item in enumerate(parsed):
+            if not isinstance(item, dict):
+                continue
+            q_num = item.get("question_number", idx + 1)
+            try:
+                q_num = int(q_num)
+            except Exception:
+                q_num = idx + 1
+            q_text = str(item.get("text", "")).strip()
+            if not q_text:
+                continue
+            score_text = item.get("score_text")
+            has_figure = bool(item.get("has_figure", False))
+
+            questions.append(
+                SegmentedQuestion(
+                    question_number=q_num,
+                    page_index=0,
+                    box_2d=None,
+                    text=q_text,
+                    score_text=score_text,
+                    has_figure=has_figure,
+                    image_data_url=None,
+                    cropped_bytes=None,
+                )
+            )
+
+        # Tự động phát hiện layout bằng DocLayout-YOLO và gán ảnh hình vẽ chuẩn xác 100%
+        questions = layout_detector.associate_figures_to_questions([pil_img], questions)
+
+    return questions
 

@@ -73,23 +73,30 @@ def _merge_resolved(
         g = groups.setdefault(r.unit_id, {"item": r, "weight": 0.0})
         g["weight"] += r.weight
     total_w = sum(g["weight"] for g in groups.values())
-    scale = (1.0 / total_w) if total_w > 1.0 else 1.0
-    return [
-        ClassifiedItem(
-            topic=g["item"].topic,
-            chapter=g["item"].chapter,
-            lesson=g["item"].lesson,
-            unit_code=g["item"].unit_code,
-            unit_name=g["item"].unit_name,
-            bloom_level=g["item"].bloom_level,
-            weight=round(min(1.0, g["weight"] * scale), 4),
-            confidence=by_topic.get(g["item"].topic).confidence
-            if by_topic.get(g["item"].topic) is not None
-            else None,
-            excerpt=g["item"].excerpt,
+    scale = (1.0 / total_w) if total_w > 0.0 else 1.0
+
+    sorted_groups = sorted(groups.values(), key=lambda gv: -gv["weight"])
+    items: list[ClassifiedItem] = []
+    for idx, g in enumerate(sorted_groups):
+        item_w = round(min(1.0, g["weight"] * scale), 4)
+        m_item = by_topic.get(g["item"].topic)
+        items.append(
+            ClassifiedItem(
+                topic=g["item"].topic,
+                chapter=g["item"].chapter,
+                lesson=g["item"].lesson,
+                unit_code=g["item"].unit_code,
+                unit_name=g["item"].unit_name,
+                bloom_level=g["item"].bloom_level,
+                weight=item_w,
+                question_share=item_w,
+                is_primary=(idx == 0 or item_w >= 0.5),
+                confidence=m_item.confidence if m_item is not None else None,
+                reason=m_item.reason if m_item is not None else g["item"].reason,
+                excerpt=g["item"].excerpt,
+            )
         )
-        for g in sorted(groups.values(), key=lambda gv: -gv["weight"])
-    ]
+    return items
 
 
 def classify_question(

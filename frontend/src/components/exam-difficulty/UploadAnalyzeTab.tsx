@@ -18,6 +18,8 @@ import {
     Target,
     Upload,
     X,
+    Image as ImageIcon,
+    ZoomIn,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { api, ApiError } from "@/lib/api";
@@ -58,6 +60,8 @@ interface GroupedQuestion {
     questionText: string;
     bloom_level: number;
     totalWeight: number;
+    image_url?: string | null;
+    has_figure?: boolean | null;
     subItems: ExamAnalysisItem[];
 }
 
@@ -95,6 +99,7 @@ export default function UploadAnalyzeTab() {
     const [loadingItems, setLoadingItems] = useState(false);
     const [loadedPaperId, setLoadedPaperId] = useState<string | null>(null);
     const [showRawText, setShowRawText] = useState(false);
+    const [selectedImageModal, setSelectedImageModal] = useState<{ url: string; title: string } | null>(null);
 
     // ——— Load subjects on mount ———
     useEffect(() => {
@@ -291,10 +296,18 @@ export default function UploadAnalyzeTab() {
                     questionText: key,
                     bloom_level: item.bloom_level,
                     totalWeight: 0,
+                    image_url: item.image_url ?? null,
+                    has_figure: item.has_figure ?? null,
                     subItems: [],
                 };
                 map.set(key, group);
                 groups.push(group);
+            }
+            if (!group.image_url && item.image_url) {
+                group.image_url = item.image_url;
+            }
+            if (item.has_figure) {
+                group.has_figure = true;
             }
             group.totalWeight += item.weight;
             if (item.bloom_level > group.bloom_level) {
@@ -597,6 +610,11 @@ export default function UploadAnalyzeTab() {
                                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${BLOOM_COLORS[q.bloom_level]}`}>
                                                         Bloom {q.bloom_level} · {BLOOM_LABELS[q.bloom_level] ?? ""}
                                                     </span>
+                                                    {q.has_figure && (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                                            Hình vẽ / Đồ thị
+                                                        </span>
+                                                    )}
                                                     {!isSingle && (
                                                         <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
                                                             <Target className="w-3.5 h-3.5 text-brand-600 shrink-0" />
@@ -616,35 +634,97 @@ export default function UploadAnalyzeTab() {
                                         </div>
                                     </div>
 
+                                    {/* Preview ảnh cắt của câu hỏi từ đề gốc (Chỉ khi câu có hình vẽ: has_figure=true) */}
+                                    {q.image_url && q.has_figure && (
+                                        <div className="rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60 p-2.5 space-y-2">
+                                            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                                                <span className="flex items-center gap-1.5 text-brand-600 dark:text-brand-400 font-semibold">
+                                                    <ImageIcon className="w-3.5 h-3.5" />
+                                                    <span>Ảnh trích xuất từ đề gốc</span>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedImageModal({ url: q.image_url!, title: `Câu #${q.questionNumber} - Đề gốc` })}
+                                                    className="inline-flex items-center gap-1 text-slate-500 hover:text-brand-600 font-medium transition-colors cursor-pointer"
+                                                >
+                                                    <ZoomIn className="w-3.5 h-3.5" />
+                                                    <span>Phóng to</span>
+                                                </button>
+                                            </div>
+                                            <div
+                                                onClick={() => setSelectedImageModal({ url: q.image_url!, title: `Câu #${q.questionNumber} - Đề gốc` })}
+                                                className="cursor-pointer group relative rounded-lg overflow-hidden border border-slate-200/60 dark:border-slate-800 max-h-48 bg-white dark:bg-slate-950 flex items-center justify-center p-1"
+                                            >
+                                                <img
+                                                    src={q.image_url}
+                                                    alt={`Câu #${q.questionNumber}`}
+                                                    className="max-h-44 w-auto object-contain transition-transform group-hover:scale-[1.02]"
+                                                />
+                                                <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/10 transition-colors flex items-center justify-center">
+                                                    <span className="opacity-0 group-hover:opacity-100 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md font-medium transition-opacity">
+                                                        Bấm để phóng to
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Danh sách các Ý / Năng lực con bên trong câu */}
                                     <div className="space-y-2 pt-1">
                                         {q.subItems.map((sub, idx) => {
+                                            const isPrimary = sub.is_primary ?? (idx === 0 || (sub.question_share ?? 0) >= 0.5);
+                                            const sharePct = sub.question_share != null
+                                                ? Math.round(sub.question_share * 100)
+                                                : (isSingle ? 100 : Math.round((sub.weight / (q.totalWeight || 1)) * 100));
+
                                             return (
                                                 <div
                                                     key={idx}
-                                                    className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-2 text-xs"
+                                                    className={`p-3 rounded-xl border transition-colors ${
+                                                        isPrimary && !isSingle
+                                                            ? "bg-brand-50/40 dark:bg-brand-950/20 border-brand-200/80 dark:border-brand-800/60"
+                                                            : "bg-slate-50/80 dark:bg-slate-800/60 border-slate-100 dark:border-slate-700/60"
+                                                    } space-y-1.5`}
                                                 >
-                                                    {/* Trái: Vị trí bài học SGK */}
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        <BookOpen className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                                                        <div className="min-w-0 truncate">
-                                                            <span className="font-medium text-slate-800 dark:text-slate-200">
-                                                                {sub.unit_name ?? sub.topic}
-                                                            </span>
-                                                            {sub.node_ref?.chapter && (
-                                                                <span className="text-slate-400 text-[11px] ml-1.5 hidden sm:inline">
-                                                                    ({sub.node_ref.chapter})
+                                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                        {/* Trái: Vị trí bài học SGK & Badge Trọng tâm chính / Tích hợp */}
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <BookOpen className={`w-4 h-4 shrink-0 ${isPrimary && !isSingle ? "text-brand-600 dark:text-brand-400" : "text-slate-500"}`} />
+                                                            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                                                                <span className="font-semibold text-slate-900 dark:text-white">
+                                                                    {sub.unit_name ?? sub.topic}
                                                                 </span>
-                                                            )}
+                                                                {sub.node_ref?.chapter && (
+                                                                    <span className="text-slate-400 text-[11px] hidden sm:inline">
+                                                                        ({sub.node_ref.chapter})
+                                                                    </span>
+                                                                )}
+                                                                {!isSingle && (
+                                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                                                        isPrimary
+                                                                            ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300 border border-brand-200 dark:border-brand-800"
+                                                                            : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-300/60 dark:border-slate-600"
+                                                                    }`}>
+                                                                        {isPrimary ? "🎯 Trọng tâm chính" : "🔗 Tích hợp / Bổ trợ"} ({sharePct}% câu)
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Phải: Trọng số của ý trên toàn đề */}
+                                                        <div className="flex items-center gap-2.5 shrink-0">
+                                                            <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 min-w-[45px] text-right">
+                                                                {(sub.weight * 100).toFixed(1)}% điểm đề
+                                                            </span>
                                                         </div>
                                                     </div>
 
-                                                    {/* Phải: Trọng số của ý */}
-                                                    <div className="flex items-center gap-2.5 shrink-0">
-                                                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 min-w-[45px] text-right">
-                                                            {(sub.weight * 100).toFixed(1)}%
-                                                        </span>
-                                                    </div>
+                                                    {/* Căn cứ / Lý do phân loại của AI */}
+                                                    {(sub.reason || (sub.topic && sub.topic !== sub.unit_name)) && (
+                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6 leading-relaxed">
+                                                            <span className="font-medium text-slate-600 dark:text-slate-300">Căn cứ:</span> {sub.reason || sub.topic}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             );
                                         })}
@@ -694,6 +774,39 @@ export default function UploadAnalyzeTab() {
                         </div>
                         <div className="overflow-auto p-5">
                             <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{rawText}</pre>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Phóng to Ảnh Cắt Câu Hỏi */}
+            {selectedImageModal && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => setSelectedImageModal(null)}
+                >
+                    <div
+                        className="bg-white dark:bg-slate-900 rounded-2xl max-w-3xl max-h-[90vh] w-full overflow-hidden shadow-2xl flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4 text-brand-600" />
+                                <span>{selectedImageModal.title}</span>
+                            </h4>
+                            <button
+                                onClick={() => setSelectedImageModal(null)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-auto flex items-center justify-center bg-slate-50/50 dark:bg-slate-950/50">
+                            <img
+                                src={selectedImageModal.url}
+                                alt={selectedImageModal.title}
+                                className="max-h-[70vh] w-auto object-contain rounded-lg shadow-sm border border-slate-200 dark:border-slate-800"
+                            />
                         </div>
                     </div>
                 </div>

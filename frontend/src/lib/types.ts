@@ -540,6 +540,10 @@ export interface ExamAnalysisItem {
   off_curriculum_weight: number;
   confidence: number | null;
   reason: string | null;
+  image_url?: string | null;
+  has_figure?: boolean | null;
+  question_share?: number | null;
+  is_primary?: boolean | null;
 }
 
 export interface ExamCoverageUnit {
@@ -572,12 +576,6 @@ export interface ExamPaperDetail extends ExamPaper {
   ai_analysis: { content_analysis?: ExamContentAnalysis;[k: string]: unknown };
 }
 
-export interface SchoolValidityOverview {
-  total_checked: number;
-  flags_count: Record<string, number>;
-  flagged_items: ExamValidityRow[];
-}
-
 // ===== Kiểm tra câu hỏi (tab trong trang TEVI) — test 1 câu hỏi thuộc chương/bài nào =====
 export interface ClassifiedItem {
   topic: string;
@@ -588,7 +586,10 @@ export interface ClassifiedItem {
   bloom_level: number;
   weight: number;
   confidence: number | null;
+  reason?: string | null;
   excerpt: string | null;
+  question_share?: number | null;
+  is_primary?: boolean | null;
 }
 
 export interface QuestionClassifyResult {

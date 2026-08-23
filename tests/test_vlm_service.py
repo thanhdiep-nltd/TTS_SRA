@@ -95,3 +95,47 @@ def test_read_pdf_pages_joins_pages(monkeypatch):
     out = vlm.read_pdf_pages(Path("exam.pdf"))
 
     assert out.count("PAGE[") == 2
+
+
+def test_split_compound_items():
+    raw = [
+        {
+            "question_number": 1,
+            "text": "Câu 1. Tính giá trị... A. 1 B. 2\nCâu 2. Tìm x biết... A. 3 B. 4",
+            "has_figure": False,
+        }
+    ]
+    split = vlm._split_compound_items(raw)
+    assert len(split) == 2
+    assert split[0]["question_number"] == 1
+    assert split[0]["text"].startswith("Câu 1")
+    assert split[1]["question_number"] == 2
+    assert split[1]["text"].startswith("Câu 2")
+
+
+def test_layout_detector_associate_figures():
+    from PIL import Image
+    from src.services import layout_detector
+    from src.services.vlm import SegmentedQuestion
+
+    # Tạo ảnh trắng 200x200
+    img = Image.new("RGB", (200, 200), (255, 255, 255))
+    qs = [
+        SegmentedQuestion(question_number=1, text="Câu 1: Toàn chữ", has_figure=False),
+        SegmentedQuestion(question_number=2, text="Câu 2: Có hình", has_figure=True),
+    ]
+
+    # Mock detect_figures để trả về 1 box
+    orig_detect = layout_detector.detect_figures
+    try:
+        layout_detector.detect_figures = lambda _img: [(10.0, 20.0, 100.0, 120.0)]
+        res = layout_detector.associate_figures_to_questions([img], qs)
+        assert len(res) == 2
+        assert res[0].has_figure is False
+        assert res[0].image_data_url is None
+        assert res[1].has_figure is True
+        assert res[1].image_data_url is not None
+        assert res[1].box_2d is not None
+    finally:
+        layout_detector.detect_figures = orig_detect
+
