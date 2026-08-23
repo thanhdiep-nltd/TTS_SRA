@@ -308,7 +308,7 @@ def _invoke_map(
     ]
 
     try:
-        invoker = model.bind(temperature=0.1) if hasattr(model, "bind") else model
+        invoker = model.bind(temperature=0.0) if hasattr(model, "bind") else model
         response = invoker.invoke(messages)
     except Exception:
         try:

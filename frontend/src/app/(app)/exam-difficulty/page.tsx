@@ -57,7 +57,7 @@ export default function ExamDifficultyPage() {
   const [activeTab, setActiveTab] = useState<"tevi" | "upload-analyze" | "question-test" | "lms-bank">("tevi");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [subjectId, setSubjectId] = useState<string>("");
-  const [gradeId, setGradeId] = useState<string>("");
+  const [gradeId, setGradeId] = useState<string>("6");
   const [semester, setSemester] = useState<string>("1");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
 
@@ -81,7 +81,10 @@ export default function ExamDifficultyPage() {
         for (const s of meta.subjects) {
           if (!seen.has(s.name)) seen.set(s.name, String(s.id));
         }
-        setSubjects(Array.from(seen, ([name, id]) => ({ id, name })));
+        const list = Array.from(seen, ([name, id]) => ({ id, name }));
+        setSubjects(list);
+        const toan6 = list.find((s) => s.name.toLowerCase().includes("toán 6")) || list.find((s) => s.name.toLowerCase().includes("toán"));
+        if (toan6) setSubjectId(toan6.id);
       })
       .catch(() => setError("Không tải được danh mục môn học."));
   }, []);

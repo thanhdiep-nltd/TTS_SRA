@@ -38,7 +38,7 @@ const BLOOM_LABELS: Record<number, string> = {
 export default function QuestionTestTab() {
   const [subjects, setSubjects] = useState<{ code: string; name: string }[]>([]);
   const [subjectCode, setSubjectCode] = useState("");
-  const [grade, setGrade] = useState("");
+  const [grade, setGrade] = useState("6");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -52,7 +52,11 @@ export default function QuestionTestTab() {
   useEffect(() => {
     api
       .get<{ code: string; name: string }[]>("/curriculum/subjects")
-      .then(setSubjects)
+      .then((subs) => {
+        setSubjects(subs);
+        const toan6 = subs.find((s) => s.code.toLowerCase().includes("toan_6")) || subs.find((s) => s.name.toLowerCase().includes("toán 6")) || subs.find((s) => s.code.toLowerCase().includes("toan"));
+        if (toan6) setSubjectCode(toan6.code);
+      })
       .catch(() => setSubjects([]));
   }, []);
 

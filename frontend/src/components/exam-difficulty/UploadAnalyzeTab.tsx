@@ -64,7 +64,7 @@ export default function UploadAnalyzeTab() {
     // ——— Shared Filter state ———
     const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
     const [subjectId, setSubjectId] = useState<string>("");
-    const [gradeId, setGradeId] = useState<string>("");
+    const [gradeId, setGradeId] = useState<string>("6");
     const [semester, setSemester] = useState<string>("1");
     const [subTab, setSubTab] = useState<"existing" | "upload">("existing");
 
@@ -106,8 +106,8 @@ export default function UploadAnalyzeTab() {
                 }
                 const list = Array.from(seen, ([name, id]) => ({ id, name }));
                 setSubjects(list);
-                const toan = list.find((s) => s.name.toLowerCase().includes("toán"));
-                if (toan) setSubjectId(toan.id);
+                const toan6 = list.find((s) => s.name.toLowerCase().includes("toán 6")) || list.find((s) => s.name.toLowerCase().includes("toán"));
+                if (toan6) setSubjectId(toan6.id);
             })
             .catch(() => setUploadError("Không tải được danh mục môn học."));
     }, []);

@@ -83,7 +83,7 @@ export default function PassFailForecastPage() {
     // ——— Shared filter state ———
     const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
     const [subjectId, setSubjectId] = useState<string>(querySubjectId ?? "");
-    const [gradeLevel, setGradeLevel] = useState<string>("");
+    const [gradeLevel, setGradeLevel] = useState<string>("6");
     const [semester, setSemester] = useState<string>(querySemester ?? "1");
     const [activeTab, setActiveTab] = useState<"existing" | "upload">("existing");
 
@@ -135,8 +135,8 @@ export default function PassFailForecastPage() {
                 const list = Array.from(seen, ([name, id]) => ({ id, name }));
                 setSubjects(list);
                 if (!subjectId) {
-                    const toan = list.find((s) => s.name.toLowerCase().includes("toán"));
-                    if (toan) setSubjectId(toan.id);
+                    const toan6 = list.find((s) => s.name.toLowerCase().includes("toán 6")) || list.find((s) => s.name.toLowerCase().includes("toán"));
+                    if (toan6) setSubjectId(toan6.id);
                 }
             })
             .catch(() => setError("Không tải được danh sách môn học."));

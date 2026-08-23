@@ -80,8 +80,8 @@ export default function KnowledgeGapsPage() {
             .then((list) => {
                 const mapped = (list ?? []).map((s) => ({ id: String(s.id), name: s.name }));
                 setSubjects(mapped);
-                // Mặc định chọn môn Toán 6 (id 106) nếu có
-                const toan6 = mapped.find((m) => m.name.includes("Toán 6") || m.id === "106");
+                // Mặc định chọn môn Toán 6 (hoặc id 106) nếu có
+                const toan6 = mapped.find((m) => m.name.toLowerCase().includes("toán 6") || m.id === "106") || mapped.find((m) => m.name.toLowerCase().includes("toán"));
                 if (toan6) setSubjectId(toan6.id);
             })
             .catch(() => setError("Không tải được danh sách môn học."));
@@ -94,8 +94,9 @@ export default function KnowledgeGapsPage() {
             .then((list) => {
                 const mapped = (list ?? []).map((c) => ({ id: String(c.class_id), name: c.class_name }));
                 setClasses(mapped);
-                // Mặc định chọn lớp đầu tiên nếu có
-                if (mapped.length > 0) setClassId(mapped[0].id);
+                // Mặc định chọn lớp Khối 6 (6A1, 6A, Lớp 6...) nếu có
+                const class6 = mapped.find((c) => c.name.startsWith("6") || c.name.toLowerCase().includes("lớp 6") || c.name.toLowerCase().includes("6a")) || mapped[0];
+                if (class6) setClassId(class6.id);
             })
             .catch(() => setError("Không tải được danh sách lớp."));
     }, []);
