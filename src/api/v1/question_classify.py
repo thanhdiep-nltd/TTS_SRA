@@ -23,6 +23,7 @@ def classify_question(
     subject_code: Annotated[str, Form()],
     grade_number: Annotated[int, Form()],
     file: Annotated[UploadFile, File()],
+    semester_number: Annotated[int | None, Form()] = None,
     user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -41,7 +42,7 @@ def classify_question(
         if file_type == FileType.WORD:
             raise HTTPException(status_code=400, detail="Chỉ hỗ trợ ảnh hoặc PDF cho câu hỏi đơn.")
         try:
-            shortlist = question_classify.resolve_shortlist(db, subject_code, grade_number)
+            shortlist = question_classify.resolve_shortlist(db, subject_code, grade_number, semester_number)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:

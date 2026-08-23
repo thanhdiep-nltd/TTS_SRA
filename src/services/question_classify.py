@@ -43,8 +43,8 @@ def extract_question_text(path: Path, file_type: FileType) -> str:
     raise ValueError("Chỉ hỗ trợ ảnh hoặc PDF cho câu hỏi đơn.")
 
 
-def resolve_shortlist(db: Session, subject_code: str, grade: int) -> list[CurriculumUnit]:
-    """Lọc cây chương/bài active của (môn, khối) → shortlist node cho LLM map.
+def resolve_shortlist(db: Session, subject_code: str, grade: int, semester_number: int | None = None) -> list[CurriculumUnit]:
+    """Lọc cây chương/bài active của (môn, khối, học kỳ) → shortlist node cho LLM map.
 
     ValueError với message tiếng Việt rõ ràng khi môn/khối chưa có trong
     s360.dim_subject hoặc chưa nạp SGK — endpoint chuyển thành 422.
@@ -53,9 +53,10 @@ def resolve_shortlist(db: Session, subject_code: str, grade: int) -> list[Curric
     subject_id = subject_ids.get(grade)
     if subject_id is None:
         raise ValueError(f"Môn {subject_code.upper()} khối {grade} chưa có trong danh mục môn học.")
-    units = content_difficulty.build_shortlist(db, subject_id, grade, semester_number=None)
+    units = content_difficulty.build_shortlist(db, subject_id, grade, semester_number=semester_number)
     if not units:
-        raise ValueError(f"Môn {subject_code.upper()} khối {grade} chưa nạp SGK — hãy nạp sách trước.")
+        sem_str = f" học kỳ {semester_number}" if semester_number else ""
+        raise ValueError(f"Môn {subject_code.upper()} khối {grade}{sem_str} chưa nạp SGK — hãy nạp sách trước.")
     return units
 
 

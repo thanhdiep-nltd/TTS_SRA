@@ -39,6 +39,7 @@ export default function QuestionTestTab() {
   const [subjects, setSubjects] = useState<{ code: string; name: string }[]>([]);
   const [subjectCode, setSubjectCode] = useState("");
   const [grade, setGrade] = useState("6");
+  const [semester, setSemester] = useState<string>("1");
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -129,6 +130,9 @@ export default function QuestionTestTab() {
       const fd = new FormData();
       fd.append("subject_code", subjectCode);
       fd.append("grade_number", grade);
+      if (semester && semester !== "all") {
+        fd.append("semester_number", semester);
+      }
       fd.append("file", file);
       const res = await api.upload<QuestionClassifyResult>("/exam-difficulty/classify-question", fd);
       setResult(res);
@@ -150,14 +154,14 @@ export default function QuestionTestTab() {
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 flex items-start gap-3 shadow-sm">
         <Sparkles className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-          Dán (Ctrl+V) hoặc tải lên <b>1 ảnh / PDF của 1 câu hỏi</b> bất kỳ, chọn môn + khối — AI
+          Dán (Ctrl+V) hoặc tải lên <b>1 ảnh / PDF của 1 câu hỏi</b> bất kỳ, chọn môn + khối + học kỳ — AI
           (VLM + LLM) sẽ đọc nội dung và xác định câu hỏi thuộc{" "}
           <b>chương nào (và bài nào) trong SGK đã nạp</b> cho môn/khối đó. Kết quả chỉ để kiểm tra
           nhanh, không lưu lại.
         </p>
       </div>
 
-      {/* Bộ lọc môn + khối */}
+      {/* Bộ lọc môn + khối + học kỳ */}
       <div className="bg-white dark:bg-slate-900 border rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-sm">
         <div className="min-w-[220px] flex-1">
           <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học của câu hỏi</label>
@@ -172,7 +176,7 @@ export default function QuestionTestTab() {
             className="min-w-[220px]"
           />
         </div>
-        <div className="min-w-[140px]">
+        <div className="min-w-[130px]">
           <label className="text-xs font-semibold text-slate-500 mb-1 block">Khối</label>
           <SearchableSelect
             options={GRADE_OPTIONS}
@@ -182,7 +186,24 @@ export default function QuestionTestTab() {
               setResult(null);
             }}
             placeholder="Chọn khối..."
-            className="min-w-[140px]"
+            className="min-w-[130px]"
+          />
+        </div>
+        <div className="min-w-[110px]">
+          <label className="text-xs font-semibold text-slate-500 mb-1 block">Học kỳ</label>
+          <SearchableSelect
+            options={[
+              { value: "1", label: "HK1" },
+              { value: "2", label: "HK2" },
+              { value: "all", label: "Cả năm" },
+            ]}
+            value={semester}
+            onChange={(v) => {
+              setSemester(v);
+              setResult(null);
+            }}
+            placeholder="Học kỳ..."
+            className="min-w-[110px]"
           />
         </div>
       </div>

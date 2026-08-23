@@ -56,6 +56,7 @@ interface GroupedQuestion {
     id: string;
     questionNumber: number;
     questionText: string;
+    bloom_level: number;
     totalWeight: number;
     subItems: ExamAnalysisItem[];
 }
@@ -288,6 +289,7 @@ export default function UploadAnalyzeTab() {
                     id: `q-${groups.length + 1}`,
                     questionNumber: groups.length + 1,
                     questionText: key,
+                    bloom_level: item.bloom_level,
                     totalWeight: 0,
                     subItems: [],
                 };
@@ -295,6 +297,9 @@ export default function UploadAnalyzeTab() {
                 groups.push(group);
             }
             group.totalWeight += item.weight;
+            if (item.bloom_level > group.bloom_level) {
+                group.bloom_level = item.bloom_level;
+            }
             group.subItems.push(item);
         });
 
@@ -584,16 +589,21 @@ export default function UploadAnalyzeTab() {
                                             <span className="w-7 h-7 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
                                                 #{q.questionNumber}
                                             </span>
-                                            <div className="space-y-1 min-w-0 flex-1">
+                                            <div className="space-y-1.5 min-w-0 flex-1">
                                                 <p className="font-semibold text-sm text-slate-900 dark:text-white leading-snug">
                                                     {q.questionText}
                                                 </p>
-                                                {!isSingle && (
-                                                    <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium pt-0.5">
-                                                        <Target className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                                                        <span>Tích hợp {q.subItems.length} mục tiêu kiến thức / kỹ năng:</span>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${BLOOM_COLORS[q.bloom_level]}`}>
+                                                        Bloom {q.bloom_level} · {BLOOM_LABELS[q.bloom_level] ?? ""}
                                                     </span>
-                                                )}
+                                                    {!isSingle && (
+                                                        <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                                                            <Target className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                                                            <span>Tích hợp {q.subItems.length} mục tiêu kiến thức SGK:</span>
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
@@ -609,11 +619,10 @@ export default function UploadAnalyzeTab() {
                                     {/* Danh sách các Ý / Năng lực con bên trong câu */}
                                     <div className="space-y-2 pt-1">
                                         {q.subItems.map((sub, idx) => {
-                                            const bloomCls = BLOOM_COLORS[sub.bloom_level] ?? "bg-slate-100 text-slate-600";
                                             return (
                                                 <div
                                                     key={idx}
-                                                    className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-2 text-xs"
+                                                    className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 flex flex-wrap items-center justify-between gap-2 text-xs"
                                                 >
                                                     {/* Trái: Vị trí bài học SGK */}
                                                     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -630,12 +639,9 @@ export default function UploadAnalyzeTab() {
                                                         </div>
                                                     </div>
 
-                                                    {/* Phải: Mức Bloom & Trọng số của ý */}
+                                                    {/* Phải: Trọng số của ý */}
                                                     <div className="flex items-center gap-2.5 shrink-0">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${bloomCls}`}>
-                                                            Bloom {sub.bloom_level} · {BLOOM_LABELS[sub.bloom_level] ?? ""}
-                                                        </span>
-                                                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 min-w-[55px] text-right">
+                                                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 min-w-[45px] text-right">
                                                             {(sub.weight * 100).toFixed(1)}%
                                                         </span>
                                                     </div>

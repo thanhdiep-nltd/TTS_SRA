@@ -70,6 +70,7 @@ interface GroupedQuestion {
     id: string;
     questionNumber: number;
     questionText: string;
+    bloom_level: number;
     totalWeight: number;
     subItems: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
 }
@@ -710,6 +711,7 @@ function ExamIntelligencePanel({
                     id: `q-${groups.length + 1}`,
                     questionNumber: groups.length + 1,
                     questionText: key,
+                    bloom_level: item.bloom_level,
                     totalWeight: 0,
                     subItems: [],
                 };
@@ -717,6 +719,9 @@ function ExamIntelligencePanel({
                 groups.push(group);
             }
             group.totalWeight += item.weight;
+            if (item.bloom_level > group.bloom_level) {
+                group.bloom_level = item.bloom_level;
+            }
             group.subItems.push(item);
         });
 
@@ -825,9 +830,16 @@ function ExamIntelligencePanel({
                                         <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-black text-[11px] flex items-center justify-center shrink-0 mt-0.5">
                                             #{q.questionNumber}
                                         </span>
-                                        <span className="font-semibold text-slate-900 dark:text-white leading-tight">
-                                            {q.questionText}
-                                        </span>
+                                        <div className="space-y-1 min-w-0 flex-1">
+                                            <span className="font-semibold text-slate-900 dark:text-white leading-tight block">
+                                                {q.questionText}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold border ${BLOOM_COLORS[q.bloom_level]}`}>
+                                                    Bloom {q.bloom_level} · {BLOOM_LABELS[q.bloom_level] ?? ""}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
                                     <span className="text-brand-600 dark:text-brand-400 font-black shrink-0 text-[11px]">
                                         {(q.totalWeight * 100).toFixed(1)}%
@@ -837,7 +849,6 @@ function ExamIntelligencePanel({
                                 {/* Ý đánh giá con */}
                                 <div className="space-y-1.5 pl-2 border-l-2 border-slate-100 dark:border-slate-700/60">
                                     {q.subItems.map((sub, idx) => {
-                                        const bloomCls = BLOOM_COLORS[sub.bloom_level] ?? "bg-slate-100 text-slate-600";
                                         return (
                                             <div
                                                 key={idx}
@@ -850,9 +861,6 @@ function ExamIntelligencePanel({
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 shrink-0">
-                                                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${bloomCls}`}>
-                                                        B{sub.bloom_level}
-                                                    </span>
                                                     <span className="text-slate-500 font-medium">
                                                         {(sub.weight * 100).toFixed(1)}%
                                                     </span>
