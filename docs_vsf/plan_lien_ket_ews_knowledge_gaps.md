@@ -174,7 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_ts_lookup ON public.teaching_schedule(subject_id,
 
 #### 2.2. Tạo script import giáo án
 
-**File mới:** `scripts/import_toan6_lesson_plans.py`
+**File mới:** `docs_vsf/giao_an_toan_6/import_toan6_lesson_plans.py`
 
 **Luồng chính:**
 
@@ -424,7 +424,7 @@ Thêm prop `drilldownData` và state expandable rows.
 | 2 | `src/services/curriculum_ingest.py` | 🛠 SỬA | Retry/commit từng phần, không mất dữ liệu |
 | 3 | `src/api/v1/curriculum.py` | 🛠 SỬA | Thêm progress tracking chi tiết |
 | 4 | `src/db/mini_migrations.py` | ➕ THÊM | Bảng `teaching_schedule` |
-| 5 | `scripts/import_toan6_lesson_plans.py` | 🆕 TẠO MỚI | Parse docx → cm_* + teaching_schedule |
+| 5 | `docs_vsf/giao_an_toan_6/import_toan6_lesson_plans.py` | 🆕 TẠO MỚI | Parse docx → cm_* + teaching_schedule |
 | 6 | `data_mock/mock_full_data/seed_lms_questions.py` | 🆕 TẠO MỚI | Module seed LMS questions dùng chung |
 | 7 | `scripts/seed_mock_toan6_gaps.py` | 🛠 SỬA | Bỏ ID giả 9001..9034, dùng ID thật |
 | 8 | `data_mock/mock_full_data/generate_full_system_mock_v4.py` | 🛠 SỬA | Tăng số assignment, gọi seed_lms |
