@@ -321,7 +321,12 @@ def _build_mastery_tree(items: list[KnowledgeGapItem]) -> list[KnowledgeGapItem]
         child_lessons.sort(key=lambda lesson: lesson.unit_id)
         ch_item.lessons = child_lessons
         ch_item.total_lessons_count = len(child_lessons)
-        ch_item.gap_lessons_count = sum(1 for lesson in child_lessons if lesson.mastery < 0.60)
+        if child_lessons:
+            ch_raw_sum = sum((l.raw_mastery if l.raw_mastery is not None else l.mastery) for l in child_lessons)
+            ch_item.raw_mastery = round(ch_raw_sum / len(child_lessons), 3)
+            ch_item.gap_lessons_count = sum(1 for l in child_lessons if (l.raw_mastery if l.raw_mastery is not None else l.mastery) < 0.60)
+        else:
+            ch_item.gap_lessons_count = 1 if (ch_item.raw_mastery if ch_item.raw_mastery is not None else ch_item.mastery) < 0.60 else 0
         result_chapters.append(ch_item)
 
     # Nếu có bài học mà chapter chưa có trong danh sách, tạo node chapter bao bọc
@@ -329,6 +334,8 @@ def _build_mastery_tree(items: list[KnowledgeGapItem]) -> list[KnowledgeGapItem]
         if pid not in chapters_by_id:
             ch_name = ch_lessons[0].chapter or f"Chương {pid}"
             avg_m = round(sum(lesson.mastery for lesson in ch_lessons) / len(ch_lessons), 3) if ch_lessons else 0.0
+            ch_raw_sum = sum((l.raw_mastery if l.raw_mastery is not None else l.mastery) for l in ch_lessons)
+            avg_raw_m = round(ch_raw_sum / len(ch_lessons), 3) if ch_lessons else 0.0
             synthetic_ch = KnowledgeGapItem(
                 unit_id=pid,
                 parent_id=None,
@@ -338,12 +345,13 @@ def _build_mastery_tree(items: list[KnowledgeGapItem]) -> list[KnowledgeGapItem]
                 is_chapter=True,
                 gap_score=round(1.0 - avg_m, 3),
                 mastery=avg_m,
+                raw_mastery=avg_raw_m,
                 confidence=ch_lessons[0].confidence,
                 coverage=1.0,
                 integrity_status=ch_lessons[0].integrity_status,
                 evidence_source=ch_lessons[0].evidence_source,
                 lessons=ch_lessons,
-                gap_lessons_count=sum(1 for lesson in ch_lessons if lesson.mastery < 0.60),
+                gap_lessons_count=sum(1 for lesson in ch_lessons if (lesson.raw_mastery if lesson.raw_mastery is not None else lesson.mastery) < 0.60),
                 total_lessons_count=len(ch_lessons),
             )
             result_chapters.append(synthetic_ch)
@@ -728,30 +736,35 @@ def get_class_diagnostic_roster(
 
         # Tính toán các chỉ số cho học sinh
         if tree_gaps:
-            # Thu thập toàn bộ các bài học con hoặc chương để tính trung bình
+            # Thu thập toàn bộ các bài học con hoặc chương để tính trung bình theo LMS
             all_leaf_units: list[KnowledgeGapItem] = []
             weak_u: list[str] = []
             for ch in tree_gaps:
                 if ch.lessons:
                     all_leaf_units.extend(ch.lessons)
                     for lesson in ch.lessons:
-                        if lesson.mastery < 0.60:
+                        l_val = lesson.raw_mastery if lesson.raw_mastery is not None else lesson.mastery
+                        if l_val < 0.60:
                             weak_u.append(lesson.lesson or lesson.unit_name or f"Bài {lesson.unit_id}")
                 else:
                     all_leaf_units.append(ch)
-                    if ch.mastery < 0.60:
+                    ch_val = ch.raw_mastery if ch.raw_mastery is not None else ch.mastery
+                    if ch_val < 0.60:
                         weak_u.append(ch.unit_name or f"Chương {ch.unit_id}")
 
             total_u = len(all_leaf_units)
-            avg_m = round(sum(g.mastery for g in all_leaf_units) / total_u, 3) if total_u > 0 else 0.0
-            gap_c = sum(1 for g in all_leaf_units if g.mastery < 0.60)
-            mastered_c = sum(1 for g in all_leaf_units if g.mastery >= 0.60)
+            # Ưu tiên năng lực LMS thực chất làm chỉ số chính
+            avg_m = round(sum((g.raw_mastery if g.raw_mastery is not None else g.mastery) for g in all_leaf_units) / total_u, 3) if total_u > 0 else 0.0
+            gap_c = sum(1 for g in all_leaf_units if (g.raw_mastery if g.raw_mastery is not None else g.mastery) < 0.60)
+            mastered_c = sum(1 for g in all_leaf_units if (g.raw_mastery if g.raw_mastery is not None else g.mastery) >= 0.60)
 
-            # Xác định trạng thái đối soát tổng thể của em
-            if any(g.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING") for g in raw_items):
-                overall_integ = "LMS_EXCEEDS_EXAM"
-            elif any(g.integrity_status == "LOW_ENGAGEMENT" for g in raw_items):
+            # Xác định trạng thái đối soát tổng thể theo ĐA SỐ (Majority)
+            n_low = sum(1 for g in raw_items if g.integrity_status == "LOW_ENGAGEMENT")
+            n_exceed = sum(1 for g in raw_items if g.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING"))
+            if n_low > n_exceed:
                 overall_integ = "LOW_ENGAGEMENT"
+            elif n_exceed > 0:
+                overall_integ = "LMS_EXCEEDS_EXAM"
             elif any(g.integrity_status == "FLAGGED" for g in raw_items):
                 overall_integ = "FLAGGED"
             elif any(g.integrity_status == "LMS_ONLY" for g in raw_items):
