@@ -40,6 +40,7 @@ import NotificationBell from "./NotificationBell";
 
 const MENU = [
   { name: "Tổng quan Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { name: "Kế hoạch bài dạy", path: "/lesson-plans", icon: BookOpen },
   { name: "Bảng điểm", path: "/gradebook", icon: Table2 },
   { name: "Phân tích độ khó đề", path: "/exam-difficulty", icon: Gauge },
   { name: "Lỗ hổng kiến thức", path: "/knowledge-gaps", icon: AlertTriangle },

@@ -4,12 +4,13 @@
 // Cho phép giáo viên xem tổng quan theo Chương và mở rộng từng Bài học con bên trong.
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Award,
+  BookOpen,
   Brain,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   FileText,
   Info,
   Laptop,
@@ -394,14 +395,24 @@ export default function KnowledgeGapDetailDrawer({
                                   </p>
                                 </div>
 
-                                {/* Accordion công thức */}
-                                <button
-                                  onClick={() => toggleAccordion(lesson.unit_id)}
-                                  className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1 pt-1"
-                                >
-                                  <Info className="w-3 h-3" />
-                                  {isAccOpen ? "Ẩn công thức đối soát" : "Xem công thức đối soát"}
-                                </button>
+                                {/* Nút xem giáo án & Accordion công thức */}
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60 mt-3">
+                                  <Link
+                                    href={`/lesson-plans?unit_id=${lesson.unit_id}`}
+                                    className="text-[11px] font-bold text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1.5"
+                                  >
+                                    <BookOpen className="w-3.5 h-3.5" />
+                                    Xem Giáo Án Bài Dạy
+                                  </Link>
+
+                                  <button
+                                    onClick={() => toggleAccordion(lesson.unit_id)}
+                                    className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:underline flex items-center gap-1"
+                                  >
+                                    <Info className="w-3 h-3" />
+                                    {isAccOpen ? "Ẩn công thức" : "Xem công thức"}
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}

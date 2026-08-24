@@ -13,6 +13,7 @@ from src.api.v1 import (
     gradebook,
     knowledge,
     knowledge_gap,
+    lesson_plans,
     mappings,
     notifications,
     pass_fail_forecast,
@@ -52,6 +53,7 @@ api_router.include_router(chat.router)
 api_router.include_router(curriculum.router)
 api_router.include_router(recordings.router)
 api_router.include_router(knowledge_gap.router)
+api_router.include_router(lesson_plans.router)
 api_router.include_router(pass_fail_forecast.router)
 api_router.include_router(question_classify.router)
 

@@ -305,7 +305,7 @@ def _get_content_for_lesson(raw_lessons: list[dict], title: str) -> str:
 
 
 def _extract_targets_from_content(content: str) -> list[str]:
-    """Trích mục tiêu kiến thức từ nội dung giáo án."""
+    """Trích mục tiêu kiến thức/năng lực thực tế từ nội dung giáo án (bỏ qua các nhãn nhóm)."""
     import re
     targets = []
     in_target = False
@@ -320,33 +320,55 @@ def _extract_targets_from_content(content: str) -> list[str]:
         if "MỤC TIÊU" in line:
             in_target = True
             continue
-        # Kết thúc
-        if in_target and ("THIẾT BỊ" in line or "TIẾN TRÌNH" in line or line.startswith("II.")):
+        # Kết thúc khi gặp thiết bị hoặc tiến trình dạy học
+        if in_target and ("THIẾT BỊ" in line or "TIẾN TRÌNH" in line or line.startswith("II.") or "## II." in line):
             in_target = False
             continue
         if not in_target:
             continue
 
         line = line.strip()
-        if not line or len(line) < 8:
+        if not line:
             continue
-        # Bỏ dòng tiêu đề phụ
-        if re.match(r'^[\d.]+\s*(Kiến thức|Năng lực|Phẩm chất)', line):
+
+        # Bỏ tiêu đề lớn: 1. Kiến thức, 2. Năng lực, 3. Phẩm chất, #### 1. ..., #### 2. ...
+        if re.match(r'^(####\s*)?[\d.]+\s*(Kiến thức|Năng lực|Phẩm chất)', line, re.IGNORECASE):
             continue
         if re.match(r'^[a-d][).]\s*', line):
             continue
+            
+        # Làm sạch các tiền tố gạch đầu dòng, dấu sao
+        clean_line = re.sub(r'^[-\+*•\s]+', '', line).strip()
+        clean_line = re.sub(r'^\*\*|\*\*$', '', clean_line).strip()
+        
+        # Bỏ các dòng kết thúc bằng dấu hai chấm ngắn: "Năng lực riêng:", "HS củng cố, rèn luyện kĩ năng:"
+        if clean_line.endswith(":") and len(clean_line) < 35:
+            continue
+        if re.match(r'^(Năng lực riêng|Năng lực chung|Phẩm chất|Kiến thức):?$', clean_line, re.IGNORECASE):
+            continue
 
-        # Lấy dòng mục tiêu: bắt đầu bằng - hoặc + hoặc cụm "Biết...", "Nhận...", "Phát...", "Hiểu...", "Sử dụng...", "Vận dụng..."
-        if line.startswith("- ") or line.startswith("+ "):
-            t = line.lstrip("-+ ").strip()
-            if len(t) > 10:
-                targets.append(t[:200])
-        elif any(line.startswith(x) for x in ["Biết ", "Nhận ", "Phát ", "Hiểu ", "Sử dụng ", "Vận dụng ", "Thực hiện "]):
-            targets.append(line[:200])
+        # Nếu là dòng "Năng lực chung: ...", "Phẩm chất: ...", bóc tách phần nội dung
+        if clean_line.lower().startswith("năng lực chung:"):
+            clean_line = clean_line[len("năng lực chung:"):].strip()
+        elif clean_line.lower().startswith("phẩm chất:"):
+            clean_line = clean_line[len("phẩm chất:"):].strip()
+        elif clean_line.lower().startswith("năng lực riêng:"):
+            clean_line = clean_line[len("năng lực riêng:"):].strip()
 
-    if not targets:
-        targets.append("Nắm được kiến thức cơ bản của bài học")
-    return targets[:4]
+        if len(clean_line) > 10:
+            targets.append(clean_line[:250])
+
+    # Lọc trùng lặp giữ nguyên thứ tự
+    seen = set()
+    unique_targets = []
+    for t in targets:
+        if t not in seen:
+            seen.add(t)
+            unique_targets.append(t)
+
+    if not unique_targets:
+        unique_targets.append("Nắm được kiến thức cơ bản của bài học")
+    return unique_targets[:6]
 
 
 def main():

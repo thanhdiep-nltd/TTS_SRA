@@ -1492,3 +1492,92 @@ export interface PassFailForecastResult {
   students: StudentForecastRow[];
 }
 
+// ===== Lesson Plans (Kế hoạch bài dạy) =====
+export interface SubjectOption {
+  id: number;
+  code: string;
+  name: string;
+  has_lesson_plans: boolean;
+  grade_id: number | null;
+}
+
+export interface GradeOption {
+  id: number;
+  name: string;
+  has_lesson_plans: boolean;
+}
+
+export interface LessonTargetItem {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  order_number: number;
+}
+
+export interface LessonPlanBrief {
+  id: number;
+  code: string;
+  name: string;
+  period: number;
+  order_number: number;
+  unit_id: number;
+  curriculum_unit_id: number | null;
+  curriculum_unit_name: string | null;
+  has_plan: boolean;
+  target_count: number;
+  content_length: number;
+}
+
+export interface UnitTreeItem {
+  id: number;
+  code: string;
+  name: string;
+  order_number: number;
+  period: number;
+  lessons: LessonPlanBrief[];
+}
+
+export interface CourseTreeItem {
+  id: number;
+  code: string;
+  name: string;
+  period: number;
+  description: string | null;
+  units: UnitTreeItem[];
+}
+
+export interface CourseSummary {
+  id: number;
+  code: string;
+  name: string;
+  period: number;
+  description: string | null;
+  unit_count: number;
+  lesson_count: number;
+}
+
+export interface LessonPlanDetail {
+  lesson_id: number;
+  lesson_name: string;
+  lesson_code: string;
+  period: number;
+  order_number: number;
+  unit_id: number;
+  unit_name: string;
+  unit_code: string;
+  course_id: number;
+  course_name: string;
+  course_code: string;
+  curriculum_unit_id: number | null;
+  curriculum_unit_name: string | null;
+  curriculum_summary: string | null;
+  curriculum_keywords: string[] | null;
+  plan_id: number | null;
+  plan_name: string | null;
+  content_own: string | null;
+  description: string | null;
+  targets: LessonTargetItem[];
+  related_lms_questions_count: number;
+}
+
