@@ -1375,7 +1375,7 @@ export interface KnowledgeGapItem {
   mastery: number; // 0..1
   confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
   coverage?: number | null; // 0..1, độ phủ câu hỏi LMS cho chương
-  integrity_status?: string | null; // OK | SUSPECTED_CHEATING | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
+  integrity_status?: string | null; // OK | LMS_EXCEEDS_EXAM | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
   evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR | INSUFFICIENT
   evidence_detail: Record<string, unknown> | null;
   // Bằng chứng chi tiết (từ student_unit_mastery) — giải thích "tại sao có kết quả này"
@@ -1442,7 +1442,7 @@ export interface StudentRosterSummary {
   mastered_count: number;
   total_units: number;
   weak_units: string[];
-  integrity_status?: string | null; // OK | SUSPECTED_CHEATING | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
+  integrity_status?: string | null; // OK | LMS_EXCEEDS_EXAM | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
   confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
   evidence_source: string; // HYBRID | LMS | EXAM | INSUFFICIENT
   gaps: KnowledgeGapItem[];
@@ -1477,6 +1477,7 @@ export interface StudentForecastRow {
   predicted_score: number | null; // null = INSUFFICIENT (không đủ dữ liệu LMS)
   verdict: "PASS" | "FAIL" | "BORDERLINE" | "INSUFFICIENT";
   weak_units: WeakUnitInfo[];     // top 2 bài yếu nhất gây mất điểm
+  unit_abilities?: Record<number, number | null>;
 }
 
 export interface PassFailForecastResult {

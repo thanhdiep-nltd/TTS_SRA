@@ -20,6 +20,7 @@ class StudentForecastRow(BaseModel):
     predicted_score: float | None = None  # None = INSUFFICIENT (không đủ dữ liệu LMS)
     verdict: str  # 'PASS' | 'FAIL' | 'BORDERLINE' | 'INSUFFICIENT'
     weak_units: list[WeakUnitInfo] = Field(default_factory=list)  # top 2 bài gây mất điểm nhất
+    unit_abilities: dict[int, float | None] = Field(default_factory=dict)  # Bảng năng lực tất cả các bài trong đề
 
 
 class PassFailForecastResult(BaseModel):

@@ -19,7 +19,7 @@ class KnowledgeGapItem(BaseModel):
     mastery: float = Field(..., description="0..1, mức thành thạo (adjusted)")
     confidence: str | None = None  # 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT'
     coverage: float | None = None  # 0..1, độ phủ câu hỏi LMS cho chương này
-    integrity_status: str | None = None  # 'OK' | 'SUSPECTED_CHEATING' | 'LOW_ENGAGEMENT' | 'LMS_ONLY' | 'FLAGGED'
+    integrity_status: str | None = None  # 'OK' | 'LMS_EXCEEDS_EXAM' | 'LOW_ENGAGEMENT' | 'LMS_ONLY' | 'FLAGGED'
     evidence_source: str | None = None  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR' | 'INSUFFICIENT'
     evidence_detail: dict | None = None
     # Bằng chứng chi tiết (từ student_unit_mastery — giải thích "tại sao có kết quả này"):
@@ -113,7 +113,7 @@ class StudentRosterSummary(BaseModel):
     mastered_count: int = Field(0, description="Số chương đã nắm vững (>= 0.60)")
     total_units: int = Field(0, description="Tổng số chương được đánh giá")
     weak_units: list[str] = Field(default_factory=list, description="Danh sách tên các chương cần củng cố")
-    integrity_status: str | None = "OK"  # 'OK' | 'SUSPECTED_CHEATING' | 'LOW_ENGAGEMENT' | 'LMS_ONLY'
+    integrity_status: str | None = "OK"  # 'OK' | 'LMS_EXCEEDS_EXAM' | 'LOW_ENGAGEMENT' | 'LMS_ONLY'
     confidence: str | None = "HIGH"
     evidence_source: str = "HYBRID"
     gaps: list[KnowledgeGapItem] = Field(default_factory=list, description="Chi tiết từng chương để mở Drawer")
@@ -131,6 +131,6 @@ class ClassRosterResponse(BaseModel):
     total_students: int
     mastered_all_count: int = Field(0, description="Số học sinh nắm vững toàn bộ các chương")
     need_support_count: int = Field(0, description="Số học sinh có ít nhất 1 chương bị hổng")
-    cheating_alert_count: int = Field(0, description="Số học sinh có cảnh báo nghi gian lận")
+    cheating_alert_count: int = Field(0, description="Số học sinh có LMS vượt trội so với điểm thi chung")
     low_engagement_count: int = Field(0, description="Số học sinh có cảnh báo tham gia LMS thấp")
     students: list[StudentRosterSummary] = Field(default_factory=list)

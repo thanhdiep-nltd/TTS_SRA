@@ -24,8 +24,9 @@ import {
     X,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
+import StudentExamMatchingDrawer from "@/components/dashboard/StudentExamMatchingDrawer";
 import { api, ApiError } from "@/lib/api";
-import { ExamPaper, PassFailForecastResult, StudentForecastRow, WeakUnitInfo } from "@/lib/types";
+import { ExamPaper, ExamPaperDetail, PassFailForecastResult, StudentForecastRow, WeakUnitInfo } from "@/lib/types";
 
 type TeviStatus = "idle" | "running" | "done" | "failed";
 type TeviStep = "extract" | "decompose" | "cdi" | "forecast";
@@ -116,7 +117,9 @@ export default function PassFailForecastPage() {
     const [examPapers, setExamPapers] = useState<ExamPaper[]>([]);
     const [selectedExamId, setSelectedExamId] = useState<string>(queryExamId ?? "");
 
-    // ——— Exam analysis data (cho Panel Trái) ———
+    // ——— Exam analysis data & Side panel detail ———
+    const [selectedStudentForDrawer, setSelectedStudentForDrawer] = useState<StudentForecastRow | null>(null);
+    const [paperDetail, setPaperDetail] = useState<ExamPaperDetail | null>(null);
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisData, setAnalysisData] = useState<{
         cdi: number | null;
@@ -233,9 +236,14 @@ export default function PassFailForecastPage() {
         const examId = result?.exam_paper_id ? String(result.exam_paper_id) : selectedExamId;
         if (!examId) {
             setAnalysisData(null);
+            setPaperDetail(null);
             return;
         }
         setAnalysisLoading(true);
+        api.get<ExamPaperDetail>(`/exam-papers/${examId}`)
+            .then((p) => setPaperDetail(p))
+            .catch(() => setPaperDetail(null));
+
         api.get<any>(`/exam-papers/${examId}/content-analysis`)
             .then((data) => {
                 setAnalysisData({
@@ -659,6 +667,7 @@ export default function PassFailForecastPage() {
                                 students={filteredStudents}
                                 expandedCode={expandedCode}
                                 onToggleExpand={(code) => setExpandedCode(code === expandedCode ? null : code)}
+                                onOpenDrawer={(s) => setSelectedStudentForDrawer(s)}
                             />
                         ) : (
                             <div className="p-8 text-center text-xs text-slate-400">
@@ -667,6 +676,15 @@ export default function PassFailForecastPage() {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* SIDE PANEL ĐỐI SÁNH TỪNG CÂU HỎI VỚI NĂNG LỰC HỌC SINH */}
+            {selectedStudentForDrawer && paperDetail && (
+                <StudentExamMatchingDrawer
+                    student={selectedStudentForDrawer}
+                    examPaper={paperDetail}
+                    onClose={() => setSelectedStudentForDrawer(null)}
+                />
             )}
 
             {/* Empty state */}
@@ -909,8 +927,13 @@ function FilterChip({
 
 // ——— Forecast Table (PANEL PHẢI) ———
 function ForecastTable({
-    students, expandedCode, onToggleExpand,
-}: { students: StudentForecastRow[]; expandedCode: string | null; onToggleExpand: (code: string) => void }) {
+    students, expandedCode, onToggleExpand, onOpenDrawer,
+}: {
+    students: StudentForecastRow[];
+    expandedCode: string | null;
+    onToggleExpand: (code: string) => void;
+    onOpenDrawer: (student: StudentForecastRow) => void;
+}) {
     return (
         <div className="max-h-[580px] overflow-auto">
             <table className="w-full text-xs">
@@ -920,7 +943,7 @@ function ForecastTable({
                         <th className="px-0 py-2.5">Học sinh</th>
                         <th className="px-3 py-2.5">Điểm dự kiến</th>
                         <th className="px-2 py-2.5">Kết quả</th>
-                        <th className="px-3 py-2.5">Bài yếu nhất trong đề</th>
+                        <th className="px-3 py-2.5">Top bài hổng trong đề</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -932,6 +955,7 @@ function ForecastTable({
                                 student={s}
                                 isExpanded={isExpanded}
                                 onToggle={() => onToggleExpand(s.student_code)}
+                                onOpenDrawer={onOpenDrawer}
                             />
                         );
                     })}
@@ -942,16 +966,21 @@ function ForecastTable({
 }
 
 function ForecastRow({
-    student, isExpanded, onToggle,
-}: { student: StudentForecastRow; isExpanded: boolean; onToggle: () => void }) {
+    student, isExpanded, onToggle, onOpenDrawer,
+}: {
+    student: StudentForecastRow;
+    isExpanded: boolean;
+    onToggle: () => void;
+    onOpenDrawer: (student: StudentForecastRow) => void;
+}) {
     const isInsufficient = student.verdict === "INSUFFICIENT" || student.predicted_score === null;
     const verdictCls = isInsufficient
-        ? "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+        ? "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
         : student.verdict === "PASS"
-            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
             : student.verdict === "FAIL"
-                ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 font-bold"
-                : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 font-bold";
+                ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold"
+                : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold";
     const verdictLabel = isInsufficient
         ? "Thiếu LMS"
         : student.verdict === "PASS" ? "ĐẬU" : student.verdict === "FAIL" ? "TRƯỢT" : "RANH GIỚI";
@@ -961,7 +990,7 @@ function ForecastRow({
     return (
         <>
             <tr
-                className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 cursor-pointer transition-colors group"
                 onClick={onToggle}
             >
                 <td className="px-3 py-2.5 text-slate-400">
@@ -1005,33 +1034,48 @@ function ForecastRow({
                     </span>
                 </td>
                 <td className="px-3 py-2.5">
-                    {student.weak_units.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                            {student.weak_units.map((wu, i) => (
-                                <span
-                                    key={i}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-100 dark:border-rose-900/40"
-                                    title={`${wu.unit_name} — Điểm LMS: ${wu.ability !== null ? wu.ability.toFixed(1) : "—"}/10 · Chiếm ${(wu.exam_weight * 100).toFixed(0)}% điểm đề`}
-                                >
-                                    <AlertTriangle className="w-2.5 h-2.5 text-rose-500 shrink-0" />
-                                    <span className="max-w-[110px] truncate">{wu.unit_name}</span>
-                                    <span className="font-bold opacity-85">({(wu.exam_weight * 100).toFixed(0)}%)</span>
-                                </span>
-                            ))}
-                        </div>
-                    ) : (
-                        <span className="text-slate-400">—</span>
-                    )}
+                    <div className="flex items-center justify-between gap-2">
+                        {student.weak_units.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                                {student.weak_units.map((wu, i) => (
+                                    <span
+                                        key={i}
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-100 dark:border-rose-900/40"
+                                        title={`${wu.unit_name} — Điểm LMS: ${wu.ability !== null ? wu.ability.toFixed(1) : "—"}/10 · Chiếm ${(wu.exam_weight * 100).toFixed(0)}% điểm đề`}
+                                    >
+                                        <AlertTriangle className="w-2.5 h-2.5 text-rose-500 shrink-0" />
+                                        <span className="max-w-[110px] truncate">{wu.unit_name}</span>
+                                        <span className="font-bold opacity-85">({(wu.exam_weight * 100).toFixed(0)}%)</span>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <span className="text-slate-400">—</span>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenDrawer(student);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 text-[10px] font-semibold transition-all cursor-pointer shrink-0"
+                            title="Mở Side Panel đối sánh từng câu hỏi với năng lực LMS"
+                        >
+                            <Target className="w-3 h-3" />
+                            <span>Đối sánh cả đề</span>
+                        </button>
+                    </div>
                 </td>
             </tr>
             {/* Expanded row Drill-down */}
             {isExpanded && !isInsufficient && (
                 <tr>
                     <td colSpan={5} className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-                        <div className="text-xs space-y-2">
+                        <div className="text-xs space-y-2.5">
                             <p className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                                 <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                                <span>Chi tiết chẩn đoán năng lực LMS đối chiếu với đề thi:</span>
+                                <span>Top bài học sinh bị hổng nặng nhất trong đề thi (Cần phụ đạo gấp):</span>
                             </p>
                             {student.weak_units.length > 0 ? (
                                 <div className="space-y-1.5">
@@ -1060,10 +1104,24 @@ function ForecastRow({
                             ) : (
                                 <p className="text-slate-400 text-xs">Học sinh không có bài yếu trọng yếu nào trong đề thi này.</p>
                             )}
-                            <p className="text-[11px] text-slate-400 italic pt-0.5 flex items-center gap-1.5">
-                                <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                <span>Lời khuyên sư phạm: Cần củng cố sớm các bài trên trước ngày thi để kéo điểm dự báo lên mức ĐẬU an toàn.</span>
-                            </p>
+
+                            <div className="pt-2 flex items-center justify-between gap-3 flex-wrap border-t border-slate-200/60 dark:border-slate-700/60">
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic flex items-center gap-1.5">
+                                    <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span>Lời khuyên sư phạm: Cần củng cố sớm các bài trên trước ngày thi để kéo điểm dự báo lên mức ĐẬU an toàn.</span>
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onOpenDrawer(student);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 text-xs font-semibold transition-all cursor-pointer shadow-2xs shrink-0"
+                                >
+                                    <Target className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                                    <span>Đối sánh chi tiết cả đề (Side Panel)</span>
+                                </button>
+                            </div>
                         </div>
                     </td>
                 </tr>

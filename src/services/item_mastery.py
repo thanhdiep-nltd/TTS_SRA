@@ -137,10 +137,10 @@ def merge_onclass_adjustment(
     elif abs(delta) <= delta_warn:
         lm, ex, conf, status = 0.6, 0.4, "MEDIUM", "OK"
     elif delta > delta_warn:
-        # LMS ≫ thi → nghi gian lận (chép bài/dùng AI): bias mạnh về thi.
-        lm, ex, conf, status = 0.2, 0.8, "LOW", "SUSPECTED_CHEATING"
-    else:  # delta < -delta_warn: LMS ≪ thi → lười/kém tham gia, không phạt gian lận.
-        lm, ex, conf, status = 0.3, 0.7, "MEDIUM", "LOW_ENGAGEMENT"
+        # LMS ≫ thi → LMS vượt trội so với bài thi chung: kết hợp cân bằng, ghi nhận nỗ lực bài tập.
+        lm, ex, conf, status = 0.5, 0.5, "MEDIUM", "LMS_EXCEEDS_EXAM"
+    else:  # delta < -delta_warn: LMS ≪ thi → ít luyện tập trên LMS, ưu tiên điểm thi thực tế.
+        lm, ex, conf, status = 0.4, 0.6, "MEDIUM", "LOW_ENGAGEMENT"
 
     raw.lm_weight, raw.exam_weight = lm, ex
     raw.confidence = conf

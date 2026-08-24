@@ -124,23 +124,23 @@ def test_merge_buffer_zone_medium():
     assert out.adjusted_mastery == 0.92
 
 
-def test_merge_suspected_cheating():
-    # LMS 1.0 vs thi 0.4 → Δ=0.6 > 0.30 → nghi gian lận, bias về thi.
+def test_merge_lms_exceeds_exam():
+    # LMS 1.0 vs thi 0.4 → Δ=0.6 > 0.30 → LMS vượt trội, kết hợp cân bằng.
     raw = raw_unit_mastery(_items([1.0] * 5))
     out = merge_onclass_adjustment(raw, exam_mastery=0.4)
-    assert out.lm_weight == 0.2 and out.exam_weight == 0.8
-    assert out.confidence == "LOW"
-    assert out.integrity_status == "SUSPECTED_CHEATING"
-    # adjusted = 0.2*1.0 + 0.8*0.4 = 0.52 < 0.6 → is_gap
-    assert out.adjusted_mastery == 0.52
-    assert out.is_gap is True
+    assert out.lm_weight == 0.5 and out.exam_weight == 0.5
+    assert out.confidence == "MEDIUM"
+    assert out.integrity_status == "LMS_EXCEEDS_EXAM"
+    # adjusted = 0.5*1.0 + 0.5*0.4 = 0.70 >= 0.6 → not gap
+    assert out.adjusted_mastery == 0.70
+    assert out.is_gap is False
 
 
 def test_merge_low_engagement():
-    # LMS 0.4 vs thi 0.9 → Δ=-0.5 < -0.30 → lười, không phạt gian lận.
+    # LMS 0.4 vs thi 0.9 → Δ=-0.5 < -0.30 → ít luyện tập LMS.
     raw = raw_unit_mastery(_items([0.4] * 5))
     out = merge_onclass_adjustment(raw, exam_mastery=0.9)
-    assert out.lm_weight == 0.3 and out.exam_weight == 0.7
+    assert out.lm_weight == 0.4 and out.exam_weight == 0.6
     assert out.confidence == "MEDIUM"
     assert out.integrity_status == "LOW_ENGAGEMENT"
 

@@ -45,11 +45,12 @@ const CONFIDENCE_META: Record<string, { label: string; cls: string; dotCls: stri
 
 // Badge trạng thái đối soát (integrity)
 const INTEGRITY_META: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-    OK: { label: "Khớp trên lớp", cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20", icon: <CheckCircle2 className="w-3 h-3 text-emerald-500" /> },
-    SUSPECTED_CHEATING: { label: "Nghi gian lận", cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20", icon: <ShieldAlert className="w-3 h-3 text-rose-500" /> },
-    LOW_ENGAGEMENT: { label: "Tham gia LMS thấp", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20", icon: <Laptop className="w-3 h-3 text-amber-500" /> },
-    LMS_ONLY: { label: "Chỉ từ LMS", cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20", icon: <Laptop className="w-3 h-3 text-sky-500" /> },
-    FLAGGED: { label: "Cần kiểm chứng", cls: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20", icon: <AlertTriangle className="w-3 h-3 text-rose-500" /> },
+    OK: { label: "Đồng thuận", cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20", icon: <CheckCircle2 className="w-3 h-3 text-emerald-500" /> },
+    LMS_EXCEEDS_EXAM: { label: "LMS vượt trội", cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20", icon: <TrendingUp className="w-3 h-3 text-sky-500" /> },
+    SUSPECTED_CHEATING: { label: "LMS vượt trội", cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20", icon: <TrendingUp className="w-3 h-3 text-sky-500" /> },
+    LOW_ENGAGEMENT: { label: "Ít luyện tập LMS", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20", icon: <Laptop className="w-3 h-3 text-amber-500" /> },
+    LMS_ONLY: { label: "Chỉ từ LMS", cls: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700", icon: <Laptop className="w-3 h-3 text-slate-500" /> },
+    FLAGGED: { label: "Cần kiểm chứng", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20", icon: <AlertTriangle className="w-3 h-3 text-amber-500" /> },
 };
 
 type FilterTab = "ALL" | "NEED_SUPPORT" | "MASTERED" | "ALERT";
@@ -139,6 +140,7 @@ export default function KnowledgeGapsPage() {
             if (activeTab === "MASTERED") return s.gap_count === 0 && s.total_units > 0;
             if (activeTab === "ALERT")
                 return (
+                    s.integrity_status === "LMS_EXCEEDS_EXAM" ||
                     s.integrity_status === "SUSPECTED_CHEATING" ||
                     s.integrity_status === "LOW_ENGAGEMENT" ||
                     s.integrity_status === "FLAGGED"
@@ -278,14 +280,14 @@ export default function KnowledgeGapsPage() {
                         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
                             <div>
                                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 block">
-                                    Cảnh Báo Đối Soát LMS
+                                    Lệch Điểm Đối Soát LMS
                                 </span>
                                 <div className="flex items-baseline gap-2 mt-1">
                                     <span className={`text-2xl font-black ${rosterData.cheating_alert_count + rosterData.low_engagement_count > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                                         {rosterData.cheating_alert_count + rosterData.low_engagement_count}
                                     </span>
                                     <span className="text-xs font-medium text-slate-400">
-                                        ({rosterData.cheating_alert_count} gian lận • {rosterData.low_engagement_count} lười)
+                                        ({rosterData.cheating_alert_count} LMS vượt trội • {rosterData.low_engagement_count} ít làm bài)
                                     </span>
                                 </div>
                             </div>

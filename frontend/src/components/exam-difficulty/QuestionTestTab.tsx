@@ -7,8 +7,10 @@ import {
   ClipboardPaste,
   FileText,
   ImagePlus,
+  Layers,
   Loader2,
   Sparkles,
+  Target,
   Trash2,
 } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -351,13 +353,14 @@ export default function QuestionTestTab() {
                           </span>
                           {isMulti && (
                             <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
                                 isPrimary
                                   ? "bg-brand-100 text-brand-700 dark:bg-brand-900/50 dark:text-brand-300 border border-brand-200 dark:border-brand-800"
                                   : "bg-slate-200/70 text-slate-600 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-300/60 dark:border-slate-600"
                               }`}
                             >
-                              {isPrimary ? "🎯 Trọng tâm chính" : "🔗 Tích hợp / Bổ trợ"} ({sharePct}% câu)
+                              {isPrimary ? <Target className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                              <span>{isPrimary ? "Trọng tâm chính" : "Tích hợp / Bổ trợ"} ({sharePct}% câu)</span>
                             </span>
                           )}
                         </div>

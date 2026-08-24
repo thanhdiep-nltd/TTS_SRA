@@ -171,21 +171,30 @@ def _calculate_forecast(
     ).fetchall()
     unit_names: dict[int, str] = {int(r.id): str(r.name) for r in unit_name_rows if r.name}
 
-    student_rows = [
-        StudentForecastRow(
-            student_code=f.student_code,
-            student_name=code_to_info.get(f.student_code, {}).get("student_name"),
-            class_name=code_to_info.get(f.student_code, {}).get("class_name"),
-            predicted_score=f.predicted_score,
-            verdict=f.verdict,
-            weak_units=compute_weak_units(
-                next((s for s in students if s.student_code == f.student_code), students[0]),
-                units,
-                unit_names,
-            ),
+    students_by_code = {s.student_code: s for s in students}
+    student_rows = []
+    for f in forecasts:
+        st_obj = students_by_code.get(f.student_code)
+        ab_dict = (
+            {u_id: (round(ab, 2) if ab is not None else None) for u_id, ab in st_obj.ability.items()}
+            if st_obj and st_obj.ability
+            else {}
         )
-        for f in forecasts
-    ]
+        student_rows.append(
+            StudentForecastRow(
+                student_code=f.student_code,
+                student_name=code_to_info.get(f.student_code, {}).get("student_name"),
+                class_name=code_to_info.get(f.student_code, {}).get("class_name"),
+                predicted_score=f.predicted_score,
+                verdict=f.verdict,
+                weak_units=compute_weak_units(
+                    st_obj or students[0],
+                    units,
+                    unit_names,
+                ),
+                unit_abilities=ab_dict,
+            )
+        )
 
     return PassFailForecastResult(
         exam_paper_id=exam_paper_id,

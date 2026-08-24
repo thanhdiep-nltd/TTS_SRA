@@ -748,8 +748,8 @@ def get_class_diagnostic_roster(
             mastered_c = sum(1 for g in all_leaf_units if g.mastery >= 0.60)
 
             # Xác định trạng thái đối soát tổng thể của em
-            if any(g.integrity_status == "SUSPECTED_CHEATING" for g in raw_items):
-                overall_integ = "SUSPECTED_CHEATING"
+            if any(g.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING") for g in raw_items):
+                overall_integ = "LMS_EXCEEDS_EXAM"
             elif any(g.integrity_status == "LOW_ENGAGEMENT" for g in raw_items):
                 overall_integ = "LOW_ENGAGEMENT"
             elif any(g.integrity_status == "FLAGGED" for g in raw_items):
@@ -804,7 +804,7 @@ def get_class_diagnostic_roster(
         total_students=len(roster),
         mastered_all_count=sum(1 for s in roster if s.gap_count == 0 and s.total_units > 0),
         need_support_count=sum(1 for s in roster if s.gap_count > 0),
-        cheating_alert_count=sum(1 for s in roster if s.integrity_status == "SUSPECTED_CHEATING"),
+        cheating_alert_count=sum(1 for s in roster if s.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING")),
         low_engagement_count=sum(1 for s in roster if s.integrity_status == "LOW_ENGAGEMENT"),
         students=roster,
     )
