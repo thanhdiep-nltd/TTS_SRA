@@ -4,10 +4,12 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import {
   AlertTriangle,
   BookOpen,
+  Brain,
   Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Database,
   Eraser,
   FileUp,
   Folder,
@@ -60,6 +62,7 @@ interface CurriculumBookRow {
   is_locked?: boolean;
   filename: string | null;
   unit_count: number;
+  chunk_count: number;
   created_at: string | null;
 }
 
@@ -304,8 +307,15 @@ function BookCard({
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
               {book.title}
             </p>
-            <p className="text-[11px] text-slate-400">
-              {book.subject_code} · {book.unit_count} node
+            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
+              <span>{book.subject_code} · {book.unit_count} node</span>
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+                book.chunk_count > 0
+                  ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                  : "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+              }`}>
+                {book.chunk_count > 0 ? `🧠 ${book.chunk_count} chunks` : "⚠️ Chưa index"}
+              </span>
             </p>
           </div>
           <span className="inline-flex mt-2 px-2 py-1 rounded-lg text-[11px] font-semibold bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-900 group-hover:bg-brand-100 dark:group-hover:bg-brand-900/40 transition-colors self-start">
@@ -377,6 +387,14 @@ export default function AdminCurriculumPage() {
   const [clearingEnrichment, setClearingEnrichment] = useState(false);
   const [reEnrichMsg, setReEnrichMsg] = useState<string | null>(null);
   const [reEnrichErr, setReEnrichErr] = useState<string | null>(null);
+
+  // Cắt và index chunks RAG trực tiếp (không quét lại mục lục)
+  const [reIndexingChunks, setReIndexingChunks] = useState(false);
+  const [reIndexMsg, setReIndexMsg] = useState<string | null>(null);
+  const [reIndexErr, setReIndexErr] = useState<string | null>(null);
+  const [bookToIndexChunks, setBookToIndexChunks] = useState<CurriculumBookRow | null>(null);
+  const [chunkModalVlmModel, setChunkModalVlmModel] = useState<string>("google/gemini-3.7-flash");
+  const [chunkModalCustomModel, setChunkModalCustomModel] = useState<string>("");
 
   // Lịch sử nạp sách (job queue, poll như EWS)
   const [ingestJobs, setIngestJobs] = useState<BookIngestJob[]>([]);
@@ -809,6 +827,31 @@ export default function AdminCurriculumPage() {
       setReEnrichErr(e?.message ?? "Không xóa được dữ liệu làm giàu.");
     } finally {
       setClearingEnrichment(false);
+    }
+  };
+
+  // Cắt lát và index chunks RAG trực tiếp (không quét lại mục lục/cây bài)
+  const handleExecuteIndexChunks = async () => {
+    if (!bookToIndexChunks) return;
+    setReIndexingChunks(true);
+    setReIndexErr(null);
+    setReIndexMsg(null);
+    const finalModel = chunkModalVlmModel === "custom" ? chunkModalCustomModel.trim() : chunkModalVlmModel;
+    try {
+      const res = await api.post<{ book_id: number; title: string; chunk_count: number; message: string }>(
+        `/curriculum/books/${bookToIndexChunks.id}/re-index-chunks`,
+        { vlm_model: finalModel || null }
+      );
+      setReIndexMsg(res.message || `Đã index thành công ${res.chunk_count} chunks RAG vào PostgreSQL.`);
+      await fetchBooks();
+      if (activeBook && activeBook.id === bookToIndexChunks.id) {
+        setActiveBook((prev) => (prev ? { ...prev, chunk_count: res.chunk_count } : null));
+      }
+      setBookToIndexChunks(null);
+    } catch (e: any) {
+      setReIndexErr(e?.message ?? "Lỗi khi cắt và index chunks.");
+    } finally {
+      setReIndexingChunks(false);
     }
   };
 
@@ -1453,8 +1496,18 @@ export default function AdminCurriculumPage() {
                 )}
               </h3>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs text-slate-400">{units.length} node</span>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <span className="text-xs text-slate-400">
+                {units.length} node
+                {activeBook && (
+                  <>
+                    {" "}·{" "}
+                    <strong className={(activeBook.chunk_count ?? 0) > 0 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-amber-600 dark:text-amber-400 font-medium"}>
+                      {(activeBook.chunk_count ?? 0) > 0 ? `🧠 ${activeBook.chunk_count} chunks` : "⚠️ Chưa có chunks"}
+                    </strong>
+                  </>
+                )}
+              </span>
               {activeBook && (
                 <>
                   <button
@@ -1477,10 +1530,27 @@ export default function AdminCurriculumPage() {
                     )}
                     <span>{activeBook.is_locked ? "Sách Đã Khóa 🔒" : "Khóa sách"}</span>
                   </button>
+
+                  {/* Nút Index Chunks (RAG) riêng lẻ — mở modal chọn model */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReIndexErr(null);
+                      setReIndexMsg(null);
+                      setBookToIndexChunks(activeBook);
+                    }}
+                    disabled={reIndexingChunks || reEnriching || clearingEnrichment || activeBook.is_locked}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 transition-colors disabled:opacity-50"
+                    title={activeBook.is_locked ? "Sách đã bị khóa" : "Cắt lát các bài học hiện có và nhúng vector RAG vào pgvector (không quét lại mục lục, tiết kiệm chi phí)"}
+                  >
+                    {reIndexingChunks ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
+                    <span>{reIndexingChunks ? "Đang xử lý..." : "Index chunks (RAG)"}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleReEnrich}
-                    disabled={reEnriching || clearingEnrichment || activeBook.is_locked}
+                    disabled={reEnriching || reIndexingChunks || clearingEnrichment || activeBook.is_locked}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 transition-colors disabled:opacity-50"
                     title={activeBook.is_locked ? "Sách đã bị khóa" : "Chạy lại bước làm giàu (tóm tắt/từ khóa/mục con) từ file PDF gốc đã lưu"}
                   >
@@ -1490,7 +1560,7 @@ export default function AdminCurriculumPage() {
                   <button
                     type="button"
                     onClick={handleClearEnrichment}
-                    disabled={clearingEnrichment || reEnriching || activeBook.is_locked}
+                    disabled={clearingEnrichment || reIndexingChunks || reEnriching || activeBook.is_locked}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 transition-colors disabled:opacity-50"
                     title={activeBook.is_locked ? "Sách đã bị khóa" : "Xóa sạch toàn bộ tóm tắt, từ khóa, mục con của cuốn này để làm giàu lại từ đầu"}
                   >
@@ -1500,7 +1570,7 @@ export default function AdminCurriculumPage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteBook(activeBook)}
-                    disabled={clearingEnrichment || reEnriching || activeBook.is_locked}
+                    disabled={clearingEnrichment || reIndexingChunks || reEnriching || activeBook.is_locked}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors disabled:opacity-50"
                     title={activeBook.is_locked ? "Sách đã bị khóa" : `Xóa cuốn "${activeBook.title}" và toàn bộ node`}
                   >
@@ -1529,6 +1599,16 @@ export default function AdminCurriculumPage() {
                 Mở khóa sách
               </button>
             </div>
+          )}
+          {reIndexMsg && (
+            <p className="px-5 py-2 text-xs text-purple-700 dark:text-purple-300 bg-purple-50/60 dark:bg-purple-950/20 border-b border-purple-100 dark:border-purple-900/40 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-purple-600" /> {reIndexMsg}
+            </p>
+          )}
+          {reIndexErr && (
+            <p className="px-5 py-2 text-xs text-rose-600 dark:text-rose-400 bg-rose-50/60 dark:bg-rose-950/20 border-b border-rose-100 dark:border-rose-900/40 flex items-center gap-1.5">
+              <X className="w-3.5 h-3.5 shrink-0" /> {reIndexErr}
+            </p>
           )}
           {reEnrichMsg && (
             <p className="px-5 py-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 border-b border-emerald-100 dark:border-emerald-900/40 flex items-center gap-1.5">
@@ -2238,6 +2318,128 @@ export default function AdminCurriculumPage() {
                 className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 transition-opacity cursor-pointer"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Cắt Lát & Index Chunks (RAG) */}
+      {bookToIndexChunks && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg flex flex-col rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-purple-50/50 dark:bg-purple-950/20">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/60">
+                  <Brain className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    Cắt Lát & Index Chunks (RAG)
+                  </h4>
+                  <p className="text-xs text-slate-500 truncate max-w-xs" title={bookToIndexChunks.title}>
+                    Cuốn: <strong>{bookToIndexChunks.title}</strong> ({bookToIndexChunks.subject_code} · Khối {bookToIndexChunks.grade_number})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !reIndexingChunks && setBookToIndexChunks(null)}
+                disabled={reIndexingChunks}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 rounded-xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 text-purple-900 dark:text-purple-200 space-y-1">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Cắt lát bài học & Tạo Vector Embeddings</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
+                  Hệ thống sẽ lấy danh sách <strong>{units.length} node bài học</strong> đã có trong DB và cắt thành các chunks theo đề mục, sau đó nhúng vector RAG vào CSDL pgvector. <strong>Hoàn toàn KHÔNG quét lại mục lục</strong>, tiết kiệm tối đa chi phí.
+                </p>
+              </div>
+
+              {/* VLM Model Selector */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Chọn Mô hình AI (VLM OCR nếu có trang scan):
+                </label>
+                <select
+                  value={chunkModalVlmModel}
+                  onChange={(e) => setChunkModalVlmModel(e.target.value)}
+                  disabled={reIndexingChunks}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-500 font-medium cursor-pointer"
+                >
+                  <optgroup label="OpenRouter (Khuyên dùng)">
+                    <option value="google/gemini-3.7-flash">⚡ Google Gemini 3.7 Flash (Mới nhất, siêu rẻ & nhanh)</option>
+                    <option value="xiaomi/mimo-v2.5">⚡ Xiaomi Mimo 2.5</option>
+                    <option value="openai/gpt-4o-mini">⚡ OpenAI GPT-4o Mini</option>
+                    <option value="qwen/qwen-2.5-vl-72b-instruct">⚡ Qwen 2.5 VL 72B Instruct</option>
+                  </optgroup>
+                  <optgroup label="ShopAIKey / DashScope">
+                    <option value="qwen3-vl-flash">🇨🇳 Qwen 3 VL Flash (ShopAIKey)</option>
+                  </optgroup>
+                  <option value="custom">✏️ Tùy chỉnh Model ID...</option>
+                </select>
+              </div>
+
+              {chunkModalVlmModel === "custom" && (
+                <div className="space-y-1.5 animate-in fade-in duration-150">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Nhập Model ID Tùy Chỉnh:
+                  </label>
+                  <input
+                    type="text"
+                    value={chunkModalCustomModel}
+                    onChange={(e) => setChunkModalCustomModel(e.target.value)}
+                    placeholder="Ví dụ: google/gemini-2.0-flash-001 hoặc qwen/qwen-vl-plus"
+                    disabled={reIndexingChunks}
+                    className="w-full px-3.5 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              )}
+
+              {reIndexErr && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+                  <X className="w-4 h-4 shrink-0" />
+                  <span>{reIndexErr}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setBookToIndexChunks(null)}
+                disabled={reIndexingChunks}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteIndexChunks}
+                disabled={reIndexingChunks}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {reIndexingChunks ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang index vector RAG...</span>
+                  </>
+                ) : (
+                  <>
+                    <Brain className="w-3.5 h-3.5" />
+                    <span>Bắt đầu Index Vector</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

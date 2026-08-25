@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_db, require_roles
 from src.models import enums
-from src.models.tables import CurriculumBook, CurriculumIngestJob, CurriculumUnit, TeachingSchedule, User
+from src.models.tables import CurriculumBook, CurriculumChunk, CurriculumIngestJob, CurriculumUnit, TeachingSchedule, User
 from src.schemas.curriculum import (
     BookClearEnrichmentResult,
     BookDeleteResult,
@@ -30,6 +30,7 @@ from src.schemas.curriculum import (
     BookIngestResult,
     BookLockToggleResult,
     BookReEnrichRequest,
+    BookReIndexChunksResult,
     CurriculumBookRead,
     CurriculumUnitRead,
     CurriculumUploadResult,
@@ -323,6 +324,12 @@ def commit_book_catalog(
                     src.unlink(missing_ok=True)
                 except OSError:
                     pass
+                # Cắt lát và index chunks vector (RAG)
+                try:
+                    from src.services.curriculum_chunking import index_book_chunks
+                    index_book_chunks(db, book_id, dst)
+                except Exception as chunk_exc:
+                    logger.warning("Không index được chunks cho cuốn %s: %s", book_id, chunk_exc)
     except OSError as exc:
         logger.warning("Không lưu được file gốc cuốn %s: %s", book_id, exc)
 
@@ -350,9 +357,13 @@ def list_books(
     if not books:
         return []
     counts: dict[int, int] = {}
+    chunk_counts: dict[int, int] = {}
     for bid in [b.id for b in books]:
         counts[bid] = (
             db.execute(select(CurriculumUnit.id).where(CurriculumUnit.book_id == bid)).scalars().all().__len__()
+        )
+        chunk_counts[bid] = (
+            db.execute(select(CurriculumChunk.id).where(CurriculumChunk.book_id == bid)).scalars().all().__len__()
         )
     years: dict[int, str] = {}
     try:
@@ -374,6 +385,7 @@ def list_books(
             filename=b.filename,
             source=b.source,
             unit_count=counts.get(b.id, 0),
+            chunk_count=chunk_counts.get(b.id, 0),
             created_at=b.created_at.isoformat() if b.created_at else None,
         )
         for b in books
@@ -484,6 +496,40 @@ def re_enrich_book(
     db.refresh(job)
     background_tasks.add_task(process_next_curriculum_ingest_job)
     return _job_to_read(db, job)
+
+
+@router.post("/books/{book_id}/re-index-chunks", response_model=BookReIndexChunksResult)
+def re_index_book_chunks(
+    book_id: int,
+    payload: BookReEnrichRequest | None = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """Cắt lát và index lại chunks RAG vào pgvector cho 1 cuốn sách mà không cần quét lại mục lục/cây bài."""
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+    src = _book_pdf_path(book_id)
+    if not src.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Cuốn này chưa có file PDF gốc trong hệ thống — hãy nạp lại cuốn.",
+        )
+    from src.services.curriculum_chunking import index_book_chunks
+    from src.services.curriculum_ingest import _get_runtime_settings
+
+    s = _get_runtime_settings(vlm_model=payload.vlm_model if payload else None)
+    try:
+        count = index_book_chunks(db, book_id, src, settings=s)
+        return BookReIndexChunksResult(
+            book_id=book.id,
+            title=book.title,
+            chunk_count=count,
+            message=f"Đã cắt và index thành công {count} chunks RAG vào PostgreSQL (pgvector).",
+        )
+    except Exception as exc:
+        logger.exception("Lỗi khi index chunks cho cuốn %s: %s", book_id, exc)
+        raise HTTPException(status_code=500, detail=f"Lỗi khi index chunks: {exc}") from exc
 
 
 @router.post("/units/{unit_id}/toggle-active", response_model=CurriculumUnitRead)

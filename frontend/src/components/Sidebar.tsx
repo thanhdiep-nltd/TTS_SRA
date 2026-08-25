@@ -42,6 +42,7 @@ const MENU = [
   { name: "Tổng quan Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Kế hoạch bài dạy", path: "/lesson-plans", icon: BookOpen },
   { name: "Bảng điểm", path: "/gradebook", icon: Table2 },
+  { name: "Chương trình (catalog)", path: "/admin/curriculum", icon: FolderTree },
   { name: "Phân tích độ khó đề", path: "/exam-difficulty", icon: Gauge },
   { name: "Lỗ hổng kiến thức", path: "/knowledge-gaps", icon: AlertTriangle },
   { name: "Dự đoán pass/fail", path: "/pass-fail-forecast", icon: TrendingUp },
@@ -60,7 +61,6 @@ const ADMIN_MENU = [
   { name: "Học sinh", path: "/admin/students", icon: Users },
   { name: "Tài khoản & Phân công", path: "/admin/users", icon: UserCog },
   { name: "Kho tri thức & SGK", path: "/admin/knowledge", icon: Database },
-  { name: "Chương trình (catalog)", path: "/admin/curriculum", icon: FolderTree },
   { name: "Đánh giá & Thống kê AI", path: "/admin/ai-metrics", icon: BarChart3 },
   { name: "Giám sát Multi-Agent", path: "/dashboard/agents", icon: Network },
 ];

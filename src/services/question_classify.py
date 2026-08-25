@@ -26,20 +26,24 @@ _MAX_PDF_PAGES = 3
 _MAX_CANDIDATES = 3
 
 
-def extract_question_text(path: Path, file_type: FileType) -> str:
+def extract_question_text(path: Path, file_type: FileType, vlm_model: str | None = None) -> str:
     """Đọc nội dung 1 câu hỏi từ file (ảnh hoặc PDF) bằng VLM — giữ LaTeX công thức.
 
     Nâng VlmUnavailableError nếu VLM chưa cấu hình/lỗi — endpoint chuyển thành 503
     với message thân thiện. Loại file khác → ValueError (endpoint trả 400).
     """
+    from src.services.curriculum_ingest import _get_runtime_settings
+
+    runtime_settings = _get_runtime_settings(vlm_model=vlm_model) if vlm_model else None
+
     if file_type == FileType.IMAGE:
-        return vlm.read_image_bytes(path.read_bytes())
+        return vlm.read_image_bytes(path.read_bytes(), settings=runtime_settings)
     if file_type == FileType.PDF:
         import fitz  # PyMuPDF — đã có trong deps
 
         with fitz.open(path) as doc:
             end = min(doc.page_count, _MAX_PDF_PAGES)
-        return vlm.read_pdf_pages_range(path, start_page=1, end_page=end)
+        return vlm.read_pdf_pages_range(path, start_page=1, end_page=end, settings=runtime_settings)
     raise ValueError("Chỉ hỗ trợ ảnh hoặc PDF cho câu hỏi đơn.")
 
 
@@ -100,14 +104,26 @@ def _merge_resolved(
 
 
 def classify_question(
-    text: str, shortlist: list[CurriculumUnit], llm: Any | None = None
+    text: str,
+    shortlist: list[CurriculumUnit],
+    llm: Any | None = None,
+    db: Session | None = None,
+    subject_id: int | None = None,
+    grade_number: int | None = None,
 ) -> QuestionClassifyResult:
-    """Map 1 câu hỏi (text) vào cây chương/bài — kết quả cấu trúc cho UI.
+    """Map 1 câu hỏi (text) vào cây chương/bài — kết quả cấu trúc cho UI (Hỗ trợ Hybrid RAG).
 
     Text quá ngắn (< ngưỡng pipeline đề) hoặc LLM không parse được → matched=False;
     rejudge 1 lần cho ý không khớp node; không khớp → off_curriculum + node gợi ý.
     """
-    items = content_difficulty.map_items(text, shortlist, llm)
+    items = content_difficulty.map_items(
+        text,
+        shortlist,
+        llm=llm,
+        db=db,
+        subject_id=subject_id,
+        grade_number=grade_number,
+    )
     if not items:
         return QuestionClassifyResult(
             text=text,

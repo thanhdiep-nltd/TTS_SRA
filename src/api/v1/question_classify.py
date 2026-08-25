@@ -24,6 +24,7 @@ def classify_question(
     grade_number: Annotated[int, Form()],
     file: Annotated[UploadFile, File()],
     semester_number: Annotated[int | None, Form()] = None,
+    vlm_model: Annotated[str | None, Form()] = None,
     user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -49,9 +50,18 @@ def classify_question(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
-            text = question_classify.extract_question_text(storage.exam_file_path(stored), file_type)
+            text = question_classify.extract_question_text(
+                storage.exam_file_path(stored), file_type, vlm_model=vlm_model
+            )
         except vlm.VlmUnavailableError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return question_classify.classify_question(text, shortlist)
+        subject_id = shortlist[0].subject_id if shortlist else None
+        return question_classify.classify_question(
+            text,
+            shortlist,
+            db=db,
+            subject_id=subject_id,
+            grade_number=grade_number,
+        )
     finally:
         storage.delete_exam_file(stored)

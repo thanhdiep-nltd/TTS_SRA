@@ -252,6 +252,8 @@ CREATE TABLE public.curriculum_units (
     summary         TEXT,
     keywords        TEXT[],
     sections        JSONB,               -- [{"name": "..."}] — mục con trong bài theo thứ tự (không kind taxonomy)
+    start_page      INTEGER,             -- Trang PDF bắt đầu bài học (0-indexed)
+    end_page        INTEGER,             -- Trang PDF kết thúc bài học (0-indexed)
     semester_number SMALLINT CHECK (semester_number IN (1, 2)), -- NULL = dạy cả năm; 1/2 = học kỳ (SGK tập 1/tập 2)
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,              -- FALSE = ẩn khỏi picker (node rác cũ)
     is_phu          BOOLEAN NOT NULL DEFAULT FALSE,             -- TRUE = node phụ (Ôn tập/Kiểm tra/Hoạt động) — loại khỏi shortlist map đề
@@ -301,7 +303,24 @@ CREATE TABLE public.teaching_schedules (
 CREATE INDEX idx_ts_lookup ON public.teaching_schedules(school_year_id, subject_id, grade_number, week_number);
 CREATE INDEX idx_ts_unit   ON public.teaching_schedules(unit_id);
 
--- 4d. Job nạp sách giáo khoa (hàng đợi DB-backed — giống ews_pipeline_jobs)
+-- 4d. Đoạn văn bản trích xuất SGK phục vụ RAG (Hierarchical RAG)
+CREATE TABLE public.curriculum_chunks (
+    id              BIGSERIAL PRIMARY KEY,
+    book_id         BIGINT NOT NULL REFERENCES public.curriculum_books(id) ON DELETE CASCADE,
+    unit_id         BIGINT REFERENCES public.curriculum_units(id) ON DELETE CASCADE,
+    page_number     INTEGER NOT NULL,
+    heading         VARCHAR(255),
+    context_path    VARCHAR(500),
+    chunk_text      TEXT NOT NULL,
+    embedding       vector(1536),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_curri_chunk_book ON public.curriculum_chunks(book_id);
+CREATE INDEX idx_curri_chunk_unit ON public.curriculum_chunks(unit_id);
+CREATE INDEX idx_curri_chunk_page ON public.curriculum_chunks(page_number);
+CREATE INDEX idx_curri_chunk_embedding ON public.curriculum_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
+
+-- 4e. Job nạp sách giáo khoa (hàng đợi DB-backed — giống ews_pipeline_jobs)
 CREATE TABLE public.curriculum_ingest_jobs (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     requested_by    BIGINT REFERENCES public.users(id) ON DELETE CASCADE,

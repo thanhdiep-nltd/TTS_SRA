@@ -758,6 +758,8 @@ def build_unit_specs_from_chapters(
                 "summary": ch.get("summary"),
                 "keywords": ch.get("keywords") or None,
                 "sections": ch.get("sections") or None,
+                "start_page": ch.get("start_page"),
+                "end_page": ch.get("end_page"),
             }
         )
         if not include_lessons:
@@ -773,6 +775,8 @@ def build_unit_specs_from_chapters(
                     "summary": lesson.get("summary"),
                     "keywords": lesson.get("keywords") or None,
                     "sections": lesson.get("sections") or None,
+                    "start_page": lesson.get("start_page"),
+                    "end_page": lesson.get("end_page"),
                 }
             )
     return specs
@@ -816,6 +820,8 @@ def upsert_unit_tree(
                 summary=spec.get("summary"),
                 keywords=spec.get("keywords"),
                 sections=spec.get("sections"),
+                start_page=spec.get("start_page"),
+                end_page=spec.get("end_page"),
             )
             db.add(unit)
             inserted += 1
@@ -825,6 +831,10 @@ def upsert_unit_tree(
             unit.parent_id = parent_id
             unit.is_phu = spec.get("is_phu", False)
             unit.is_active = True
+            if spec.get("start_page") is not None:
+                unit.start_page = spec["start_page"]
+            if spec.get("end_page") is not None:
+                unit.end_page = spec["end_page"]
             if overwrite_enrichment:
                 unit.summary = spec.get("summary")
                 unit.keywords = spec.get("keywords")
@@ -977,6 +987,8 @@ def ingest_book(
             "name": spec["name"],
             "semester_number": spec["semester_number"],
             "is_phu": spec["is_phu"],
+            "start_page": spec.get("start_page"),
+            "end_page": spec.get("end_page"),
             "summary": spec.get("summary"),
             "keywords": spec.get("keywords") or None,
             "sections": spec.get("sections") or None,
@@ -985,6 +997,8 @@ def ingest_book(
                     "code": child["code"],
                     "name": child["name"],
                     "is_phu": child["is_phu"],
+                    "start_page": child.get("start_page"),
+                    "end_page": child.get("end_page"),
                     "summary": child.get("summary"),
                     "keywords": child.get("keywords") or None,
                     "sections": child.get("sections") or None,

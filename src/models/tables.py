@@ -24,6 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB, UUID
+from pgvector.sqlalchemy import Vector
 
 from src.db.base import Base
 from src.models import enums
@@ -344,6 +345,8 @@ class CurriculumUnit(Base):
     summary = Column(Text)
     keywords = Column(ARRAY(Text))
     sections = Column(JSONB)
+    start_page = Column(Integer, nullable=True)  # Trang PDF bắt đầu bài học (0-indexed)
+    end_page = Column(Integer, nullable=True)    # Trang PDF kết thúc bài học (0-indexed)
     # NULL = SGK không tách tập (dạy cả năm, vd KHTN); 1/2 = chỉ thuộc học kỳ đó (SGK tập 1/tập 2).
     semester_number = Column(SmallInteger)
     # False = ẩn khỏi picker (rác phân mảnh taxonomy cũ, còn bị exam_competencies tham chiếu
@@ -423,6 +426,27 @@ class TeachingSchedule(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class CurriculumChunk(Base):
+    """Đoạn văn bản trích xuất từ SGK kèm vector embedding để phục vụ RAG (Hierarchical RAG)."""
+
+    __tablename__ = "curriculum_chunks"
+    __table_args__ = (
+        Index("idx_curri_chunk_book", "book_id"),
+        Index("idx_curri_chunk_unit", "unit_id"),
+        Index("idx_curri_chunk_page", "page_number"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    book_id = Column(BigInteger, ForeignKey("curriculum_books.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"), nullable=True)
+    page_number = Column(Integer, nullable=False)
+    heading = Column(String(255), nullable=True)
+    context_path = Column(String(500), nullable=True)
+    chunk_text = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
 class CurriculumIngestJob(Base):

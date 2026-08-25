@@ -20,6 +20,8 @@ class CurriculumUnitRead(BaseModel):
     summary: str | None = None
     keywords: list[str] | None = None
     sections: list[dict] | None = None
+    start_page: int | None = None
+    end_page: int | None = None
     book_id: int | None = None
     book_title: str | None = None
 
@@ -41,6 +43,8 @@ class IngestedLessonRead(BaseModel):
     code: str
     name: str
     is_phu: bool = False
+    start_page: int | None = None
+    end_page: int | None = None
     summary: str | None = None
     keywords: list[str] | None = None
     sections: list[dict] | None = None
@@ -53,6 +57,8 @@ class IngestedChapterRead(BaseModel):
     name: str
     semester_number: int | None = None
     is_phu: bool = False
+    start_page: int | None = None
+    end_page: int | None = None
     summary: str | None = None
     keywords: list[str] | None = None
     sections: list[dict] | None = None
@@ -94,7 +100,7 @@ class BookIngestJobRead(BaseModel):
 
 
 class CurriculumBookRead(BaseModel):
-    """1 cuốn SGK đã nạp, kèm số node chương/bài thuộc cuốn."""
+    """1 cuốn SGK đã nạp, kèm số node chương/bài và số chunks RAG thuộc cuốn."""
 
     id: int
     title: str
@@ -108,6 +114,7 @@ class CurriculumBookRead(BaseModel):
     filename: str | None = None
     source: str | None = None
     unit_count: int = 0
+    chunk_count: int = 0
     created_at: str | None = None
 
 
@@ -168,6 +175,15 @@ class BookReEnrichRequest(BaseModel):
     """Tham số khi yêu cầu chạy lại bước làm giàu nội dung cho một cuốn sách."""
 
     vlm_model: str | None = None
+
+
+class BookReIndexChunksResult(BaseModel):
+    """Kết quả index chunks và vector cho một cuốn sách."""
+
+    book_id: int
+    title: str
+    chunk_count: int
+    message: str
 
 
 

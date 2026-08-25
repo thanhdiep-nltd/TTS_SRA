@@ -135,10 +135,18 @@ def process_next_curriculum_ingest_job() -> None:
             if not next_job.dry_run and book_id is not None and source_file is not None:
                 try:
                     from src.api.v1.curriculum import _BOOK_DIR, _book_pdf_path
+                    from src.services.curriculum_chunking import index_book_chunks
 
                     _BOOK_DIR.mkdir(parents=True, exist_ok=True)
-                    _book_pdf_path(book_id).write_bytes(source_file.read_bytes())
+                    saved_pdf = _book_pdf_path(book_id)
+                    saved_pdf.write_bytes(source_file.read_bytes())
                     source_file.unlink(missing_ok=True)
+
+                    # Cắt lát và index chunks vector (RAG)
+                    try:
+                        index_book_chunks(db, book_id, saved_pdf)
+                    except Exception as chunk_exc:
+                        logger.warning("Không index được chunks cho cuốn %s: %s", book_id, chunk_exc)
                 except (OSError, ImportError) as exc:  # noqa: BLE001
                     logger.warning("Không lưu được file gốc cuốn %s: %s", book_id, exc)
             logger.info("Curriculum ingest job %s hoàn tất: %d chương", next_job.id, len(result.get("chapters", [])))

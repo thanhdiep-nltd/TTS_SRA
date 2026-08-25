@@ -252,11 +252,13 @@ _MAP_HEADER_LINES = [
 ]
 
 
-def build_map_system_prompt(shortlist: list[CurriculumUnit]) -> str:
-    """Dựng System Prompt cố định (instructions + shortlist node) để tối ưu hóa Prompt Caching."""
+def build_map_system_prompt(shortlist: list[CurriculumUnit], evidence_text: str | None = None) -> str:
+    """Dựng System Prompt cố định (instructions + shortlist node + evidence nếu có) để tối ưu hóa Prompt Caching."""
     lines = list(_MAP_HEADER_LINES)
     if shortlist:
         lines.append(f"\nDANH SÁCH NODE:\n{build_node_listing(shortlist)}")
+    if evidence_text:
+        lines.append(f"\n{evidence_text}")
     example = (
         '[{"topic": "...", "nodes": [{"node_id": 1, "weight": 0.6}, {"node_id": 2, "weight": 0.4}], '
         '"bloom_level": 4, "off_curriculum_weight": 0.0, "excerpt": "...", "confidence": 0.9, "reason": "..."}]'
@@ -264,9 +266,9 @@ def build_map_system_prompt(shortlist: list[CurriculumUnit]) -> str:
     return "\n".join(lines) + f"\n\nCHỈ trả về 1 JSON array, không giải thích, không markdown:\n{example}"
 
 
-def build_map_prompt(text: str, shortlist: list[CurriculumUnit]) -> str:
+def build_map_prompt(text: str, shortlist: list[CurriculumUnit], evidence_text: str | None = None) -> str:
     """Dựng prompt chuỗi đơn (dành cho fallback / kiểm thử)."""
-    return build_map_system_prompt(shortlist) + f"\n\nNội dung đề:\n{text}"
+    return build_map_system_prompt(shortlist, evidence_text=evidence_text) + f"\n\nNội dung đề:\n{text}"
 
 
 def parse_mapped_items(raw: str, valid_ids: set[int]) -> list[MappedItem]:
@@ -298,13 +300,14 @@ def _invoke_map(
     text: str,
     shortlist: list[CurriculumUnit],
     system_override: str | None = None,
+    evidence_text: str | None = None,
 ) -> str:
     """Gọi LLM 1 lần với cấu trúc [SystemMessage, HumanMessage] tối ưu Prompt Caching (DeepSeek/OpenAI).
 
-    Phần SystemMessage (instructions + danh sách node) cố định cho cùng môn/khối → DeepSeek tự động hit
+    Phần SystemMessage (instructions + danh sách node + evidence) giúp DeepSeek tự động hit
     Context Cache (giảm 90% chi phí và giảm 80% latency).
     """
-    system_content = system_override or build_map_system_prompt(shortlist)
+    system_content = system_override or build_map_system_prompt(shortlist, evidence_text=evidence_text)
     user_content = f"Nội dung đề/câu hỏi cần phân tích:\n{text[:8000]}"
     messages = [
         SystemMessage(content=system_content),
@@ -332,15 +335,35 @@ def _invoke_map(
     return response.content if isinstance(response.content, str) else str(response.content)
 
 
-def map_items(text: str, shortlist: list[CurriculumUnit], llm: Any | None = None) -> list[MappedItem]:
-    """LLM decompose đề + map mỗi ý vào 1–3 node trong shortlist; retry 1 lần khi parse hỏng."""
+def map_items(
+    text: str,
+    shortlist: list[CurriculumUnit],
+    llm: Any | None = None,
+    evidence_text: str | None = None,
+    db: Session | None = None,
+    subject_id: int | None = None,
+    grade_number: int | None = None,
+) -> list[MappedItem]:
+    """LLM decompose đề + map mỗi ý vào 1–3 node trong shortlist; hỗ trợ inject Bằng chứng SGK (RAG)."""
     if len(text.strip()) < _MIN_CLASSIFY_CHARS:
         return []
+
+    # Tự động truy vấn pgvector nếu có context DB và chưa truyền sẵn evidence_text
+    if not evidence_text and db is not None and subject_id is not None and grade_number is not None:
+        try:
+            from src.services.curriculum_chunking import format_evidence_for_prompt, search_curriculum_chunks
+
+            hits = search_curriculum_chunks(db, text, subject_id, grade_number, top_k=3, score_floor=0.45)
+            if hits and hits[0].get("similarity", 0) >= 0.45:
+                evidence_text = format_evidence_for_prompt(hits)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Lỗi tự động truy xuất evidence pgvector trong map_items: %s", exc)
+
     model = llm or get_llm()
     valid_ids = {unit.id for unit in shortlist}
-    items = parse_mapped_items(_invoke_map(model, text, shortlist), valid_ids)
+    items = parse_mapped_items(_invoke_map(model, text, shortlist, evidence_text=evidence_text), valid_ids)
     if not items:
-        items = parse_mapped_items(_invoke_map(model, text, shortlist), valid_ids)
+        items = parse_mapped_items(_invoke_map(model, text, shortlist, evidence_text=evidence_text), valid_ids)
     return items
 
 

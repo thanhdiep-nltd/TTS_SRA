@@ -400,7 +400,7 @@ export default function PassFailForecastPage() {
                     <div>
                         <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                             <Target className="w-5 h-5 text-brand-600" />
-                            Dự đoán Pass / Fail Đề Cuối Kỳ
+                            Dự đoán Pass / Fail
                         </h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                             Tải đề thi hoặc chọn đề có sẵn → AI phân tích ma trận → dự đoán tỉ lệ trượt/pass dựa trên năng lực LMS từng bài
