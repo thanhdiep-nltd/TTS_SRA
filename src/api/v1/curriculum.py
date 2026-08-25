@@ -24,9 +24,11 @@ from src.api.deps import get_current_user, get_db, require_roles
 from src.models import enums
 from src.models.tables import CurriculumBook, CurriculumIngestJob, CurriculumUnit, User
 from src.schemas.curriculum import (
+    BookClearEnrichmentResult,
     BookDeleteResult,
     BookIngestJobRead,
     BookIngestResult,
+    BookReEnrichRequest,
     CurriculumBookRead,
     CurriculumUnitRead,
     CurriculumUploadResult,
@@ -40,9 +42,9 @@ router = APIRouter(
     dependencies=[Depends(require_roles(enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL, enums.UserRole.SUBJECT_HEAD))],
 )
 
-_TMP_DIR = Path(__file__).resolve().parents[2] / "uploads" / "curriculum_tmp"
+_TMP_DIR = Path(__file__).resolve().parents[3] / "uploads" / "curriculum_tmp"
 # Thư mục lưu file PDF GỐC của từng cuốn SGK (để render ảnh bìa/trang đầu khi xem danh sách sách).
-_BOOK_DIR = Path(__file__).resolve().parents[2] / "uploads" / "curriculum_books"
+_BOOK_DIR = Path(__file__).resolve().parents[3] / "uploads" / "curriculum_books"
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,7 @@ def _job_to_read(db: Session, job: CurriculumIngestJob) -> BookIngestJobRead:
         semester_number=job.semester_number,
         filename=job.filename,
         book_title=job.book_title,
+        vlm_model=getattr(job, "vlm_model", None),
         result=result,
         error=job.error_message,
         created_at=job.created_at.isoformat() if job.created_at else None,
@@ -188,7 +191,8 @@ def ingest_book(
     grade: Annotated[int, Form()],
     semester: Annotated[int | None, Form()] = None,
     book_title: Annotated[str | None, Form()] = None,
-    include_lessons: Annotated[bool, Form()] = False,
+    vlm_model: Annotated[str | None, Form()] = None,
+    include_lessons: Annotated[bool, Form()] = True,
     enrich: Annotated[bool, Form()] = True,
     dry_run: Annotated[bool, Form()] = True,
     current_user: Annotated[User, Depends(get_current_user)] = None,
@@ -218,6 +222,7 @@ def ingest_book(
         dry_run=dry_run,
         filename=file.filename or "book.pdf",
         book_title=book_title,
+        vlm_model=vlm_model.strip() if vlm_model and vlm_model.strip() else None,
         source_filepath=str(tmp),
         status="pending",
     )
@@ -412,6 +417,7 @@ def book_cover(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
 @router.post("/books/{book_id}/re-enrich", response_model=BookIngestJobRead, status_code=202)
 def re_enrich_book(
     book_id: int,
+    payload: BookReEnrichRequest | None = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,
     background_tasks: BackgroundTasks = None,
     db: Annotated[Session, Depends(get_db)] = None,
@@ -452,6 +458,7 @@ def re_enrich_book(
         dry_run=False,
         filename=book.filename,
         book_title=book.title,
+        vlm_model=payload.vlm_model if payload else None,
         source_filepath=str(tmp),
         status="pending",
     )
@@ -485,6 +492,30 @@ def toggle_unit_active(unit_id: int, db: Annotated[Session, Depends(get_db)] = N
         sections=unit.sections,
         book_id=unit.book_id,
     )
+
+@router.post("/books/{book_id}/clear-enrichment", response_model=BookClearEnrichmentResult)
+def clear_book_enrichment(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
+    """Xóa sạch toàn bộ tóm tắt, từ khóa, mục con của tất cả các node thuộc 1 cuốn sách."""
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+
+    units = list(
+        db.execute(select(CurriculumUnit).where(CurriculumUnit.book_id == book_id)).scalars().all()
+    )
+    for u in units:
+        u.summary = None
+        u.keywords = None
+        u.sections = None
+    db.commit()
+
+    return BookClearEnrichmentResult(
+        book_id=book.id,
+        title=book.title,
+        cleared_units_count=len(units),
+        message=f"Đã xóa sạch nội dung làm giàu của {len(units)} node thuộc cuốn '{book.title}'.",
+    )
+
 
 @router.delete("/books/{book_id}", response_model=BookDeleteResult)
 def delete_book(book_id: int, db: Annotated[Session, Depends(get_db)] = None):

@@ -24,7 +24,49 @@ def _settings(**overrides):
 
 def test_is_configured_requires_key():
     assert vlm.is_configured(_settings()) is True
-    assert vlm.is_configured(_settings(vlm_api_key="")) is False
+    assert vlm.is_configured(_settings(vlm_api_key="", qwen_vlm_api_key="", openrouter_api_key="")) is False
+
+
+def test_resolve_vlm_config_providers():
+    """Kiểm tra switch provider động qua vlm_provider."""
+    # 1. OpenRouter
+    s_or = _settings(
+        vlm_provider="openrouter",
+        openrouter_api_key="sk-or-test",
+        openrouter_vlm_model="google/gemini-2.0-flash-001",
+        openrouter_api_base="https://openrouter.ai/api/v1",
+    )
+    p, m, url, k = vlm.resolve_vlm_config(s_or)
+    assert p == "OpenRouter"
+    assert m == "google/gemini-2.0-flash-001"
+    assert url == "https://openrouter.ai/api/v1"
+    assert k == "sk-or-test"
+
+    # 2. Qwen
+    s_qwen = _settings(
+        vlm_provider="qwen",
+        qwen_vlm_api_key="sk-qwen-test",
+        qwen_vlm_model="qwen3-vl-flash",
+        qwen_vlm_api_base="https://direct.shopaikey.com/v1",
+    )
+    p, m, url, k = vlm.resolve_vlm_config(s_qwen)
+    assert p == "Qwen"
+    assert m == "qwen3-vl-flash"
+    assert url == "https://direct.shopaikey.com/v1"
+    assert k == "sk-qwen-test"
+
+    # 3. OpenAI
+    s_oai = _settings(
+        vlm_provider="openai",
+        openai_api_key="sk-oai-test",
+        openai_api_base="https://api.openai.com/v1",
+        openai_vlm_model="gpt-4o-mini",
+    )
+    p, m, url, k = vlm.resolve_vlm_config(s_oai)
+    assert p == "OpenAI"
+    assert m == "gpt-4o-mini"
+    assert url == "https://api.openai.com/v1"
+    assert k == "sk-oai-test"
 
 
 def test_read_image_bytes_raises_when_not_configured():

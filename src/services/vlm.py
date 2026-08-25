@@ -97,18 +97,144 @@ def scan_prompt_with_anchors(anchors: str) -> str:
     return _SCAN_PROMPT + _ANCHOR_RULE.format(anchors=anchors)
 
 
+_TOC_DYNAMIC_TREE_PROMPT = (
+    "Bạn là chuyên gia bóc tách cấu trúc Sách Giáo Khoa (SGK). Nhiệm vụ của bạn là đọc các ảnh chụp các trang MỤC LỤC (Table of Contents) "
+    "được cung cấp và trích xuất TOÀN BỘ cây danh mục Chương và Bài học xuất hiện trên các trang đó thành 1 JSON object duy nhất.\n\n"
+    "QUY TẮC BẮT BUỘC:\n"
+    "1. GIỮ NGUYÊN 100% TIÊU ĐỀ ĐẦY ĐỦ: Giữ nguyên số thứ tự (ví dụ 'Bài 1.', 'Bài 11.', 'Unit 3:'), "
+    "tên bài và toàn bộ nội dung phụ/mô tả sau dấu ':' (ví dụ 'Hoạt động thực hành và trải nghiệm: Sử dụng máy tính cầm tay'). "
+    "TUYỆT ĐỐI KHÔNG ĐƯỢC CẮT BỎ phụ đề hay gộp các bài trùng tên.\n"
+    "2. TRÍCH XUẤT CHÍNH XÁC SỐ TRANG IN (page): Lấy số trang in tương ứng ở cột bên phải của từng chương/bài (ví dụ: '... 42' -> 42).\n"
+    "3. PHÂN LOẠI kind: 'chinh' cho các bài học lý thuyết/trọng tâm; 'phu' cho ôn tập chương, bài tập cuối chương, thực hành trải nghiệm, kiểm tra.\n"
+    "4. BỎ QUA CÁC TRANG KHÔNG PHẢI MỤC LỤC: Nếu trong các ảnh có trang bìa, lời nói đầu, hoặc trang nội dung bài học, chỉ cần bỏ qua và không trích xuất từ các trang đó.\n"
+    "5. BỎ CÁC MỤC NGOÀI CHƯƠNG TRÌNH: 'Lời nói đầu', 'Bảng giải thích thuật ngữ', 'Bảng tra cứu', 'Phụ lục'.\n\n"
+    "ĐỊNH DẠNG ĐẦU RA (CHỈ TRẢ VỀ 1 JSON OBJECT, KHÔNG KÈM TEXT HAY MARKDOWN):\n"
+    "{\n"
+    '  "chapters": [\n'
+    "    {\n"
+    '      "name": "CHƯƠNG I: SỐ TỰ NHIÊN",\n'
+    '      "page": 4,\n'
+    '      "lessons": [\n'
+    '        {"name": "Bài 1. Tập hợp. Phần tử của tập hợp", "page": 4, "kind": "chinh"},\n'
+    '        {"name": "Bài 2. Tập hợp số tự nhiên. Ghi số tự nhiên", "page": 9, "kind": "chinh"},\n'
+    '        {"name": "Bài 11. Hoạt động thực hành và trải nghiệm: Sử dụng máy tính cầm tay", "page": 42, "kind": "phu"},\n'
+    '        {"name": "Bài tập cuối chương I", "page": 45, "kind": "phu"}\n'
+    "      ]\n"
+    "    }\n"
+    "  ]\n"
+    "}"
+)
+
+
+def toc_dynamic_tree_prompt() -> str:
+    """Prompt trích xuất cấu trúc mục lục dạng cây đệ quy động."""
+    return _TOC_DYNAMIC_TREE_PROMPT
+
+
+def read_toc_pages(
+    path: Path,
+    page_indices: list[int],
+    settings: Settings | None = None,
+    dpi: int = 150,
+) -> str:
+    """Render các trang Mục Lục (TOC) từ PDF → gọi VLM bóc tách cây Chương/Bài kèm số trang in trong 1 request duy nhất."""
+    s = settings or get_settings()
+    if not is_configured(s):
+        raise VlmUnavailableError("Thiếu VLM_API_KEY — user sẽ cấu hình sau.")
+    import fitz
+
+    with fitz.open(path) as doc:
+        images = [
+            base64.b64encode(doc.load_page(i).get_pixmap(dpi=dpi).tobytes("png")).decode("ascii")
+            for i in page_indices
+            if i < doc.page_count
+        ]
+    if not images:
+        return json.dumps({"chapters": []})
+    return _chat_completions(images, s, _TOC_DYNAMIC_TREE_PROMPT)
+
+
+def _extract_chapters_from_obj(obj: dict[str, Any]) -> list[dict[str, Any]]:
+    """Trích xuất và chuẩn hóa danh sách chapters từ dict JSON."""
+    chapters_raw = (obj or {}).get("chapters") or (obj or {}).get("units") or []
+    if not isinstance(chapters_raw, list):
+        return []
+
+    chapters: list[dict[str, Any]] = []
+    for ch in chapters_raw:
+        if not isinstance(ch, dict):
+            continue
+        ch_name = str(ch.get("name") or ch.get("title") or "").strip()
+        if not ch_name:
+            continue
+        lessons_raw = ch.get("lessons") or ch.get("children") or []
+        lessons: list[dict[str, Any]] = []
+        for ls in lessons_raw:
+            if not isinstance(ls, dict):
+                continue
+            ls_name = str(ls.get("name") or ls.get("title") or "").strip()
+            if not ls_name:
+                continue
+            lessons.append(
+                {
+                    "name": ls_name,
+                    "page": ls.get("page") or ls.get("printed_page"),
+                    "kind": ls.get("kind", "chinh"),
+                }
+            )
+        chapters.append(
+            {
+                "name": ch_name,
+                "page": ch.get("page") or ch.get("printed_page"),
+                "lessons": lessons,
+            }
+        )
+    return chapters
+
+
+
+def parse_dynamic_toc_json(raw_text: str) -> list[dict[str, Any]]:
+    """Parse JSON cây TOC từ kết quả VLM, tự sửa escape LaTeX và chuẩn hóa cấu trúc."""
+    if not raw_text:
+        return []
+    cleaned = re.sub(r"^`{3}(?:json)?|`{3}$", "", raw_text.strip(), flags=re.MULTILINE).strip()
+    start = cleaned.find("{")
+    if start < 0:
+        return []
+    sub_text = cleaned[start:]
+    obj: dict[str, Any] | None = None
+    try:
+        parsed, _ = json.JSONDecoder().raw_decode(sub_text)
+        if isinstance(parsed, dict):
+            obj = parsed
+    except json.JSONDecodeError:
+        pass
+
+    if obj is None:
+        try:
+            fixed = re.sub(r'\\(?![/\\\"bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', sub_text)
+            parsed, _ = json.JSONDecoder().raw_decode(fixed)
+            if isinstance(parsed, dict):
+                obj = parsed
+        except json.JSONDecodeError:
+            return []
+
+    return _extract_chapters_from_obj(obj or {})
+
+
 # Làm giàu 1 bài học: VLM nhìn TOÀN BỘ trang của bài → tóm tắt + từ khóa + mục con theo thứ tự.
 # Prompt tổng quát cho MỌI MÔN — không kind taxonomy, không từ khóa môn cụ thể.
 _ENRICH_RULES = (
     "Trả về CHỈ 1 JSON object (không markdown, không giải thích):\n"
     '{"summary": "...", "keywords": ["..."], "sections": [{"name": "..."}]}\n'
-    "Quy tắc:\n"
+    "Quy tắc bắt buộc:\n"
     "- summary: 2-4 câu đúc kết NỘI DUNG KIẾN THỨC CỐT LÕI của bài (khái niệm, quy tắc, sự kiện, "
     "cấu trúc, kỹ năng chính...); viết liền mạch như giáo viên tóm tắt bài; công thức (nếu có) giữ LaTeX.\n"
     "- keywords: 4-8 thuật ngữ/khái niệm cốt lõi của bài.\n"
     "- sections: DANH SÁCH các mục con/đề mục xuất hiện trong bài theo đúng thứ tự (tên ngắn gọn); "
     "bài không có mục con rõ ràng → sections: [].\n"
-    "- Bỏ header/footer, số trang, tiêu đề lặp lại trang trước. TUYỆT ĐỐI KHÔNG tự ý mở rộng, KHÔNG đưa kiến thức bách khoa toàn thư hay kiến thức ngoài sách vào."
+    "- PHẠM VI TIÊU ĐỀ: Bắt đầu tóm tắt từ tiêu đề chính to đậm của bài học. Nếu trang đầu có chứa phần bài tập hoặc đề mục của bài học trước, HÃY BỎ QUA hoàn toàn phần đó.\n"
+    "- TRUNG THỰC HỌC THUẬT: Chỉ tóm tắt những gì thực sự xuất hiện trên các trang ảnh. TUYỆT ĐỐI KHÔNG tự ý suy diễn, phóng đại hoặc bịa đặt số liệu thống kê/sự kiện đời sống ngoài sách."
 )
 
 _ENRICH_PROMPT = (
@@ -130,6 +256,72 @@ def enrich_prompt(lesson_name: str | None = None, chapter_name: str | None = Non
         prefix += f" thuộc chương '{chapter_name}'"
     return prefix + " (mỗi ảnh = 1 trang, theo đúng thứ tự).\n" + _ENRICH_RULES
 
+def _retry_batch_single_pages(
+    path: Path,
+    page_indices: list[int],
+    settings: Settings,
+    prompt: str | None = None,
+    dpi: int = 100,
+) -> str | None:
+    """Fallback khi cả 1 lô VLM fail: thử lại TỪNG TRANG riêng lẻ.
+
+    Render lại PDF, gửi mỗi lần 1 ảnh → VLM trả page JSON.
+    Trang nào vẫn lỗi → dict rỗng {} — không làm mất các trang khỏe.
+    Trả về JSON string giống batch gốc {"pages": [...]} để parse_into xử lý đồng nhất.
+    """
+    import fitz  # PyMuPDF — đã có trong deps
+
+    results: list[dict[str, Any]] = []
+    with fitz.open(path) as doc:
+        for idx in page_indices:
+            if idx >= doc.page_count:
+                results.append({})
+                continue
+            try:
+                img_b64 = base64.b64encode(
+                    doc.load_page(idx).get_pixmap(dpi=dpi).tobytes("png")
+                ).decode("ascii")
+                raw = _chat_completions(img_b64, settings, prompt)
+            except VlmUnavailableError:
+                # Single page vẫn fail — ghi {} thay vì mất trang khỏe
+                results.append({})
+                logger.warning("vlm_single_page_retry_failed", page=idx)
+                continue
+            # Parse single-page response: {"pages": [{...}]} hoặc trực tiếp {"kind": "...", ...}
+            obj = _parse_single_page_json(raw) if raw else None
+            if obj and isinstance(obj.get("pages"), list) and obj["pages"]:
+                page = obj["pages"][0] if isinstance(obj["pages"][0], dict) else {}
+            elif obj and isinstance(obj, dict) and ("kind" in obj or "chapter" in obj or "chapters" in obj or "printed_page" in obj):
+                page = obj
+            else:
+                page = {}
+            results.append(page)
+    if not results:
+        return None
+    return json.dumps({"pages": results}, ensure_ascii=False)
+
+
+def _parse_single_page_json(text: str) -> dict[str, Any] | None:
+    """Parse JSON từ VLM response 1 trang (handle code fences, LaTeX escapes)."""
+    cleaned = re.sub(r"^`{3}(?:json)?|`{3}$", "", text.strip(), flags=re.MULTILINE).strip()
+    start = cleaned.find("{")
+    if start < 0:
+        return None
+    sub_text = cleaned[start:]
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(sub_text)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        fixed_text = re.sub(r'\\(?![/\\\"bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', sub_text)
+        obj, _ = json.JSONDecoder().raw_decode(fixed_text)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
 # Backoff giữa các lần retry khi gặp 5xx/429 thoáng qua từ nhà cung cấp VLM (giây).
 _VLM_BACKOFF = (1, 2, 4)
 
@@ -138,10 +330,41 @@ class VlmUnavailableError(Exception):
     """VLM chưa được cấu hình (thiếu key) hoặc không gọi được — caller fallback OCR."""
 
 
+def resolve_vlm_config(settings: Settings | None = None) -> tuple[str, str, str, str]:
+    """Phân giải cấu hình VLM theo provider đã chọn trong settings (mặc định VLM_PROVIDER='qwen').
+
+    Trả về: (provider_name, model_name, api_base, api_key).
+    """
+    s = settings or get_settings()
+    provider = (getattr(s, "vlm_provider", "qwen") or "qwen").lower()
+
+    if provider == "openrouter":
+        api_base = getattr(s, "openrouter_api_base", "https://openrouter.ai/api/v1") or "https://openrouter.ai/api/v1"
+        api_key = getattr(s, "openrouter_api_key", "") or s.vlm_api_key
+        model = getattr(s, "openrouter_vlm_model", "google/gemini-3.7-flash") or "google/gemini-3.7-flash"
+        return "OpenRouter", model, api_base, api_key
+
+    if provider in ("qwen", "dashscope", "shopaikey"):
+        api_base = getattr(s, "qwen_vlm_api_base", "https://direct.shopaikey.com/v1") or s.vlm_api_base or "https://direct.shopaikey.com/v1"
+        api_key = getattr(s, "qwen_vlm_api_key", "") or s.vlm_api_key
+        model = getattr(s, "qwen_vlm_model", "qwen3-vl-flash") or s.vlm_model or "qwen3-vl-flash"
+        return "Qwen", model, api_base, api_key
+
+    if provider == "openai":
+        api_base = getattr(s, "openai_api_base", "https://api.openai.com/v1") or "https://api.openai.com/v1"
+        api_key = getattr(s, "openai_api_key", "") or s.vlm_api_key
+        model = getattr(s, "openai_vlm_model", "gpt-4o-mini") or "gpt-4o-mini"
+        return "OpenAI", model, api_base, api_key
+
+    # Custom / fallback trực tiếp theo vlm_model & vlm_api_base & vlm_api_key
+    return "Custom", s.vlm_model, s.vlm_api_base, s.vlm_api_key
+
+
 def is_configured(settings: Settings | None = None) -> bool:
     """VLM có sẵn API base + key chưa (chưa set key → không cấu hình)."""
     s = settings or get_settings()
-    return bool(s.vlm_api_base and s.vlm_api_key)
+    _, _, api_base, api_key = resolve_vlm_config(s)
+    return bool(api_base and api_key)
 
 
 def _format_friendly_vlm_error(exc: Exception, model_name: str) -> str:
@@ -153,7 +376,7 @@ def _format_friendly_vlm_error(exc: Exception, model_name: str) -> str:
         if status == 429:
             return "Đã vượt quá giới hạn tần suất gọi API AI (HTTP 429 - Rate Limit). Vui lòng đợi 1–2 phút rồi thử nạp lại."
         if status in (401, 403):
-            return f"Khóa API AI (VLM_API_KEY) không hợp lệ hoặc đã hết hạn (HTTP {status}). Vui lòng kiểm tra lại cấu hình API key."
+            return f"Khóa API AI ({model_name}) không hợp lệ hoặc đã hết hạn (HTTP {status}). Vui lòng kiểm tra lại cấu hình API key."
         return f"Máy chủ AI ({model_name}) phản hồi mã lỗi HTTP {status}. Vui lòng thử lại sau."
     if isinstance(exc, httpx.TimeoutException):
         return f"Thời gian chờ phản hồi từ máy chủ AI ({model_name}) quá lâu (Timeout). File sách có thể quá nặng hoặc đường truyền mạng chập chờn."
@@ -171,9 +394,9 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
     (rate limit) → retry tối đa 3 lần với backoff tăng dần (1s → 2s → 4s) trước khi nâng
     lỗi — tránh worker fail ngay vì 503 thoáng qua.
     """
-    model_name = settings.vlm_model
-    url = f"{settings.vlm_api_base.rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {settings.vlm_api_key}"}
+    provider_name, model_name, api_base, api_key = resolve_vlm_config(settings)
+    url = f"{api_base.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}"}
     if isinstance(image_b64s, str):
         image_b64s = [image_b64s]
     content: list[dict[str, object]] = [{"type": "text", "text": prompt or _READ_PROMPT}]
@@ -194,8 +417,8 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
     last_error: Exception | None = None
     for attempt in range(3):
         t0 = time.time()
-        print(f"[VLM/Qwen] -> Dang gui request toi '{model_name}' (lan {attempt + 1}/3)...")
-        logger.info("vlm_request_start", model=model_name, url=url, attempt=attempt + 1)
+        print(f"[VLM/{provider_name}] -> Dang gui request toi '{model_name}' (lan {attempt + 1}/3)...")
+        logger.info("vlm_request_start", provider=provider_name, model=model_name, url=url, attempt=attempt + 1)
         try:
             resp = httpx.post(url, json=payload, headers=headers, timeout=settings.vlm_timeout_s)
             status = resp.status_code if isinstance(resp.status_code, int) else 0
@@ -205,9 +428,9 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
                 last_error = httpx.HTTPStatusError(
                     f"Server error {status}", request=resp.request, response=resp
                 )
-                print(f"[VLM/Qwen] [RETRY] Gap loi tam thoi (HTTP {status}) sau {duration:.2f}s -- chuan bi retry lan {attempt + 2} sau {_VLM_BACKOFF[attempt]}s...")
+                print(f"[VLM/{provider_name}] [RETRY] Gap loi tam thoi (HTTP {status}) sau {duration:.2f}s -- chuan bi retry lan {attempt + 2} sau {_VLM_BACKOFF[attempt]}s...")
                 logger.warning(
-                    "vlm_transient_retry", model=model_name, status=status, attempt=attempt + 1, duration_s=round(duration, 2), sleep=_VLM_BACKOFF[attempt]
+                    "vlm_transient_retry", provider=provider_name, model=model_name, status=status, attempt=attempt + 1, duration_s=round(duration, 2), sleep=_VLM_BACKOFF[attempt]
                 )
                 time.sleep(_VLM_BACKOFF[attempt])
                 continue
@@ -215,18 +438,18 @@ def _chat_completions(image_b64s: str | list[str], settings: Settings, prompt: s
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
             result_str = content if isinstance(content, str) else str(content)
-            print(f"[VLM/Qwen] [OK] Nhan phan hoi thanh cong tu '{model_name}' (HTTP {status}, {duration:.2f}s, {len(result_str)} ky tu)")
-            logger.info("vlm_call_success", model=model_name, status_code=status, duration_s=round(duration, 2), result_len=len(result_str))
+            print(f"[VLM/{provider_name}] [OK] Nhan phan hoi thanh cong tu '{model_name}' (HTTP {status}, {duration:.2f}s, {len(result_str)} ky tu)")
+            logger.info("vlm_call_success", provider=provider_name, model=model_name, status_code=status, duration_s=round(duration, 2), result_len=len(result_str))
             return result_str
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             duration = time.time() - t0
             last_error = exc
-            print(f"[VLM/Qwen] [ERROR] Loi goi '{model_name}' lan {attempt + 1} ({duration:.2f}s): {exc}")
-            logger.warning("vlm_call_attempt_error", model=model_name, attempt=attempt + 1, duration_s=round(duration, 2), error=str(exc)[:200])
+            print(f"[VLM/{provider_name}] [ERROR] Loi goi '{model_name}' lan {attempt + 1} ({duration:.2f}s): {exc}")
+            logger.warning("vlm_call_attempt_error", provider=provider_name, model=model_name, attempt=attempt + 1, duration_s=round(duration, 2), error=str(exc)[:200])
 
     friendly_msg = _format_friendly_vlm_error(last_error or Exception("Không nhận được phản hồi"), model_name)
-    print(f"[VLM/Qwen] [FAILED] Da thu 3 lan nhung goi '{model_name}' that bai: {friendly_msg}")
-    logger.error("vlm_call_failed", model=model_name, error=friendly_msg)
+    print(f"[VLM/{provider_name}] [FAILED] Da thu 3 lan nhung goi '{model_name}' that bai: {friendly_msg}")
+    logger.error("vlm_call_failed", provider=provider_name, model=model_name, error=friendly_msg)
     raise VlmUnavailableError(friendly_msg) from last_error
 
 
@@ -313,8 +536,8 @@ def read_book_pages(
         end = min(page_count, start_page + max_pages) if max_pages else page_count
         total_to_scan = max(0, end - start_page)
         print(
-            f"[VLM/Qwen] 📖 Quét trang {start_page + 1}–{end} ({total_to_scan} trang) bằng '{s.vlm_model}' "
-            f"(lô {s.vlm_sweep_pages_per_call} trang, concurrency={s.vlm_max_concurrency})..."
+            f"[VLM/Qwen] Quet trang {start_page + 1}-{end} ({total_to_scan} trang) bang '{s.vlm_model}' "
+            f"(lo {s.vlm_sweep_pages_per_call} trang, concurrency={s.vlm_max_concurrency})..."
         )
         logger.info("vlm_book_sweep_start", start=start_page, end=end, model=s.vlm_model)
         images = [
@@ -349,9 +572,19 @@ def read_book_pages(
                 batch_idx = pending.pop(fut)
                 try:
                     results[batch_idx] = fut.result()
-                except Exception as exc:  # noqa: BLE001 — 1 lô hỏng không hủy cả lượt quét
+                except Exception as exc:  # noqa: BLE001 — 1 lô hỏng → retry từng trang thay vì vứt cả lô
                     logger.warning("vlm_sweep_batch_failed", batch=batch_idx, error=str(exc)[:200])
-                    results[batch_idx] = None
+                    # Retry từng trang riêng lẻ — chỉ mất trang nào thực sự lỗi, không cả 5
+                    try:
+                        page_offset = batch_idx * batch_size
+                        page_indices = list(range(
+                            start_page + page_offset,
+                            min(start_page + page_offset + batch_size, end)
+                        ))
+                        fallback = _retry_batch_single_pages(path, page_indices, s, scan_prompt, dpi)
+                        results[batch_idx] = fallback if fallback else None
+                    except Exception:  # noqa: BLE001
+                        results[batch_idx] = None
                 done_count += 1
                 if progress_cb:
                     progress_cb(done_count, total)

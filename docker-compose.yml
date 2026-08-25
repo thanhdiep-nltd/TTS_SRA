@@ -27,6 +27,7 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    profiles: ["docker-backend"]  # Chỉ chạy khi gọi rõ ràng --profile docker-backend; dev hàng ngày dùng dev.bat
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

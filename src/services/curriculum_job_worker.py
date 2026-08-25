@@ -120,6 +120,7 @@ def process_next_curriculum_ingest_job() -> None:
                 book_id=book_id,
                 enrich=next_job.enrich,
                 progress_cb=_progress,
+                vlm_model=getattr(next_job, "vlm_model", None),
             )
             next_job.result_json = json.dumps(result, ensure_ascii=False)
             next_job.status = "completed"

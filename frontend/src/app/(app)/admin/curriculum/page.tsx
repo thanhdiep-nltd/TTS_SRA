@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Eraser,
   FileUp,
   Folder,
   FolderTree,
@@ -105,6 +106,7 @@ interface BookIngestJob {
   semester_number: number | null;
   filename: string | null;
   book_title: string | null;
+  vlm_model?: string | null;
   result: BookIngestResult | null;
   error: string | null;
   created_at: string | null;
@@ -268,9 +270,12 @@ export default function AdminCurriculumPage() {
   const [bookGrade, setBookGrade] = useState("6");
   const [bookSemester, setBookSemester] = useState(""); // "" = tự đoán từ tên file
   const [bookTitle, setBookTitle] = useState(""); // Tên cuốn / Chương - Tập - Mô tả
-  const [includeLessons, setIncludeLessons] = useState(false);
+  const [includeLessons, setIncludeLessons] = useState(true);
   // Làm giàu nội dung khi nạp PDF: quét toàn cuốn + VLM tạo tóm tắt/từ khóa/mục con cho từng bài.
   const [enrichContent, setEnrichContent] = useState(true);
+  const [overwriteEnrichment, setOverwriteEnrichment] = useState(true);
+  const [selectedVlmModel, setSelectedVlmModel] = useState("google/gemini-3.7-flash");
+  const [customVlmModel, setCustomVlmModel] = useState("");
   const [bookUploading, setBookUploading] = useState(false);
   const [bookMsg, setBookMsg] = useState<string | null>(null);
   const [bookErr, setBookErr] = useState<string | null>(null);
@@ -283,6 +288,7 @@ export default function AdminCurriculumPage() {
 
   // Làm giàu lại từ file PDF gốc đã lưu (job nền) — theo dõi ở Lịch sử nạp sách.
   const [reEnriching, setReEnriching] = useState(false);
+  const [clearingEnrichment, setClearingEnrichment] = useState(false);
   const [reEnrichMsg, setReEnrichMsg] = useState<string | null>(null);
   const [reEnrichErr, setReEnrichErr] = useState<string | null>(null);
 
@@ -295,6 +301,15 @@ export default function AdminCurriculumPage() {
   const [deletingBook, setDeletingBook] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+
+  // Xem chi tiết cảnh báo của Job
+  const [selectedJobWarnings, setSelectedJobWarnings] = useState<{
+    jobId: number;
+    filename: string;
+    warnings: string[];
+  } | null>(null);
+  const [warningSearch, setWarningSearch] = useState("");
+  const [copiedWarningIdx, setCopiedWarningIdx] = useState<number | null>(null);
 
   const fetchUnits = useCallback(
     async (bookId?: number) => {
@@ -538,6 +553,9 @@ export default function AdminCurriculumPage() {
     if (bookTitle.trim()) formData.append("book_title", bookTitle.trim());
     if (includeLessons) formData.append("include_lessons", "true");
     if (enrichContent) formData.append("enrich", "true");
+    if (overwriteEnrichment) formData.append("overwrite_enrichment", "true");
+    const finalModel = selectedVlmModel === "custom" ? customVlmModel.trim() : selectedVlmModel;
+    if (finalModel) formData.append("vlm_model", finalModel);
     formData.append("dry_run", "false"); // Tự động lưu thẳng vào DB khi trích xuất xong
     try {
       const job = await api.upload<BookIngestJob>("/curriculum/ingest-book", formData);
@@ -598,14 +616,43 @@ export default function AdminCurriculumPage() {
     setReEnriching(true);
     setReEnrichErr(null);
     setReEnrichMsg(null);
+    const finalModel = selectedVlmModel === "custom" ? customVlmModel.trim() : selectedVlmModel;
     try {
-      await api.post<BookIngestJob>(`/curriculum/books/${activeBook.id}/re-enrich`);
-      setReEnrichMsg("Đã tạo job làm giàu lại — theo dõi ở bảng 'Lịch sử nạp sách (hàng đợi nền)'.");
+      await api.post<BookIngestJob>(`/curriculum/books/${activeBook.id}/re-enrich`, {
+        vlm_model: finalModel || null,
+      });
+      setReEnrichMsg(`Đã tạo job làm giàu lại với model ${finalModel || "mặc định"} — theo dõi ở bảng 'Lịch sử nạp sách'.`);
       loadIngestJobs();
     } catch (e: any) {
       setReEnrichErr(e?.message ?? "Không tạo được job làm giàu lại.");
     } finally {
       setReEnriching(false);
+    }
+  };
+
+  // Xóa sạch toàn bộ nội dung làm giàu (tóm tắt/từ khóa/mục con) của cuốn sách đang xem
+  const handleClearEnrichment = async () => {
+    if (!activeBook) return;
+    if (
+      !window.confirm(
+        `Xóa toàn bộ tóm tắt, từ khóa, mục con của ${units.length} node thuộc cuốn "${activeBook.title}" để làm giàu lại từ đầu?`
+      )
+    ) {
+      return;
+    }
+    setClearingEnrichment(true);
+    setReEnrichErr(null);
+    setReEnrichMsg(null);
+    try {
+      const res = await api.post<{ book_id: number; cleared_units_count: number; message: string }>(
+        `/curriculum/books/${activeBook.id}/clear-enrichment`
+      );
+      setReEnrichMsg(res.message || "Đã xóa sạch dữ liệu làm giàu của cuốn sách.");
+      await fetchUnits(activeBook.id);
+    } catch (e: any) {
+      setReEnrichErr(e?.message ?? "Không xóa được dữ liệu làm giàu.");
+    } finally {
+      setClearingEnrichment(false);
     }
   };
 
@@ -769,6 +816,41 @@ export default function AdminCurriculumPage() {
                   className="w-full px-3.5 py-2 rounded-xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-brand-500"
                 />
               </div>
+              <div className="w-full sm:w-auto min-w-[220px]">
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                  Mô hình AI (VLM):
+                </label>
+                <select
+                  value={selectedVlmModel}
+                  onChange={(e) => setSelectedVlmModel(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-brand-500 font-medium"
+                >
+                  <optgroup label="OpenRouter (Khuyên dùng)">
+                    <option value="google/gemini-3.7-flash">⚡ Google Gemini 3.7 Flash (Mới nhất, siêu rẻ & nhanh)</option>
+                    <option value="xiaomi/mimo-v2.5">⚡ Xiaomi Mimo 2.5</option>
+                    <option value="openai/gpt-4o-mini">⚡ OpenAI GPT-4o Mini</option>
+                    <option value="qwen/qwen-2.5-vl-72b-instruct">⚡ Qwen 2.5 VL 72B Instruct</option>
+                  </optgroup>
+                  <optgroup label="ShopAIKey / DashScope">
+                    <option value="qwen3-vl-flash">🇨🇳 Qwen 3 VL Flash (ShopAIKey)</option>
+                  </optgroup>
+                  <option value="custom">✏️ Tùy chỉnh Model ID...</option>
+                </select>
+              </div>
+              {selectedVlmModel === "custom" && (
+                <div className="w-full sm:w-auto min-w-[200px]">
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    Nhập Model ID:
+                  </label>
+                  <input
+                    type="text"
+                    value={customVlmModel}
+                    onChange={(e) => setCustomVlmModel(e.target.value)}
+                    placeholder="vd: google/gemini-pro-vision"
+                    className="w-full px-3.5 py-2 rounded-xl text-sm border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+              )}
               <label className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300">
                 <input
                   type="checkbox"
@@ -791,6 +873,21 @@ export default function AdminCurriculumPage() {
                 <span className="inline-flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-brand-500" />
                   Làm giàu nội dung (tóm tắt, từ khóa, mục con)
+                </span>
+              </label>
+              <label
+                className="flex items-center gap-2 cursor-pointer pb-2.5 text-xs font-medium text-slate-700 dark:text-slate-300"
+                title="Tự động xóa sạch/làm mới tóm tắt và từ khóa cũ của các bài học bị trùng mã khi nạp lại sách"
+              >
+                <input
+                  type="checkbox"
+                  checked={overwriteEnrichment}
+                  onChange={(e) => setOverwriteEnrichment(e.target.checked)}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="inline-flex items-center gap-1">
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                  Ghi đè làm giàu cũ nếu trùng bài
                 </span>
               </label>
               <label className="flex-1 min-w-[240px] flex items-center gap-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 cursor-pointer hover:border-brand-400 text-sm text-slate-500">
@@ -935,7 +1032,12 @@ export default function AdminCurriculumPage() {
                             {j.semester_number ? ` · HK${j.semester_number}` : ""}
                           </td>
                           <td className="px-4 py-2.5 text-xs text-slate-500 truncate max-w-[160px]" title={j.book_title ?? ""}>
-                            {j.book_title || "—"}
+                            <div>{j.book_title || "—"}</div>
+                            {j.vlm_model && (
+                              <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 truncate max-w-[150px]" title={j.vlm_model}>
+                                {j.vlm_model.split("/").pop()}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-2.5">
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.cls}`}>
@@ -964,14 +1066,22 @@ export default function AdminCurriculumPage() {
                               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                                 {j.result.chapters?.length ?? 0} chương · {j.result.inserted} node mới · {j.result.updated} cập nhật
                                 {j.result.warnings?.length ? (
-                                  <span
-                                    className="block text-amber-600 dark:text-amber-400 font-normal mt-1"
-                                    title={j.result.warnings.join("\n")}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedJobWarnings({
+                                        jobId: j.job_id,
+                                        filename: j.filename ?? "Tài liệu",
+                                        warnings: j.result?.warnings ?? [],
+                                      });
+                                      setWarningSearch("");
+                                    }}
+                                    className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all text-left group shadow-2xs cursor-pointer"
                                   >
-                                    ⚠ {j.result.warnings.length} cảnh báo:{" "}
-                                    {j.result.warnings[0].slice(0, 110)}
-                                    {j.result.warnings[0].length > 110 ? "..." : ""}
-                                  </span>
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
+                                    <span>⚠ {j.result.warnings.length} cảnh báo (Nhấn để xem chi tiết)</span>
+                                    <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0 ml-1 group-hover:translate-x-0.5 transition-transform" />
+                                  </button>
                                 ) : null}
                               </span>
                             ) : (
@@ -1127,7 +1237,7 @@ export default function AdminCurriculumPage() {
                   <button
                     type="button"
                     onClick={handleReEnrich}
-                    disabled={reEnriching}
+                    disabled={reEnriching || clearingEnrichment}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 transition-colors disabled:opacity-50"
                     title="Chạy lại bước làm giàu (tóm tắt/từ khóa/mục con) từ file PDF gốc đã lưu"
                   >
@@ -1136,8 +1246,19 @@ export default function AdminCurriculumPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={handleClearEnrichment}
+                    disabled={clearingEnrichment || reEnriching}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 transition-colors disabled:opacity-50"
+                    title="Xóa sạch toàn bộ tóm tắt, từ khóa, mục con của cuốn này để làm giàu lại từ đầu"
+                  >
+                    {clearingEnrichment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eraser className="w-3.5 h-3.5" />}
+                    <span>{clearingEnrichment ? "Đang xóa..." : "Xóa tất cả làm giàu"}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDeleteBook(activeBook)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors"
+                    disabled={clearingEnrichment || reEnriching}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors disabled:opacity-50"
                     title={`Xóa cuốn "${activeBook.title}" và toàn bộ node`}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1568,6 +1689,115 @@ export default function AdminCurriculumPage() {
               >
                 {deletingBook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                 {deletingBook ? "Đang xóa..." : "Xác nhận xóa"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal xem danh sách cảnh báo của Job */}
+      {selectedJobWarnings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    Danh Sách Cảnh Báo Job #{selectedJobWarnings.jobId}
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                      {selectedJobWarnings.warnings.length} cảnh báo
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-500 truncate max-w-md" title={selectedJobWarnings.filename}>
+                    File: <strong>{selectedJobWarnings.filename}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedJobWarnings(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search filter & Action bar */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center gap-3">
+              <input
+                type="text"
+                value={warningSearch}
+                onChange={(e) => setWarningSearch(e.target.value)}
+                placeholder="Lọc cảnh báo theo từ khóa (vd: Bài 2, JSON, trang...)..."
+                className="flex-1 px-3.5 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedJobWarnings.warnings.join("\n"));
+                  setCopiedWarningIdx(-1);
+                  setTimeout(() => setCopiedWarningIdx(null), 2000);
+                }}
+                className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
+              >
+                {copiedWarningIdx === -1 ? "Đã chép tất cả!" : "Sao chép tất cả"}
+              </button>
+            </div>
+
+            {/* Warnings list body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-2.5 divide-y divide-slate-100 dark:divide-slate-800/60">
+              {(() => {
+                const filtered = selectedJobWarnings.warnings.filter((w) =>
+                  w.toLowerCase().includes(warningSearch.toLowerCase())
+                );
+                if (filtered.length === 0) {
+                  return (
+                    <p className="text-xs text-slate-400 py-8 text-center">
+                      Không tìm thấy cảnh báo nào khớp với "{warningSearch}".
+                    </p>
+                  );
+                }
+                return filtered.map((w, idx) => (
+                  <div
+                    key={idx}
+                    className="pt-2.5 first:pt-0 flex items-start justify-between gap-3 group"
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <span className="w-6 h-6 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5 border border-amber-200 dark:border-amber-800/50">
+                        {idx + 1}
+                      </span>
+                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed break-words">
+                        {w}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(w);
+                        setCopiedWarningIdx(idx);
+                        setTimeout(() => setCopiedWarningIdx(null), 2000);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 px-2 py-1 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 transition-all shrink-0 cursor-pointer"
+                    >
+                      {copiedWarningIdx === idx ? "Đã chép" : "Sao chép"}
+                    </button>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedJobWarnings(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                Đóng
               </button>
             </div>
           </div>

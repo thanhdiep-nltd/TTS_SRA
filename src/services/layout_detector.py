@@ -7,8 +7,10 @@ và tự động khớp nối (Spatial Association) vào các câu hỏi tương
 from __future__ import annotations
 
 import base64
+import collections
 import io
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -261,3 +263,200 @@ def associate_figures_to_questions(
                 q.box_2d = None
 
     return questions
+
+
+def build_page_number_map(pdf_path: Path | str) -> dict[int, int]:
+    """Bóc tách số trang in (printed page) từ header/footer của PDF và nội suy tuyến tính.
+
+    Trả về dict: {printed_page: pdf_page_index} (0-indexed).
+    Ví dụ: {1: 3, 2: 4, 3: 5, ...} nghĩa là Trang in số 1 nằm ở trang PDF index 3 (trang thứ 4 của file).
+    """
+    import fitz  # PyMuPDF
+
+    path_obj = Path(pdf_path)
+    if not path_obj.exists():
+        return {}
+
+    raw_detections: list[tuple[int, int]] = []  # (pdf_idx, printed_page)
+
+    with fitz.open(path_obj) as doc:
+        total_pages = doc.page_count
+        if total_pages == 0:
+            return {}
+
+        for p_idx in range(total_pages):
+            page = doc.load_page(p_idx)
+            rect = page.rect
+            w, h = rect.width, rect.height
+
+            # 1. Quét vùng footer đáy trang (15% chiều cao đáy)
+            footer_rect = fitz.Rect(0, h * 0.85, w, h)
+            footer_text = page.get_text("text", clip=footer_rect).strip()
+
+            # 2. Quét vùng header đỉnh trang (10% chiều cao đỉnh)
+            header_rect = fitz.Rect(0, 0, w, h * 0.10)
+            header_text = page.get_text("text", clip=header_rect).strip()
+
+            combined_text = f"{footer_text}\n{header_text}"
+
+            # Tìm các số tự nhiên (1..3 chữ số)
+            matches = re.findall(r"\b(\d{1,3})\b", combined_text)
+            if matches:
+                for m in matches:
+                    val = int(m)
+                    # Số trang in hợp lý thường nằm trong khoảng [1..total_pages + 50]
+                    # và offset (p_idx - val) thường không âm quá nhiều hoặc quá lớn
+                    if 1 <= val <= total_pages + 50 and -5 <= (p_idx - val) <= 30:
+                        raw_detections.append((p_idx, val))
+                        break
+
+    if not raw_detections:
+        # Nếu hoàn toàn không phát hiện được số trang in (vd tài liệu scan ảnh không có text layer)
+        # Giả định offset mặc định = 0 (trang in = trang pdf + 1)
+        return {p + 1: p for p in range(total_pages)}
+
+    # Tìm offset chủ đạo (Dominant Offset Mode = pdf_idx - printed_page)
+    offsets = [p_idx - val for p_idx, val in raw_detections]
+    offset_counts = collections.Counter(offsets)
+    dominant_offset, _ = offset_counts.most_common(1)[0]
+
+    # Xây dựng bảng ánh xạ đầy đủ kèm nội suy tuyến tính (Linear Interpolation)
+    page_map: dict[int, int] = {}
+    detected_dict = {val: p_idx for p_idx, val in raw_detections}
+
+    # Xác định dải trang in cần map
+    max_printed = max([val for _, val in raw_detections] + [total_pages])
+
+    for printed in range(1, max_printed + 1):
+        if printed in detected_dict:
+            page_map[printed] = detected_dict[printed]
+        else:
+            # Nội suy bằng dominant_offset
+            inferred_pdf_idx = printed + dominant_offset
+            if 0 <= inferred_pdf_idx < total_pages:
+                page_map[printed] = inferred_pdf_idx
+
+    return page_map
+
+
+def find_first_toc_page(pdf_path: Path | str, max_check: int = 15) -> int | None:
+    """Tự động định vị trang Mục Lục (TOC) đầu tiên trong 15 trang đầu và 15 trang cuối bằng text layer.
+
+    Trả về chỉ số trang PDF (0-indexed) của trang Mục Lục đầu tiên, hoặc None nếu không tìm thấy.
+    """
+    import fitz
+
+    path_obj = Path(pdf_path)
+    if not path_obj.exists():
+        return None
+
+    with fitz.open(path_obj) as doc:
+        total_pages = doc.page_count
+        if total_pages == 0:
+            return None
+
+        # Danh sách các trang cần kiểm tra: 15 trang đầu + 15 trang cuối
+        front_indices = list(range(min(max_check, total_pages)))
+        back_indices = list(range(max(0, total_pages - max_check), total_pages))
+        indices_to_check = list(dict.fromkeys(front_indices + back_indices))
+
+        for idx in indices_to_check:
+            page = doc.load_page(idx)
+            text = page.get_text("text")
+            text_upper = text.upper()
+
+            # Kiểm tra từ khóa tiêu đề Mục Lục (không phân biệt hoa thường / ngôn ngữ)
+            if re.search(r"\b(MỤC\s*LỤC|MUC\s*LUC|TABLE\s*OF\s*CONTENTS|CONTENTS)\b", text_upper):
+                return idx
+
+    return None
+
+
+def find_toc_pages(
+    pdf_path: Path | str,
+    max_check: int = 15,
+    max_toc_pages: int = 4,
+    settings: Any = None,
+) -> list[int]:
+    """Tự động định vị toàn bộ dải trang Mục Lục (TOC) (hỗ trợ 1 đến 4 trang liên tiếp).
+
+    Trả về danh sách các chỉ số trang PDF (0-indexed) thuộc Mục Lục (ví dụ: [4] hoặc [4, 5]).
+    """
+    path_obj = Path(pdf_path)
+    if not path_obj.exists():
+        return []
+
+    import fitz
+
+    first_page = find_first_toc_page(pdf_path, max_check=max_check)
+    if first_page is not None:
+        toc_pages = [first_page]
+        with fitz.open(path_obj) as doc:
+            total_pages = doc.page_count
+            for next_idx in range(first_page + 1, min(first_page + max_toc_pages, total_pages)):
+                page = doc.load_page(next_idx)
+                text = page.get_text("text")
+                text_upper = text.upper()
+
+                chapter_matches = len(re.findall(r"\b(CHƯƠNG|CHUONG|BÀI|BAI|UNIT|LESSON|PHẦN|PHAN)\b", text_upper))
+                dotted_lines = len(re.findall(r"(?:\.{3,}|…{2,}|\s{4,})\s*\d{1,3}\b", text))
+
+                if chapter_matches >= 2 or dotted_lines >= 2:
+                    toc_pages.append(next_idx)
+                else:
+                    break
+        return toc_pages
+
+    # Nếu quét text không thấy (PDF scan ảnh không có text layer), gọi VLM tìm toàn bộ dải trang TOC
+    vlm_tocs = _find_toc_via_vlm(path_obj, max_check=min(max_check, 10), settings=settings)
+    if vlm_tocs:
+        start = min(vlm_tocs)
+        end = max(vlm_tocs)
+        with fitz.open(path_obj) as doc:
+            # Lấy toàn bộ dải từ start đến end
+            return list(range(start, min(end + 1, doc.page_count)))
+
+    return []
+
+
+def _find_toc_via_vlm(pdf_path: Path, max_check: int = 10, settings: Any = None) -> list[int]:
+    """Fallback cho PDF scan ảnh không có text layer: gửi các trang đầu vào VLM để xác định chính xác toàn bộ trang Mục Lục."""
+    import fitz
+    from src.config import get_settings
+    from src.services.vlm import _chat_completions, is_configured
+
+    s = settings or get_settings()
+    if not is_configured(s):
+        return [min(1, max_check - 1)]
+
+    with fitz.open(pdf_path) as doc:
+        total = min(max_check, doc.page_count)
+        if total == 0:
+            return []
+        images = [
+            base64.b64encode(doc.load_page(i).get_pixmap(dpi=70).tobytes("png")).decode("ascii")
+            for i in range(total)
+        ]
+
+    prompt = (
+        f"Đây là {len(images)} trang đầu tiên của một cuốn sách (theo thứ tự từ ảnh 1 đến ảnh {len(images)}). "
+        "Hãy xác định chính xác TẤT CẢ các trang là trang MỤC LỤC (Table of Contents). "
+        "Lưu ý: Mục lục thường trải dài qua 2 hoặc nhiều trang liên tiếp (ví dụ ảnh 5 và ảnh 6 đều là mục lục). "
+        "Chỉ trả về JSON object duy nhất dạng: {\"toc_pages\": [danh_sách_số_thứ_tự_ảnh_1_based]}. "
+        "Ví dụ nếu ảnh 5 và ảnh 6 đều chứa mục lục thì trả về {\"toc_pages\": [5, 6]}. "
+        "Nếu không có mục lục thì trả về {\"toc_pages\": []}."
+    )
+    try:
+        raw = _chat_completions(images, settings, prompt)
+        match = re.search(r"\{\s*\"toc_pages\"\s*:\s*\[([0-9,\s]*)\]\s*\}", raw)
+        if match:
+            pages_str = match.group(1).strip()
+            if pages_str:
+                nums = [int(n.strip()) - 1 for n in pages_str.split(",") if n.strip().isdigit()]
+                valid = [n for n in nums if 0 <= n < total]
+                if valid:
+                    return valid
+    except Exception:
+        pass
+    return [min(1, total - 1)]
+

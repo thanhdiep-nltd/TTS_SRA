@@ -48,8 +48,32 @@ class Settings(BaseSettings):
     # thật sự (cần cấu hình API key tương ứng).
     judge_llm_provider: Literal["same", "openai", "deepseek"] = "same"
 
-    # VLM đọc đề thi (M1 — plan_cdi_kg_anchored): Qwen3-VL-Flash qua API OpenAI-compatible.
-    # User sẽ cấu hình API key sau; khi thiếu key, pipeline fallback OCR (không chặn code).
+    # VLM đọc đề thi & nạp SGK (M1 — plan_cdi_kg_anchored): Hỗ trợ đa nhà cung cấp qua API OpenAI-compatible.
+    # User có thể chuyển đổi nhanh qua VLM_PROVIDER: "openrouter" | "qwen" | "openai" | "custom".
+    vlm_provider: Literal["openrouter", "qwen", "openai", "custom"] = Field(
+        default="qwen", validation_alias="VLM_PROVIDER"
+    )
+
+    # 1. OpenRouter (Gemini 2.0 Flash, Xiaomi Mimo, Qwen 2.5 VL...)
+    openrouter_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
+    openrouter_vlm_model: str = Field(
+        default="google/gemini-3.7-flash", validation_alias="OPENROUTER_VLM_MODEL"
+    )
+    openrouter_api_base: str = Field(
+        default="https://openrouter.ai/api/v1", validation_alias="OPENROUTER_API_BASE"
+    )
+
+    # 2. Qwen (ShopAIKey / DashScope)
+    qwen_vlm_api_key: str = Field(default="", validation_alias="QWEN_VLM_API_KEY")
+    qwen_vlm_api_base: str = Field(
+        default="https://direct.shopaikey.com/v1", validation_alias="QWEN_VLM_API_BASE"
+    )
+    qwen_vlm_model: str = Field(default="qwen3-vl-flash", validation_alias="QWEN_VLM_MODEL")
+
+    # 3. OpenAI Vision trực tiếp
+    openai_vlm_model: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_VLM_MODEL")
+
+    # 4. Tương thích ngược / Custom override trực tiếp
     vlm_model: str = "qwen3-vl-flash"
     vlm_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     vlm_api_key: str = ""

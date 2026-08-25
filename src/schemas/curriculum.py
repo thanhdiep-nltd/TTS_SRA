@@ -87,6 +87,7 @@ class BookIngestJobRead(BaseModel):
     semester_number: int | None = None
     filename: str | None = None
     book_title: str | None = None
+    vlm_model: str | None = None
     result: BookIngestResult | None = None
     error: str | None = None
     created_at: str | None = None
@@ -113,4 +114,20 @@ class BookDeleteResult(BaseModel):
     book_id: int
     title: str
     deleted_units_count: int
+
+
+class BookClearEnrichmentResult(BaseModel):
+    """Kết quả xóa sạch dữ liệu làm giàu (tóm tắt/từ khóa/mục con) của một cuốn sách."""
+
+    book_id: int
+    title: str
+    cleared_units_count: int
+    message: str
+
+
+class BookReEnrichRequest(BaseModel):
+    """Tham số khi yêu cầu chạy lại bước làm giàu nội dung cho một cuốn sách."""
+
+    vlm_model: str | None = None
+
 

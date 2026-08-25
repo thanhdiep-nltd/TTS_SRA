@@ -8,6 +8,7 @@ TXT/DOCX = parse cấu trúc như cũ.
 import pytest
 
 from src.services.curriculum_ingest import (
+    _align_unit_page_ranges,
     _anchor_id,
     _as_page_int,
     _build_anchor_list,
@@ -16,12 +17,14 @@ from src.services.curriculum_ingest import (
     _clean_sections,
     _enrich_chapters,
     _entries_to_chapters,
+    _get_runtime_settings,
     _is_phu_title,
     _is_placeholder,
     _merge_toc_chapters,
     _normalize_title,
     _parse_scan_batch,
     _ranges_from_anchors,
+    _sample_indices,
     _sanity_check,
     build_unit_specs_from_chapters,
     detect_semester_from_filename,
@@ -277,34 +280,59 @@ def test_ranges_from_anchors_empty_returns_none():
 
 
 def test_extract_book_structure_two_pass_locates_toc(monkeypatch):
-    """Lượt A tìm MỤC LỤC (không số trang) → lượt B phân loại nội dung có neo ID."""
+    """Cascaded pipeline tìm MỤC LỤC → bóc tách cây Chương/Bài và ánh xạ dải trang PDF."""
     from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
 
-    raw_a = (
-        '{"pages": ['
-        '{"kind": "frontmatter", "printed_page": 1}, '
-        '{"kind": "toc", "printed_page": 2, "chapters": ['
-        '{"name": "Số tự nhiên", "lessons": [{"name": "Tập hợp", "kind": "lesson"}]}]}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 3}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 4}'
-        "]}"
-    )
-    raw_b = (
-        '{"pages": ['
-        '{"kind": "content", "lesson": "1", "printed_page": 3}, '
-        '{"kind": "content", "lesson": "1", "printed_page": 4}'
-        "]}"
+def test_extract_book_structure_two_pass_locates_toc(monkeypatch):
+    """Cascaded pipeline tìm MỤC LỤC → bóc tách cây Chương/Bài và ánh xạ dải trang PDF."""
+    from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
+
+    raw_toc = (
+        '{"chapters": ['
+        '{"name": "Số tự nhiên", "page": 2, "lessons": ['
+        '{"name": "Tập hợp", "page": 3, "kind": "chinh"}'
+        ']}'
+        ']}'
     )
     monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
-    monkeypatch.setattr(vlm_mod, "read_book_pages", _fake_read_book_pages([raw_a], [raw_b]))
+    monkeypatch.setattr(ld_mod, "find_toc_pages", lambda *a, **k: [1])
+    monkeypatch.setattr(ld_mod, "build_page_number_map", lambda *a, **k: {2: 1, 3: 2, 4: 3})
+    monkeypatch.setattr(vlm_mod, "read_toc_pages", lambda *a, **k: raw_toc)
 
-    chapters, page_items, warnings, pdf_path = extract_book_structure(_make_pdf(4))
+    chapters, page_map, warnings, pdf_path = extract_book_structure(_make_pdf(4))
     try:
         assert [c["name"] for c in chapters] == ["Số tự nhiên"]
         assert chapters[0]["lessons"][0]["name"] == "Tập hợp"
-        assert len(page_items) == 4
-        assert page_items[1]["kind"] == "toc"
-        assert page_items[2]["lesson"] == "1"  # nhãn neo ID từ lượt B
+        assert chapters[0]["lessons"][0]["start_page"] == 2
+        assert chapters[0]["lessons"][0]["end_page"] == 3
+        assert not warnings
+    finally:
+        pdf_path.unlink(missing_ok=True)
+
+
+def test_extract_book_structure_multi_page_toc(monkeypatch):
+    """Kiểm tra TOC trải dài 2 trang được gửi vào VLM cùng lúc trong 1 request."""
+    from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
+
+    raw_toc = (
+        '{"chapters": ['
+        '{"name": "Chương 1", "page": 2, "lessons": [{"name": "Bài 1", "page": 2, "kind": "chinh"}]},'
+        '{"name": "Chương 2", "page": 4, "lessons": [{"name": "Bài 2", "page": 4, "kind": "chinh"}]}'
+        ']}'
+    )
+    monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
+    monkeypatch.setattr(ld_mod, "find_toc_pages", lambda *a, **k: [0, 1])
+    monkeypatch.setattr(ld_mod, "build_page_number_map", lambda *a, **k: {2: 1, 4: 3})
+    monkeypatch.setattr(vlm_mod, "read_toc_pages", lambda *a, **k: raw_toc)
+
+    chapters, page_map, warnings, pdf_path = extract_book_structure(_make_pdf(5))
+    try:
+        assert [c["name"] for c in chapters] == ["Chương 1", "Chương 2"]
+        assert len(chapters[0]["lessons"]) == 1
+        assert len(chapters[1]["lessons"]) == 1
         assert not warnings
     finally:
         pdf_path.unlink(missing_ok=True)
@@ -312,26 +340,16 @@ def test_extract_book_structure_two_pass_locates_toc(monkeypatch):
 
 def test_extract_book_structure_no_toc_fallback_full_scan(monkeypatch):
     from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
 
-    # PDF 3 trang = đúng 1 lô quét (vlm_sweep_pages_per_call ≥ 3) → mock trả 1 lô vừa khít,
-    # không bị cắt theo batch_size.
-    raw = (
-        '{"pages": ['
-        '{"kind": "frontmatter", "printed_page": 1}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "Tập hợp", "printed_page": 2}, '
-        '{"kind": "content", "chapter": "Số nguyên", "lesson": "Số nguyên âm", "printed_page": 3}'
-        "]}"
-    )
     monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
-    # Lượt A không có TOC → fallback quét toàn cuốn (cùng raw cho cả 2 lần gọi).
-    monkeypatch.setattr(vlm_mod, "read_book_pages", lambda path, **kw: [raw])
+    monkeypatch.setattr(ld_mod, "find_toc_pages", lambda *a, **k: [])
+    monkeypatch.setattr(ld_mod, "build_page_number_map", lambda *a, **k: {1: 0, 2: 1, 3: 2})
 
-    chapters, _page_items, warnings, pdf_path = extract_book_structure(_make_pdf(3))
+    chapters, page_map, warnings, pdf_path = extract_book_structure(_make_pdf(3))
     try:
-        assert [c["name"] for c in chapters] == ["Số tự nhiên", "Số nguyên"]
-        assert chapters[0]["lessons"][0]["name"] == "Tập hợp"
-        assert chapters[1]["lessons"][0]["name"] == "Số nguyên âm"
-        assert any("MỤC LỤC" in w for w in warnings)
+        assert chapters == []
+        assert any("Không tìm thấy trang Mục Lục" in w for w in warnings)
     finally:
         pdf_path.unlink(missing_ok=True)
 
@@ -346,15 +364,18 @@ def test_extract_book_structure_requires_vlm(monkeypatch):
 
 def test_extract_book_structure_vlm_failure_raises_value_error(monkeypatch):
     from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
 
     monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
+    monkeypatch.setattr(ld_mod, "find_toc_pages", lambda *a, **k: [1])
     monkeypatch.setattr(
         vlm_mod,
-        "read_book_pages",
+        "read_toc_pages",
         lambda *a, **k: (_ for _ in ()).throw(vlm_mod.VlmUnavailableError("503")),
     )
     with pytest.raises(ValueError):
         extract_book_structure(_make_pdf(2))
+
 
 
 def test_build_tree_from_labels_no_toc():
@@ -394,13 +415,14 @@ def test_clean_keywords_and_sections():
 def test_enrich_chapters_uses_anchors_and_context(monkeypatch):
     from src.services import vlm as vlm_mod
 
-    chapters = [{"name": "Số tự nhiên", "lessons": [{"name": "Tập hợp"}, {"name": "Lũy thừa"}]}]
-    # Neo: 1 = Tập hợp, 2 = Lũy thừa. Trang 0-1 = bài 1; trang 2-3 = bài 2.
-    page_items = [
-        {"kind": "content", "lesson": "1"},
-        {"kind": "content", "lesson": "1"},
-        {"kind": "content", "lesson": "2"},
-        {"kind": "content", "lesson": "2"},
+    chapters = [
+        {
+            "name": "Số tự nhiên",
+            "lessons": [
+                {"name": "Tập hợp", "start_page": 0, "end_page": 1},
+                {"name": "Lũy thừa", "start_page": 2, "end_page": 3},
+            ],
+        }
     ]
     seen_context: list[tuple[str | None, str | None]] = []
 
@@ -414,7 +436,7 @@ def test_enrich_chapters_uses_anchors_and_context(monkeypatch):
         )
 
     monkeypatch.setattr(vlm_mod, "read_lesson_pages", fake_lesson)
-    warnings = _enrich_chapters(chapters, page_items, "fake.pdf")
+    warnings = _enrich_chapters(chapters, {}, "fake.pdf")
     assert warnings == []
     assert chapters[0]["lessons"][0]["summary"] == "Tóm tắt Tập hợp"
     assert chapters[0]["lessons"][0]["keywords"] == ["tập hợp", "phần tử"]
@@ -431,12 +453,14 @@ def test_enrich_chapters_uses_anchors_and_context(monkeypatch):
 def test_enrich_chapters_skips_failed_lesson(monkeypatch):
     from src.services import vlm as vlm_mod
 
-    chapters = [{"name": "C1", "lessons": [{"name": "B1"}, {"name": "B2"}]}]
-    page_items = [
-        {"kind": "content", "lesson": "1"},
-        {"kind": "content", "lesson": "1"},
-        {"kind": "content", "lesson": "2"},
-        {"kind": "content", "lesson": "2"},
+    chapters = [
+        {
+            "name": "C1",
+            "lessons": [
+                {"name": "B1", "start_page": 0, "end_page": 1},
+                {"name": "B2", "start_page": 2, "end_page": 3},
+            ],
+        }
     ]
 
     def fake_lesson(path, indices, lesson_name=None, **k):
@@ -445,31 +469,32 @@ def test_enrich_chapters_skips_failed_lesson(monkeypatch):
         raise vlm_mod.VlmUnavailableError("503")
 
     monkeypatch.setattr(vlm_mod, "read_lesson_pages", fake_lesson)
-    warnings = _enrich_chapters(chapters, page_items, "fake.pdf")
+    warnings = _enrich_chapters(chapters, {}, "fake.pdf")
     assert any("B2" in w for w in warnings)
     assert chapters[0]["lessons"][0]["summary"] == "OK"
     assert chapters[0]["lessons"][1].get("summary") is None
 
 
 def test_enrich_chapters_truncated_pdf_only_in_file_lessons(monkeypatch):
-    """File cắt ngắn: MỤC LỤC có 3 bài nhưng file chỉ chứa bài 1-2 → chỉ bài có trang được làm giàu."""
+    """File cắt ngắn: bài không có dải trang hợp lệ → bỏ làm giàu kèm warning."""
     from src.services import vlm as vlm_mod
 
     chapters = [
-        {"name": "Chương I", "lessons": [{"name": "Tập hợp"}, {"name": "Lũy thừa"}, {"name": "Bài 3 (ngoài file)"}]}
-    ]
-    page_items = [
-        {"kind": "content", "lesson": "1"},
-        {"kind": "content", "lesson": "1"},
-        {"kind": "content", "lesson": "2"},
-        {"kind": "content", "lesson": "2"},
+        {
+            "name": "Chương I",
+            "lessons": [
+                {"name": "Tập hợp", "start_page": 0, "end_page": 1},
+                {"name": "Lũy thừa", "start_page": 2, "end_page": 3},
+                {"name": "Bài 3 (ngoài file)", "start_page": None, "end_page": None},
+            ],
+        }
     ]
     monkeypatch.setattr(
         vlm_mod,
         "read_lesson_pages",
         lambda path, indices, lesson_name=None, **k: f'{{"summary": "Tóm tắt {lesson_name}", "keywords": [], "sections": []}}',
     )
-    warnings = _enrich_chapters(chapters, page_items, "fake.pdf")
+    warnings = _enrich_chapters(chapters, {}, "fake.pdf")
     assert any("Bài 3 (ngoài file)" in w for w in warnings)
     assert chapters[0]["lessons"][0]["summary"] == "Tóm tắt Tập hợp"
     assert chapters[0]["lessons"][1]["summary"] == "Tóm tắt Lũy thừa"
@@ -477,11 +502,80 @@ def test_enrich_chapters_truncated_pdf_only_in_file_lessons(monkeypatch):
 
 
 def test_enrich_chapters_no_anchor_matches_warns():
-    chapters = [{"name": "C1", "lessons": [{"name": "B1"}]}]
-    # Không có trang content gán được neo → warning, bỏ làm giàu.
-    page_items = [{"kind": "frontmatter"}, {"kind": "toc", "chapters": []}]
-    warnings = _enrich_chapters(chapters, page_items, "fake.pdf")
-    assert warnings and "bỏ làm giàu nội dung" in warnings[0]
+    chapters = [{"name": "C1", "lessons": [{"name": "B1", "start_page": None, "end_page": None}]}]
+    warnings = _enrich_chapters(chapters, {}, "fake.pdf")
+    assert any("không có trang nội dung" in w for w in warnings)
+
+
+def test_align_unit_page_ranges_truncated_pdf_sets_none():
+    """PDF chỉ có 20 trang nhưng TOC có bài ở trang 93 -> start_page và end_page phải là None (không bị clamp)."""
+    chapters = [
+        {
+            "name": "Chương 1",
+            "lessons": [
+                {"name": "Bài 1", "page": 7},
+                {"name": "Bài 2", "page": 10},
+            ],
+        },
+        {
+            "name": "Chương 3",
+            "lessons": [
+                {"name": "Bài tập cuối chương 3", "page": 93},
+            ],
+        },
+    ]
+    page_map = {7: 6, 10: 9}
+    _align_unit_page_ranges(chapters, page_map, total_pages=20)
+    # Bài 1 & 2 trong 20 trang
+    assert chapters[0]["lessons"][0]["start_page"] == 6
+    assert chapters[0]["lessons"][0]["end_page"] == 8
+    assert chapters[0]["lessons"][1]["start_page"] == 9
+    assert chapters[0]["lessons"][1]["end_page"] == 19
+    # Bài tập cuối chương 3 ngoài 20 trang -> start_page & end_page là None
+    assert chapters[1]["lessons"][0]["start_page"] is None
+    assert chapters[1]["lessons"][0]["end_page"] is None
+
+
+def test_align_unit_page_ranges_dynamic_offset_scan_pdf():
+    """Khi PDF scan ảnh (page_map rỗng), tính Dynamic Offset từ vị trí toc_pages."""
+    chapters = [
+        {
+            "name": "Chương 1",
+            "page": 6,
+            "lessons": [
+                {"name": "Bài 1", "page": 6},
+                {"name": "Bài 4", "page": 16},
+                {"name": "Bài 5", "page": 20},
+            ],
+        },
+    ]
+    # toc_pages ở PDF index [4, 5], first_printed = 6 -> offset = (5+1) - 6 = 0
+    _align_unit_page_ranges(chapters, {}, total_pages=127, toc_pages=[4, 5])
+    assert chapters[0]["lessons"][0]["start_page"] == 6
+    assert chapters[0]["lessons"][0]["end_page"] == 15
+    assert chapters[0]["lessons"][1]["start_page"] == 16
+    assert chapters[0]["lessons"][1]["end_page"] == 19
+    assert chapters[0]["lessons"][2]["start_page"] == 20
+    assert chapters[0]["lessons"][2]["end_page"] == 126
+
+
+def test_align_unit_page_ranges_dynamic_offset_safety_bounds_and_empty():
+    """Kiểm tra an toàn: offset bất thường ngoài [-5..10] hoặc toc_pages rỗng -> fallback về 0 an toàn."""
+    chapters = [
+        {
+            "name": "Chương 1",
+            "page": 10,
+            "lessons": [{"name": "Bài 1", "page": 10}],
+        }
+    ]
+    # toc_pages rỗng -> không crash, offset = 0 -> start_page = 10
+    _align_unit_page_ranges(chapters, {}, total_pages=50, toc_pages=[])
+    assert chapters[0]["lessons"][0]["start_page"] == 10
+
+    # offset dị thường (toc_pages=[40], first_printed=10 -> raw_offset=31 > 10) -> fallback offset = 0
+    _align_unit_page_ranges(chapters, {}, total_pages=50, toc_pages=[40])
+    assert chapters[0]["lessons"][0]["start_page"] == 10
+
 
 
 # ============================================================
@@ -552,6 +646,63 @@ def test_upsert_unit_tree_links_parents_persists_phu_and_enrich():
     assert phu["is_phu"] is True
 
 
+def test_upsert_unit_tree_overwrite_enrichment_flag():
+    """Kiểm tra cờ overwrite_enrichment: True xóa sạch summary cũ về None, False giữ lại summary cũ."""
+    class _MockUnit:
+        def __init__(self, code, name, summary="Old summary", keywords=["old"], sections=[{"name": "old"}]):
+            self.id = 1
+            self.code = code
+            self.name = name
+            self.summary = summary
+            self.keywords = keywords
+            self.sections = sections
+            self.semester_number = 1
+            self.parent_id = None
+            self.is_phu = False
+            self.is_active = True
+            self.book_id = 1
+
+    class _MockDb:
+        def __init__(self, existing_unit):
+            self.unit = existing_unit
+            self.committed = False
+
+        def execute(self, stmt):
+            class _Res:
+                def __init__(self, u):
+                    self.u = u
+                def scalars(self):
+                    return self
+                def first(self):
+                    return self.u
+            return _Res(self.unit)
+
+        def add(self, obj):
+            pass
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            self.committed = True
+
+    # 1. Khi overwrite_enrichment=True (mặc định): spec có summary=None -> unit.summary bị xóa về None
+    unit1 = _MockUnit("TOAN6_C1_B1", "Bài 1", summary="Old summary")
+    db1 = _MockDb(unit1)
+    spec1 = [{"code": "TOAN6_C1_B1", "name": "Bài 1", "semester_number": 1, "parent_code": None, "summary": None, "keywords": None, "sections": None}]
+    upsert_unit_tree(db1, spec1, subject_id=42, grade=6, overwrite_enrichment=True)
+    assert unit1.summary is None
+    assert unit1.keywords is None
+    assert unit1.sections is None
+
+    # 2. Khi overwrite_enrichment=False: spec có summary=None -> unit.summary cũ được GIỮ LẠI
+    unit2 = _MockUnit("TOAN6_C1_B1", "Bài 1", summary="Old summary")
+    db2 = _MockDb(unit2)
+    spec2 = [{"code": "TOAN6_C1_B1", "name": "Bài 1", "semester_number": 1, "parent_code": None, "summary": None, "keywords": None, "sections": None}]
+    upsert_unit_tree(db2, spec2, subject_id=42, grade=6, overwrite_enrichment=False)
+    assert unit2.summary == "Old summary"
+
+
 def test_ingest_book_dry_run_no_db_write():
     db = _FakeDb()
     result = ingest_book(db, "toan6_tap1.txt", _MD_TOC.encode(), "toan", 6, dry_run=True)
@@ -566,28 +717,24 @@ def test_ingest_book_dry_run_no_db_write():
 def test_ingest_book_pdf_dry_run_with_enrich(monkeypatch):
     """PDF: mock 2 lượt quét (TOC + neo) + làm giàu → preview chứa summary/keywords/sections."""
     from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
 
-    raw_a = (
-        '{"pages": ['
-        '{"kind": "frontmatter", "printed_page": 1}, '
-        '{"kind": "toc", "printed_page": 2, "chapters": ['
-        '{"name": "Số tự nhiên", "lessons": [{"name": "Tập hợp", "kind": "lesson"}]}]}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 3}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 4}'
-        "]}"
-    )
-    raw_b = (
-        '{"pages": ['
-        '{"kind": "content", "lesson": "1", "printed_page": 3}, '
-        '{"kind": "content", "lesson": "1", "printed_page": 4}'
-        "]}"
+    raw_toc = (
+        '{"chapters": ['
+        '{"name": "Số tự nhiên", "page": 1, "lessons": ['
+        '{"name": "Tập hợp", "page": 2, "kind": "chinh"}'
+        ']}'
+        ']}'
     )
     enrich_raw = (
         '{"summary": "Tóm tắt bài Tập hợp", "keywords": ["tập hợp", "phần tử"], '
         '"sections": [{"name": "1. Ghi số tự nhiên"}]}'
     )
+
     monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
-    monkeypatch.setattr(vlm_mod, "read_book_pages", _fake_read_book_pages([raw_a], [raw_b]))
+    monkeypatch.setattr(ld_mod, "find_toc_pages", lambda *a, **k: [0])
+    monkeypatch.setattr(ld_mod, "build_page_number_map", lambda *a, **k: {1: 0, 2: 1, 3: 2, 4: 3})
+    monkeypatch.setattr(vlm_mod, "read_toc_pages", lambda *a, **k: raw_toc)
     monkeypatch.setattr(vlm_mod, "read_lesson_pages", lambda *a, **k: enrich_raw)
 
     db = _FakeDb()
@@ -603,25 +750,21 @@ def test_ingest_book_pdf_dry_run_with_enrich(monkeypatch):
 
 
 def test_ingest_book_pdf_enrich_off_still_gets_tree(monkeypatch):
-    """enrich=false: vẫn quét 2 lượt để lấy cây TOC nhưng KHÔNG gọi làm giàu."""
+    """enrich=false: vẫn lấy cây TOC nhưng KHÔNG gọi làm giàu."""
     from src.services import vlm as vlm_mod
+    from src.services import layout_detector as ld_mod
 
-    raw_a = (
-        '{"pages": ['
-        '{"kind": "toc", "printed_page": 1, "chapters": ['
-        '{"name": "Số tự nhiên", "lessons": [{"name": "Tập hợp", "kind": "lesson"}]}]}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 2}, '
-        '{"kind": "content", "chapter": "Số tự nhiên", "lesson": "1", "printed_page": 3}'
-        "]}"
-    )
-    raw_b = (
-        '{"pages": ['
-        '{"kind": "content", "lesson": "1", "printed_page": 2}, '
-        '{"kind": "content", "lesson": "1", "printed_page": 3}'
-        "]}"
+    raw_toc = (
+        '{"chapters": ['
+        '{"name": "Số tự nhiên", "page": 1, "lessons": ['
+        '{"name": "Tập hợp", "page": 2, "kind": "chinh"}'
+        ']}'
+        ']}'
     )
     monkeypatch.setattr(vlm_mod, "is_configured", lambda *a, **k: True)
-    monkeypatch.setattr(vlm_mod, "read_book_pages", _fake_read_book_pages([raw_a], [raw_b]))
+    monkeypatch.setattr(ld_mod, "find_toc_pages", lambda *a, **k: [0])
+    monkeypatch.setattr(ld_mod, "build_page_number_map", lambda *a, **k: {1: 0, 2: 1, 3: 2})
+    monkeypatch.setattr(vlm_mod, "read_toc_pages", lambda *a, **k: raw_toc)
     calls: list = []
     monkeypatch.setattr(vlm_mod, "read_lesson_pages", lambda *a, **k: calls.append(1) or "{}")
 
@@ -716,3 +859,110 @@ def test_pdf_docx_module_paths_are_importable():
     """fitz + docx có trong môi trường (deps) — module không import lỗi."""
     import docx  # noqa: F401
     import fitz  # noqa: F401
+
+
+def test_build_page_number_map_linear_interpolation(tmp_path):
+    """Kiểm tra bóc tách số trang in và nội suy tuyến tính."""
+    from src.services.layout_detector import build_page_number_map
+    import fitz
+
+    doc = fitz.open()
+    for i in range(5):
+        page = doc.new_page()
+        if i in (1, 3):
+            page.insert_text((50, 750), f"Trang {i + 1}")
+    pdf_file = tmp_path / "test_map.pdf"
+    doc.save(str(pdf_file))
+    doc.close()
+
+    page_map = build_page_number_map(pdf_file)
+    assert page_map[2] == 1
+    assert page_map[4] == 3
+    assert page_map[3] == 2
+
+
+def test_parse_dynamic_toc_json_handles_latex_and_variants():
+    """Kiểm tra parser JSON cây TOC an toàn trước escape LaTeX và các cấu trúc biến thể."""
+    from src.services.vlm import parse_dynamic_toc_json
+
+    raw_json = r"""
+    {
+      "chapters": [
+        {
+          "name": "CHƯƠNG I: SỐ TỰ NHIÊN",
+          "page": 4,
+          "lessons": [
+            {"name": "Bài 1. Tập hợp $A \subset \mathbb{N}$", "page": 4, "kind": "chinh"},
+            {"name": "Bài 11. Hoạt động thực hành và trải nghiệm: Sử dụng máy tính", "page": 35, "kind": "phu"}
+          ]
+        }
+      ]
+    }
+    """
+    chapters = parse_dynamic_toc_json(raw_json)
+    assert len(chapters) == 1
+    assert chapters[0]["name"] == "CHƯƠNG I: SỐ TỰ NHIÊN"
+    assert len(chapters[0]["lessons"]) == 2
+    assert "Bài 11" in chapters[0]["lessons"][1]["name"]
+    assert chapters[0]["lessons"][1]["kind"] == "phu"
+
+
+def test_find_toc_pages_with_keyword(tmp_path):
+    """Kiểm tra find_toc_pages nhận diện trang chứa từ khóa MỤC LỤC."""
+    from src.services.layout_detector import find_toc_pages
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page()  # Page 0: Bìa
+    p1 = doc.new_page()  # Page 1: MỤC LỤC
+    p1.insert_text((50, 50), "MỤC LỤC\nChương 1: Số tự nhiên ...... 4\nChương 2: Số nguyên ...... 40")
+    doc.new_page()  # Page 2: Nội dung
+    pdf_file = tmp_path / "test_toc.pdf"
+    doc.save(str(pdf_file))
+    doc.close()
+
+    toc_indices = find_toc_pages(pdf_file)
+    assert toc_indices == [1]
+
+
+def test_sample_indices_inclusive_behavior():
+    """Kiểm tra _sample_indices: xử lý chính xác dải [start, end] inclusive, không bị rỗng khi start==end."""
+    # 1. 1 trang duy nhất (start == end) -> trả về đúng 1 trang [19], không được rỗng
+    assert _sample_indices(19, 19, 10) == [19]
+
+    # 2. Nhiều trang (start=16, end=18) -> trả về đủ [16, 17, 18], không được bỏ rơi trang cuối 18
+    assert _sample_indices(16, 18, 10) == [16, 17, 18]
+
+    # 3. Lấy mẫu đều khi vượt quá cap -> luôn giữ trang đầu + trang cuối
+    sampled = _sample_indices(10, 30, 5)
+    assert len(sampled) == 5
+    assert sampled[0] == 10
+    assert sampled[-1] == 30
+    assert sampled == [10, 15, 20, 25, 30]
+
+    # 4. Trường hợp không hợp lệ
+    assert _sample_indices(20, 18, 10) == []
+
+
+def test_get_runtime_settings_routes_properly():
+    """Kiểm tra _get_runtime_settings tự động suy luận đúng provider từ model name."""
+    # 1. Qwen direct
+    s_qwen = _get_runtime_settings(vlm_model="qwen3-vl-flash")
+    assert s_qwen.vlm_provider == "qwen"
+    assert s_qwen.qwen_vlm_model == "qwen3-vl-flash"
+
+    # 2. Gemini via OpenRouter
+    s_gemini = _get_runtime_settings(vlm_model="google/gemini-2.0-flash-001")
+    assert s_gemini.vlm_provider == "openrouter"
+    assert s_gemini.openrouter_vlm_model == "google/gemini-2.0-flash-001"
+
+    # 3. Mimo via OpenRouter
+    s_mimo = _get_runtime_settings(vlm_model="xiaomi/mimo-v2.5")
+    assert s_mimo.vlm_provider == "openrouter"
+    assert s_mimo.openrouter_vlm_model == "xiaomi/mimo-v2.5"
+
+    # 4. GPT-4o-mini via OpenRouter
+    s_gpt = _get_runtime_settings(vlm_model="openai/gpt-4o-mini")
+    assert s_gpt.vlm_provider == "openrouter"
+    assert s_gpt.openrouter_vlm_model == "openai/gpt-4o-mini"
+

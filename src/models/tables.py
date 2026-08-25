@@ -415,6 +415,7 @@ class CurriculumIngestJob(Base):
     dry_run = Column(Boolean, nullable=False, server_default=text("true"))
     filename = Column(String(255))
     book_title = Column(String(255))
+    vlm_model = Column(String(100), nullable=True)
     source_filepath = Column(Text)
     status = Column(String(20), nullable=False, server_default=text("'pending'"))
     progress = Column(Integer, nullable=False, server_default=text("0"))

@@ -29,8 +29,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.config import get_settings
+from src.config import Settings, get_settings
 from src.models.tables import CurriculumUnit
+from src.services import layout_detector as ld
 from src.services import vlm
 from src.services.curriculum_catalog import deactivate_placeholder_units, resolve_subject_ids
 
@@ -91,16 +92,25 @@ def _is_phu_title(title: str) -> bool:
 
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:
-    """Parse JSON object từ text VLM (bóc code fence, lấy object đầu tiên). None nếu hỏng."""
+    """Parse JSON object từ text VLM (bóc code fence, lấy object đầu tiên, xử lý LaTeX escapes). None nếu hỏng."""
     cleaned = re.sub(r"^`{3}(?:json)?|`{3}$", "", text.strip(), flags=re.MULTILINE).strip()
     start = cleaned.find("{")
     if start < 0:
         return None
+    sub_text = cleaned[start:]
     try:
-        obj, _ = json.JSONDecoder().raw_decode(cleaned[start:])
+        obj, _ = json.JSONDecoder().raw_decode(sub_text)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: Sửa các ký tự escape LaTeX không hợp lệ (ví dụ \in, \cdot, \ge, \{, \})
+    try:
+        fixed_text = re.sub(r'\\(?![/\\\"bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', sub_text)
+        obj, _ = json.JSONDecoder().raw_decode(fixed_text)
+        return obj if isinstance(obj, dict) else None
     except json.JSONDecodeError:
         return None
-    return obj if isinstance(obj, dict) else None
 
 
 def _as_page_int(value: Any) -> int | None:
@@ -145,9 +155,9 @@ def _merge_toc_chapters(parsed_pages: list[dict[str, Any]]) -> list[dict[str, An
             name = _normalize_title(str(ch.get("name", "")))
             if not name or _is_placeholder(name):
                 continue
-            if chapters and chapters[-1]["name"] == name:
-                target = chapters[-1]  # trang sau lặp lại tên chương → gộp bài
-            else:
+            # Tìm xem chương này đã tồn tại trong toàn bộ danh sách chưa (tránh lặp chương khi TOC trải nhiều trang)
+            target = next((c for c in chapters if c["name"].lower() == name.lower()), None)
+            if target is None:
                 target = {
                     "name": name,
                     "is_phu": _is_phu_title(name),
@@ -155,10 +165,16 @@ def _merge_toc_chapters(parsed_pages: list[dict[str, Any]]) -> list[dict[str, An
                     "lessons": [],
                 }
                 chapters.append(target)
+
             for lesson in ch.get("lessons", []) or []:
                 lesson_name = _normalize_title(str(lesson.get("name", "")))
                 if not lesson_name or _is_placeholder(lesson_name):
                     continue
+                # Tránh lặp bài con trong cùng một chương
+                existing_lesson = next((ls for ls in target["lessons"] if ls["name"].lower() == lesson_name.lower()), None)
+                if existing_lesson is not None:
+                    continue
+
                 kind = lesson.get("kind")
                 target["lessons"].append(
                     {
@@ -286,13 +302,15 @@ def _ranges_from_anchors(
 
 
 def _sample_indices(start: int, end: int, cap: int) -> list[int]:
-    """Chỉ số trang trong [start, end) — lấy mẫu đều nếu dài hơn cap, LUÔN giữ trang đầu + cuối."""
-    length = end - start
-    if length <= cap:
-        return list(range(start, end))
-    if length < 2:
-        return list(range(start, end))
-    step = (length - 1) / (cap - 1)
+    """Chỉ số trang trong [start, end] (inclusive) — lấy mẫu đều nếu dài hơn cap, LUÔN giữ trang đầu + cuối."""
+    if end < start:
+        return []
+    total = end - start + 1
+    if total <= cap:
+        return list(range(start, end + 1))
+    if cap <= 1:
+        return [start]
+    step = (total - 1) / (cap - 1)
     return [start + round(i * step) for i in range(cap)]
 
 
@@ -344,115 +362,216 @@ def _join_summaries(summaries: list[str]) -> str:
     return joined
 
 
-# Callback tiến độ: (done, total, stage) với stage = "scan" (quét toàn cuốn) | "enrich" (làm giàu từng bài).
-ProgressCb = Callable[[int, int, str], None]
+def _get_runtime_settings(settings: Settings | None = None, vlm_model: str | None = None) -> Settings:
+    """Tạo runtime settings với model và provider được suy luận linh hoạt từ tên model."""
+    base = settings or get_settings()
+    if not vlm_model or not vlm_model.strip():
+        return base
+    model = vlm_model.strip()
+    update_dict: dict[str, Any] = {}
+    if model == "qwen3-vl-flash":
+        update_dict["vlm_provider"] = "qwen"
+        update_dict["qwen_vlm_model"] = model
+    elif "/" in model or any(k in model.lower() for k in ("gemini", "mimo", "gpt", "claude")):
+        update_dict["vlm_provider"] = "openrouter"
+        update_dict["openrouter_vlm_model"] = model
+    else:
+        update_dict["vlm_model"] = model
+    return base.model_copy(update=update_dict)
+
+
+def _spot_check_offset_with_vlm(
+    pdf_path: Path, est_pdf_idx: int, total_pages: int, settings: Settings | None = None
+) -> int | None:
+    """Spot check 1 trang bằng VLM (1 request duy nhất, ~0.8s) để xác định Ground-Truth Offset khi page_map rỗng."""
+    if not (0 <= est_pdf_idx < total_pages):
+        return None
+    try:
+        import fitz
+        with fitz.open(pdf_path) as doc:
+            page = doc.load_page(est_pdf_idx)
+            img_b64 = base64.b64encode(page.get_pixmap(dpi=120).tobytes("png")).decode("ascii")
+        s = settings or get_settings()
+        prompt = (
+            "Đọc số trang in (số trang sách) ở góc chân trang (footer) hoặc đầu trang (header) của ảnh. "
+            'Trả về đúng 1 JSON: {"printed_page": <số nguyên hoặc null>}'
+        )
+        ans = vlm._chat_completions(img_b64, s, prompt)
+        data = json.loads(vlm._clean_json(ans))
+        printed = data.get("printed_page")
+        if printed and isinstance(printed, int) and printed > 0:
+            return est_pdf_idx - printed
+    except Exception as exc:
+        logger.warning("VLM spot check offset failed: %s", exc)
+    return None
+
+
+def _align_unit_page_ranges(
+    chapters: list[dict[str, Any]],
+    page_map: dict[int, int],
+    total_pages: int,
+    toc_pages: list[int] | None = None,
+    pdf_path: Path | None = None,
+    settings: Settings | None = None,
+) -> None:
+    """Khớp số trang in từ TOC với bảng ánh xạ page_map hoặc Dynamic Offset để chốt dải trang [start_page, end_page] cho từng bài."""
+    flat_units: list[dict[str, Any]] = []
+    for ch in chapters:
+        lessons = ch.get("lessons") or []
+        if lessons:
+            for ls in lessons:
+                flat_units.append(ls)
+        else:
+            flat_units.append(ch)
+
+    # 1. Tính Dynamic Offset nếu page_map rỗng (PDF Scan không có text layer)
+    dom_offset = 0
+    if page_map:
+        offsets = [pdf_idx - pr_pg for pr_pg, pdf_idx in page_map.items()]
+        dom_offset = max(set(offsets), key=offsets.count)
+    else:
+        all_printed: list[int] = []
+        for ch in chapters:
+            p = ch.get("page")
+            if p is not None and isinstance(p, int) and p > 0:
+                all_printed.append(p)
+            for ls in ch.get("lessons", []):
+                lp = ls.get("page")
+                if lp is not None and isinstance(lp, int) and lp > 0:
+                    all_printed.append(lp)
+        first_printed = min(all_printed) if all_printed else None
+
+        # Spot check calibration bằng VLM trên bài học đầu tiên (nếu có file PDF)
+        spot_offset = None
+        s = settings or get_settings()
+        if pdf_path and first_printed is not None and vlm.is_configured(s):
+            raw_est = (max(toc_pages) + 1) if toc_pages else 0
+            # Thử spot check tại trang first_printed hoặc raw_est
+            spot_offset = _spot_check_offset_with_vlm(pdf_path, first_printed, total_pages, settings=s)
+            if spot_offset is None and raw_est != first_printed:
+                spot_offset = _spot_check_offset_with_vlm(pdf_path, raw_est, total_pages, settings=s)
+
+        if spot_offset is not None and -5 <= spot_offset <= 10:
+            dom_offset = spot_offset
+        elif toc_pages and first_printed is not None:
+            raw_offset = (max(toc_pages) + 1) - first_printed
+            # Sanity bound [-5 .. 10]: Offset của SGK thông thường chỉ nằm trong dải này
+            if -5 <= raw_offset <= 10:
+                dom_offset = raw_offset
+            else:
+                dom_offset = 0
+        else:
+            dom_offset = 0
+
+    # 2. Gán start_page từ page_map hoặc Dynamic Offset
+    for unit in flat_units:
+        printed = unit.get("page")
+        if printed and isinstance(printed, int) and printed in page_map:
+            pdf_idx = page_map[printed]
+            unit["start_page"] = pdf_idx if 0 <= pdf_idx < total_pages else None
+        elif printed and isinstance(printed, int):
+            est_idx = printed + dom_offset
+            # CHỈ gán start_page nếu trang ước tính NẰM TRONG file PDF thực tế
+            if 0 <= est_idx < total_pages:
+                unit["start_page"] = est_idx
+            else:
+                # Trang vượt ngoài file PDF (file bị cắt ngắn/chỉ có 1 phần) -> gán None, KHÔNG clamp!
+                unit["start_page"] = None
+        else:
+            unit["start_page"] = None
+
+    # 3. Lọc các unit có start_page hợp lệ trong file PDF và chốt end_page
+    valid_units = [u for u in flat_units if u.get("start_page") is not None]
+    valid_units.sort(key=lambda u: u["start_page"])
+
+    for i, unit in enumerate(valid_units):
+        start_p = unit["start_page"]
+        if i + 1 < len(valid_units):
+            next_start = valid_units[i + 1]["start_page"]
+            end_p = max(start_p, next_start - 1)
+        else:
+            end_p = total_pages - 1
+        unit["end_page"] = end_p
+
+    # Các unit không có start_page trong file thì end_page cũng là None
+    for unit in flat_units:
+        if unit.get("start_page") is None:
+            unit["end_page"] = None
 
 
 def extract_book_structure(
     content: bytes,
     progress_cb: ProgressCb | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any] | None], list[str], Path]:
-    """Quét PDF bằng VLM (2 lượt) → (chapters cây, page_items, warnings, pdf_path tạm).
-
-    - Lượt A: quét ~15 trang đầu → tìm trang MỤC LỤC → cây chương→bài (kind lesson/phu) +
-      danh sách NEO (mỗi bài có ID + tiền tố chương).
-    - Lượt B: phân loại trang NỘI DUNG (từ sau MỤC LỤC tới hết sách) CÓ NEO — VLM chỉ chọn
-      ID từ danh sách MỤC LỤC, KHÔNG tự đặt tên → không bịa đơn vị mới từ mục con.
-    - Không có trang MỤC LỤC trong 15 trang đầu → quét toàn cuốn với prompt cơ bản (nguyên
-      tắc cấu trúc) + dựng cây từ heading nội dung (fallback, kèm warning).
-    - page_items: list theo đúng thứ tự trang PDF (None = trang chưa quét / lô quét lỗi).
-    - pdf_path tạm giữ lại để làm giàu render lại trang từng bài; caller phải unlink.
+    vlm_model: str | None = None,
+    settings: Settings | None = None,
+) -> tuple[list[dict[str, Any]], dict[int, int], list[str], Path]:
+    """Quét PDF theo Windowed Batch TOC Pipeline (tối ưu hóa độ chính xác và tốc độ):
+    1. Đọc số trang in ở footer/header (PyMuPDF) + nội suy tuyến tính -> page_map (0.1s).
+    2. Định vị toàn bộ dải trang MỤC LỤC bằng find_toc_pages (hỗ trợ cả TOC 1 trang và nhiều trang).
+    3. Gửi toàn bộ dải ảnh Mục Lục vào VLM trong 1 request duy nhất -> trích xuất cây Chương/Bài toàn diện.
+    4. Khớp số trang in sang PDF index thực tế, chốt ranh giới [start_page, end_page] cho từng bài.
     """
-    if not vlm.is_configured():
+    s = _get_runtime_settings(settings, vlm_model)
+    if not vlm.is_configured(s):
         raise ValueError("Cần cấu hình VLM_API_KEY để nạp sách PDF — VLM là bắt buộc cho luồng này.")
     _TMP_DIR.mkdir(parents=True, exist_ok=True)
     tmp = _TMP_DIR / f"sweep_{uuid.uuid4().hex}.pdf"
     tmp.write_bytes(content)
     try:
-        scan_cb = (lambda done, total: progress_cb(done, total, "scan")) if progress_cb else None
-        import fitz  # PyMuPDF — đã có trong deps
+        import fitz
 
         with fitz.open(tmp) as doc:
-            page_count = doc.page_count
-        batch_size = max(1, min(get_settings().vlm_sweep_pages_per_call, page_count))
-        page_items: list[dict[str, Any] | None] = [None] * page_count
+            total_pages = doc.page_count
+
         warnings: list[str] = []
+        if progress_cb:
+            progress_cb(1, 4, "scan")
 
-        def parse_into(raw_batches: list[str | None], start_idx: int, limit: int) -> None:
-            for i, raw in enumerate(raw_batches):
-                offset = i * batch_size
-                if offset >= limit:
-                    break
-                expected = min(batch_size, limit - offset)
-                pages = _parse_scan_batch(raw, expected)
-                if pages is None:
-                    warnings.append(f"Lô quét trang {start_idx + offset + 1}–{start_idx + offset + expected} bị lỗi — bỏ qua.")
-                    continue
-                for k, page in enumerate(pages):
-                    page_items[start_idx + offset + k] = page
+        # Giai đoạn 1: Bảng ánh xạ số trang in -> PDF page index
+        page_map = ld.build_page_number_map(tmp)
 
-        # Lượt A: tìm MỤC LỤC trong ~15 trang đầu.
-        raw_a = vlm.read_book_pages(tmp, max_pages=_TOC_MAX_PAGES, progress_cb=scan_cb)
-        parse_into(raw_a, 0, min(_TOC_MAX_PAGES, page_count))
-        toc_indices = [i for i, p in enumerate(page_items) if p and p.get("kind") == "toc"]
-        toc_pages = [
-            {"toc_page": True, "chapters": page_items[i].get("chapters") or [], "printed_page": page_items[i].get("printed_page")}
-            for i in toc_indices
-        ]
-        chapters = _merge_toc_chapters(toc_pages)
+        # Giai đoạn 2: Định vị các trang Mục Lục (TOC) (hỗ trợ cả TOC 1 trang và TOC nhiều trang liên tiếp)
+        toc_pages = ld.find_toc_pages(tmp, settings=s)
+        if progress_cb:
+            progress_cb(2, 4, "scan")
 
-        if chapters:
-            # Lượt B: phân loại nội dung từ sau MỤC LỤC tới hết sách, CÓ NEO.
-            anchors = _build_anchor_list(chapters)
-            start = (toc_indices[-1] + 1) if toc_indices else min(_TOC_MAX_PAGES, page_count)
-            raw_b = vlm.read_book_pages(
-                tmp,
-                start_page=start,
-                prompt=vlm.scan_prompt_with_anchors(anchors),
-                progress_cb=scan_cb,
-            )
-            parse_into(raw_b, start, page_count - start)
+        # Giai đoạn 3: Gọi VLM trích xuất Cây Mục Lục Động từ toàn bộ dải trang TOC trong 1 request
+        if not toc_pages:
+            warnings.append("Không tìm thấy trang Mục Lục trong sách.")
+            chapters = []
         else:
-            # Fallback: không có MỤC LỤC trong 15 trang đầu → quét toàn cuốn (nguyên tắc cấu trúc).
-            raw_full = vlm.read_book_pages(tmp, progress_cb=scan_cb)
-            parse_into(raw_full, 0, page_count)
-            toc_indices = [i for i, p in enumerate(page_items) if p and p.get("kind") == "toc"]
-            if toc_indices:
-                toc_pages = [
-                    {"toc_page": True, "chapters": page_items[i].get("chapters") or []}
-                    for i in toc_indices
-                ]
-                chapters = _merge_toc_chapters(toc_pages)
-            else:
-                chapters = _build_tree_from_labels(page_items)
-                if chapters:
-                    warnings.append("Không tìm thấy trang MỤC LỤC — dựng cây từ tiêu đề nội dung (kém chính xác hơn).")
-        return chapters, page_items, warnings, tmp
+            raw_toc = vlm.read_toc_pages(tmp, toc_pages, settings=s)
+            chapters = vlm.parse_dynamic_toc_json(raw_toc)
+            if not chapters:
+                warnings.append("Không bóc tách được cây Mục Lục từ các trang TOC.")
+
+        # Giai đoạn 4: Ánh xạ ranh giới [start_page, end_page] cho từng bài học
+        _align_unit_page_ranges(chapters, page_map, total_pages, toc_pages=toc_pages, pdf_path=tmp, settings=s)
+        if progress_cb:
+            progress_cb(4, 4, "scan")
+
+        return chapters, page_map, warnings, tmp
     except vlm.VlmUnavailableError as exc:
         tmp.unlink(missing_ok=True)
         raise ValueError(str(exc)) from exc
+    except Exception as exc:
+        tmp.unlink(missing_ok=True)
+        raise exc
 
 
-def _enrich_chapters(
+def _enrich_units_chunked(
     chapters: list[dict[str, Any]],
-    page_items: list[dict[str, Any] | None],
+    page_map: dict[int, int],
     pdf_path: Path,
     progress_cb: ProgressCb | None = None,
+    vlm_model: str | None = None,
+    settings: Settings | None = None,
 ) -> list[str]:
-    """Làm giàu từng bài bằng VLM SONG SONG (ThreadPoolExecutor): summary + keywords + sections.
-
-    Khoảng trang bài từ NHÃN NEO MỤC LỤC (VLM gán mỗi trang về 1 ID trong danh sách — không
-    phụ thuộc số trang in, chịu được file cắt ngắn). Gửi toàn bộ trang của bài + tên bài/chương
-    làm neo ngữ cảnh → sections nhất quán giữa các lần gọi. Lỗi 1 bài → bỏ bài đó + warning.
+    """Làm giàu từng bài bằng VLM song song (ThreadPoolExecutor): summary + keywords + sections.
+    Cắt lát chính xác các trang theo dải [start_page, end_page] của bài học.
     """
+    s = _get_runtime_settings(settings, vlm_model)
     warnings: list[str] = []
-    ranges = _ranges_from_anchors(page_items, chapters)
-    if ranges is None:
-        warnings.append(
-            "Không gán được trang nội dung vào bài nào (VLM không khớp được MỤC LỤC) — bỏ làm giàu nội dung."
-        )
-        return warnings
-
     targets: list[tuple[int, int | None, dict[str, Any]]] = []
     for ci, ch in enumerate(chapters):
         lessons = ch.get("lessons") or []
@@ -464,33 +583,33 @@ def _enrich_chapters(
     total = len(targets)
     done_count = 0
 
-    valid_tasks: list[tuple[int, int | None, dict[str, Any], tuple[int, int]]] = []
+    valid_tasks: list[tuple[int, int | None, dict[str, Any], int, int]] = []
     for ci, li, node in targets:
-        rng = ranges.get((ci, li))
-        if rng is None:
-            # Bài không xuất hiện trong các trang đã quét (vd nằm ngoài phần file được tải lên).
+        start_p = node.get("start_page")
+        end_p = node.get("end_page")
+        if start_p is None or end_p is None:
             warnings.append(
-                f"Bài '{node['name']}': không có trang nội dung trong file này (file có thể bị "
-                "cắt ngắn / chỉ tải 1 phần sách) — bỏ làm giàu bài này."
+                f"Bài '{node['name']}': không có trang nội dung trong file này (file có thể bị cắt ngắn / chỉ tải 1 phần sách) — bỏ làm giàu."
             )
+            node["summary"] = None
+            node["keywords"] = []
+            node["sections"] = []
             done_count += 1
             if progress_cb:
                 progress_cb(done_count, total, "enrich")
         else:
-            valid_tasks.append((ci, li, node, rng))
+            valid_tasks.append((ci, li, node, start_p, end_p))
 
     if valid_tasks:
-        settings = get_settings()
-        max_workers = max(1, min(settings.vlm_max_concurrency, len(valid_tasks)))
+        max_workers = max(1, min(s.vlm_max_concurrency, len(valid_tasks)))
 
-        def process_one(task: tuple[int, int | None, dict[str, Any], tuple[int, int]]) -> tuple[dict[str, Any], str | None]:
-            ci, _li, node, rng = task
-            start, end = rng
+        def process_one(task: tuple[int, int | None, dict[str, Any], int, int]) -> tuple[dict[str, Any], str | None]:
+            ci, _li, node, start, end = task
             indices = _sample_indices(start, end, _MAX_REFINE_PAGES)
             chapter_name = chapters[ci].get("name") if ci < len(chapters) else None
             try:
                 raw = vlm.read_lesson_pages(
-                    pdf_path, indices, lesson_name=node["name"], chapter_name=chapter_name
+                    pdf_path, indices, lesson_name=node["name"], chapter_name=chapter_name, settings=s
                 )
             except vlm.VlmUnavailableError as exc:
                 return node, f"Bài '{node['name']}': {exc}"
@@ -518,7 +637,7 @@ def _enrich_chapters(
                     if progress_cb:
                         progress_cb(done_count, total, "enrich")
 
-    # Tổng hợp cấp chương từ các bài (nối/ghép dữ liệu VLM đã có — không bóc dữ liệu mới).
+    # Tổng hợp tóm tắt & từ khóa cấp chương
     for ch in chapters:
         lessons = ch.get("lessons") or []
         summaries = [ls.get("summary") for ls in lessons if ls.get("summary")]
@@ -532,6 +651,18 @@ def _enrich_chapters(
         if keywords:
             ch["keywords"] = keywords[:_MAX_KEYWORDS]
     return warnings
+
+
+def _enrich_chapters(
+    chapters: list[dict[str, Any]],
+    page_items_or_map: Any,
+    pdf_path: Path,
+    progress_cb: ProgressCb | None = None,
+) -> list[str]:
+    """Alias tương thích cho _enrich_units_chunked."""
+    page_map = page_items_or_map if isinstance(page_items_or_map, dict) else {}
+    return _enrich_units_chunked(chapters, page_map, pdf_path, progress_cb=progress_cb)
+
 
 
 def extract_toc_from_text(text: str) -> list[TocEntry]:
@@ -653,11 +784,13 @@ def upsert_unit_tree(
     subject_id: int,
     grade: int,
     book_id: int | None = None,
+    overwrite_enrichment: bool = True,
 ) -> tuple[int, int]:
     """Upsert chương trước, rồi bài con gắn parent_id theo parent_code. Trả (inserted, updated).
 
-    book_id (nếu có) sẽ gắn vào từng node để biết cuốn SGK nguồn. Nội dung làm giàu
-    (summary/keywords/sections) ghi cùng node; khi nạp lại không có dữ liệu mới thì GIỮ cũ.
+    book_id (nếu có) sẽ gắn vào từng node để biết cuốn SGK nguồn.
+    overwrite_enrichment=True (mặc định): cập nhật trực tiếp dữ liệu làm giàu theo spec mới nhất
+    (xóa sạch tóm tắt/từ khóa cũ nếu spec mới là None).
     """
     inserted = updated = 0
     code_to_id: dict[str, int] = {}
@@ -692,12 +825,17 @@ def upsert_unit_tree(
             unit.parent_id = parent_id
             unit.is_phu = spec.get("is_phu", False)
             unit.is_active = True
-            if spec.get("summary") is not None:
-                unit.summary = spec["summary"]
-            if spec.get("keywords") is not None:
-                unit.keywords = spec["keywords"]
-            if spec.get("sections") is not None:
-                unit.sections = spec["sections"]
+            if overwrite_enrichment:
+                unit.summary = spec.get("summary")
+                unit.keywords = spec.get("keywords")
+                unit.sections = spec.get("sections")
+            else:
+                if spec.get("summary") is not None:
+                    unit.summary = spec["summary"]
+                if spec.get("keywords") is not None:
+                    unit.keywords = spec["keywords"]
+                if spec.get("sections") is not None:
+                    unit.sections = spec["sections"]
             if book_id is not None:
                 unit.book_id = book_id
             updated += 1
@@ -714,6 +852,7 @@ def save_catalog_from_preview(
     grade: int,
     semester: int | None = None,
     book_id: int | None = None,
+    overwrite_enrichment: bool = True,
 ) -> dict[str, Any]:
     """Lưu cây chương/bài (đã trích xuất ở bước dry_run) thẳng vào curriculum_units.
 
@@ -754,7 +893,7 @@ def save_catalog_from_preview(
     subject_id = subject_ids.get(grade)
     if subject_id is None:
         raise ValueError(f"Không có s360.dim_subject cho {subject_code.upper()}_{grade} — nạp môn trước.")
-    inserted, updated = upsert_unit_tree(db, specs, subject_id, grade, book_id=book_id)
+    inserted, updated = upsert_unit_tree(db, specs, subject_id, grade, book_id=book_id, overwrite_enrichment=overwrite_enrichment)
     hidden = deactivate_placeholder_units(db)
     return {
         "subject_code": subject_code.upper(),
@@ -794,20 +933,27 @@ def ingest_book(
     book_id: int | None = None,
     enrich: bool = True,
     progress_cb: ProgressCb | None = None,
+    vlm_model: str | None = None,
+    settings: Settings | None = None,
 ) -> dict[str, Any]:
     """Nạp sách → (PDF: quét toàn cuốn 1 lần + làm giàu | TXT/DOCX: như cũ) → preview/lưu. KHÔNG RAG."""
+    s = _get_runtime_settings(settings, vlm_model)
     ext = Path(filename).suffix.lower()
     if ext == ".pdf":
         pdf_path: Path | None = None
         try:
-            chapters, page_items, warnings, pdf_path = extract_book_structure(content, progress_cb)
+            chapters, page_map, warnings, pdf_path = extract_book_structure(
+                content, progress_cb=progress_cb, vlm_model=vlm_model, settings=s
+            )
             if not chapters:
                 raise ValueError(
                     "Không trích được mục lục: VLM không tìm thấy trang MỤC LỤC và không nhận diện "
                     "được tiêu đề chương/bài trên trang nội dung. Hãy thử lại, hoặc dùng file mục lục JSON/markdown."
                 )
             if enrich:
-                warnings += _enrich_chapters(chapters, page_items, pdf_path, progress_cb=progress_cb)
+                warnings += _enrich_units_chunked(
+                    chapters, page_map, pdf_path, progress_cb=progress_cb, vlm_model=vlm_model, settings=s
+                )
         finally:
             if pdf_path is not None:
                 pdf_path.unlink(missing_ok=True)

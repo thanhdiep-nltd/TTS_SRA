@@ -21,7 +21,11 @@ from pathlib import Path
 import catboost as cb
 import numpy as np
 import pandas as pd
-import shap
+
+try:
+    import shap
+except ImportError:
+    shap = None
 
 from src.ews.risk_config import RiskConfig
 
