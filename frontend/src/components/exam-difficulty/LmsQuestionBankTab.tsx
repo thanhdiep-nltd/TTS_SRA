@@ -6,7 +6,7 @@
 // thống kê từ lms_question_response.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Database, Layers, Loader2, Search } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Database, Layers, Loader2, Search, Sparkles, X } from "lucide-react";
 import SearchableSelect from "@/components/SearchableSelect";
 import { api } from "@/lib/api";
 import type { LmsQuestionBankItem } from "@/lib/types";
@@ -45,6 +45,8 @@ export default function LmsQuestionBankTab() {
   const [page, setPage] = useState(1);
 
   const [loading, setLoading] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalcMsg, setRecalcMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<LmsQuestionBankItem[]>([]);
 
@@ -72,6 +74,24 @@ export default function LmsQuestionBankTab() {
       setLoading(false);
     }
   }, [subjectId]);
+
+  const handleRecalcMastery = async () => {
+    if (!subjectId) return;
+    setIsRecalculating(true);
+    setError(null);
+    setRecalcMsg(null);
+    try {
+      const res = await api.post<{ success: boolean; records_calculated: number; message: string }>(
+        `/knowledge-gaps/recalc-mastery?subject_id=${subjectId}&semester_index=1`
+      );
+      setRecalcMsg(res.message || `Đã tính toán lại năng lực thành công (${res.records_calculated} bản ghi).`);
+      setTimeout(() => setRecalcMsg(null), 6000);
+    } catch (e: any) {
+      setError(e?.message ?? "Lỗi khi tính lại năng lực học sinh.");
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
 
   useEffect(() => {
     fetchBank();
@@ -173,7 +193,29 @@ export default function LmsQuestionBankTab() {
         >
           {loading ? "Đang tải..." : "Làm mới"}
         </button>
+
+        <button
+          onClick={handleRecalcMastery}
+          disabled={isRecalculating || !subjectId}
+          className="px-4 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5"
+          title="Tính toán lại toàn bộ student_unit_mastery từ kết quả LMS mới nhất"
+        >
+          <Sparkles className={`w-4 h-4 text-indigo-600 dark:text-indigo-400 ${isRecalculating ? "animate-spin" : ""}`} />
+          {isRecalculating ? "Đang tính..." : "Tính lại năng lực"}
+        </button>
       </div>
+
+      {recalcMsg && (
+        <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300 flex items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span>{recalcMsg}</span>
+          </div>
+          <button onClick={() => setRecalcMsg(null)} className="text-emerald-500 hover:text-emerald-700 p-1">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">

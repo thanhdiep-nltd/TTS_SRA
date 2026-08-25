@@ -134,3 +134,13 @@ class ClassRosterResponse(BaseModel):
     cheating_alert_count: int = Field(0, description="Số học sinh có LMS vượt trội so với điểm thi chung")
     low_engagement_count: int = Field(0, description="Số học sinh có cảnh báo tham gia LMS thấp")
     students: list[StudentRosterSummary] = Field(default_factory=list)
+
+
+class RecalcMasteryResult(BaseModel):
+    """Kết quả tính toán lại student_unit_mastery từ LMS item-responses."""
+
+    success: bool = True
+    records_calculated: int = 0
+    subject_id: int
+    semester_index: int = 1
+    message: str = "Tính toán lại năng lực thành công"

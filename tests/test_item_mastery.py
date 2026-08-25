@@ -281,3 +281,59 @@ def test_endpoint_maps_medium_confidence():
         db=db,
     )
     assert res.gaps[0].confidence == "MEDIUM"
+
+
+# === recalc_unit_mastery ===
+
+
+def test_recalc_unit_mastery_mock():
+    from src.services.item_mastery import recalc_unit_mastery
+
+    unit_rows = [
+        SimpleNamespace(question_id=101, unit_id=1, weight=1.0),
+        SimpleNamespace(question_id=102, unit_id=2, weight=1.0),
+    ]
+    resp_rows = [
+        SimpleNamespace(
+            student_code="HS001",
+            so_school_id=1,
+            question_id=101,
+            bloom_level=3,
+            is_correct=True,
+            score_received=1.0,
+            max_score=1.0,
+        ),
+        SimpleNamespace(
+            student_code="HS001",
+            so_school_id=1,
+            question_id=102,
+            bloom_level=3,
+            is_correct=False,
+            score_received=0.0,
+            max_score=1.0,
+        ),
+    ]
+
+    mock_db = MagicMock()
+    mock_db.execute.return_value.fetchall.side_effect = [unit_rows, resp_rows]
+
+    count = recalc_unit_mastery(mock_db, subject_id=106, semester_index=1, school_id=1)
+    assert count == 2
+    assert mock_db.commit.called
+
+
+def test_recalc_mastery_endpoint():
+    from src.api.v1.knowledge_gap import recalc_mastery_endpoint
+
+    mock_db = MagicMock()
+    mock_db.execute.return_value.fetchall.side_effect = [[], []]
+
+    res = recalc_mastery_endpoint(
+        subject_id=106,
+        semester_index=1,
+        current_user=SimpleNamespace(so_school_id=1),
+        db=mock_db,
+    )
+    assert res.success is True
+    assert res.subject_id == 106
+    assert res.records_calculated == 0

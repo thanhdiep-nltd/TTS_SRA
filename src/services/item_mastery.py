@@ -169,3 +169,191 @@ def compute_evidence_source(student_total_items: int) -> str:
     if student_total_items == 0:
         return "INSUFFICIENT_STUDENT"
     return "VALID"
+
+
+CONFIDENCE_TO_INT: dict[str, int] = {
+    "LOW": 1,
+    "MEDIUM": 2,
+    "HIGH": 3,
+    "INSUFFICIENT": 1,
+}
+
+
+def recalc_unit_mastery(
+    db: any,
+    subject_id: int,
+    semester_index: int,
+    school_id: int | None = None,
+) -> int:
+    """Tính lại và ghi student_unit_mastery từ lms_question_response + lms_question_unit.
+
+    1. Map câu hỏi sang unit_id qua lms_question_unit (weight).
+    2. Đọc responses sạch (is_best_attempt = TRUE, integrity_flag = 0).
+    3. Nhóm theo (student_code, unit_id) -> list[ItemResult].
+    4. Tính finalize_mastery cho từng unit của từng học sinh.
+    5. UPSERT vào public.student_unit_mastery.
+    6. Trả về tổng số bản ghi đã tính toán và cập nhật.
+    """
+    import json
+    from sqlalchemy import text
+
+    # 1. Map câu → [(unit_id, weight)]
+    unit_rows = db.execute(text("SELECT question_id, unit_id, weight FROM public.lms_question_unit")).fetchall()
+    unit_map: dict[int, list[tuple[int, float]]] = {}
+    for r in unit_rows:
+        unit_map.setdefault(int(r.question_id), []).append((int(r.unit_id), float(r.weight)))
+
+    # 2. Đọc responses sạch của môn (kèm tenant nếu có) qua JOIN lms_question_bank
+    school_cond = "AND lqr.so_school_id = :school_id" if school_id else ""
+    params: dict = {"sid": subject_id}
+    if school_id:
+        params["school_id"] = school_id
+
+    resp_rows = db.execute(
+        text(f"""
+            SELECT lqr.student_code, lqr.so_school_id, lqr.question_id,
+                   lqr.bloom_level, lqr.is_correct, lqr.score_received, lqr.max_score
+            FROM public.lms_question_response lqr
+            JOIN public.lms_question_bank lqb ON lqr.question_id = lqb.question_id
+            WHERE lqb.subject_id = :sid
+              AND lqr.is_best_attempt = TRUE
+              AND (lqr.integrity_flag IS NULL OR lqr.integrity_flag = 0)
+              {school_cond}
+            ORDER BY lqr.student_code, lqr.question_id
+        """),
+        params,
+    ).fetchall()
+
+    if not resp_rows:
+        return 0
+
+    # 3. Gom nhóm theo (student_code, so_school_id, unit_id)
+    by_student_unit: dict[tuple[str, int, int], list[ItemResult]] = {}
+    for r in resp_rows:
+        st_code = r.student_code
+        st_school = int(r.so_school_id) if r.so_school_id is not None else (school_id or 1)
+        score = float(r.score_received) if r.score_received is not None else (1.0 if r.is_correct else 0.0)
+        max_s = float(r.max_score) if r.max_score is not None else 1.0
+        bloom = int(r.bloom_level) if r.bloom_level is not None else 3
+
+        units_for_q = unit_map.get(int(r.question_id), [])
+        for uid, w in units_for_q:
+            if uid is None:
+                continue
+            by_student_unit.setdefault((st_code, st_school, uid), []).append(
+                ItemResult(
+                    unit_id=uid,
+                    bloom_level=bloom,
+                    score_received=score,
+                    max_score=max_s,
+                    unit_weight=w,
+                )
+            )
+
+    if not by_student_unit:
+        return 0
+
+    # 3.1 Đọc điểm thi gần nhất từ sổ điểm (fact_gradebooks & fact_gradebooks_moet)
+    # để tính exam_mastery (0..1) phục vụ đối soát chéo LMS ↔ Thi.
+    exam_mastery_by_student: dict[str, float] = {}
+    try:
+        grade_cond = "AND fg.so_school_id = :school_id" if school_id else ""
+        g_params: dict = {"sid": subject_id, "sem": semester_index}
+        if school_id:
+            g_params["school_id"] = school_id
+
+        grade_rows = db.execute(
+            text(f"""
+                SELECT fg.student_code, fg.final_grade, fg.max_grade
+                FROM (
+                    SELECT student_code, final_grade, COALESCE(max_grade, 10.0) AS max_grade, so_school_id, subject_id, semester_index, created_at
+                    FROM s360.fact_gradebooks
+                    WHERE final_grade IS NOT NULL
+                    UNION ALL
+                    SELECT fgm.student_code, fgm.final_grade, COALESCE(dem.max_grade, 10.0) AS max_grade, fgm.so_school_id, fgm.subject_id, fgm.semester_index, fgm.created_at
+                    FROM s360.fact_gradebooks_moet fgm
+                    LEFT JOIN s360.dim_exam_moet dem ON fgm.gradebook_type_item_id = dem.gradebook_type_item_id
+                    WHERE fgm.final_grade IS NOT NULL
+                ) fg
+                WHERE fg.subject_id = :sid
+                  AND fg.semester_index = :sem
+                  {grade_cond}
+                ORDER BY fg.created_at DESC
+            """),
+            g_params,
+        ).fetchall()
+
+        for gr in grade_rows:
+            sc = gr.student_code
+            if sc not in exam_mastery_by_student and gr.final_grade is not None:
+                fg = float(gr.final_grade)
+                mg = float(gr.max_grade) if gr.max_grade and float(gr.max_grade) > 0 else 10.0
+                exam_mastery_by_student[sc] = max(0.0, min(1.0, round(fg / mg, 4)))
+    except Exception:
+        # Nếu lỗi query sổ điểm, rollback transaction để không làm bẩn session và fallback
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        exam_mastery_by_student = {}
+
+    # 4. Tính toán & UPSERT theo batch
+    upsert_sql = text("""
+        INSERT INTO public.student_unit_mastery
+            (student_code, subject_id, so_school_id, unit_id, semester_index,
+             raw_mastery, n_items, n_correct, coverage, lm_weight, exam_weight,
+             adjusted_mastery, confidence, evidence_source, integrity_status,
+             evidence_detail, updated_at)
+        VALUES
+            (:st_code, :subject_id, :so_school_id, :unit_id, :semester_index,
+             :raw_mastery, :n_items, :n_correct, :coverage, :lm_weight, :exam_weight,
+             :adjusted_mastery, :confidence, :evidence_source, :integrity_status,
+             CAST(:evidence_detail AS jsonb), NOW())
+        ON CONFLICT (so_school_id, student_code, subject_id, unit_id, semester_index) DO UPDATE
+          SET raw_mastery = EXCLUDED.raw_mastery,
+              adjusted_mastery = EXCLUDED.adjusted_mastery,
+              n_items = EXCLUDED.n_items,
+              n_correct = EXCLUDED.n_correct,
+              coverage = EXCLUDED.coverage,
+              lm_weight = EXCLUDED.lm_weight,
+              exam_weight = EXCLUDED.exam_weight,
+              confidence = EXCLUDED.confidence,
+              evidence_source = EXCLUDED.evidence_source,
+              integrity_status = EXCLUDED.integrity_status,
+              evidence_detail = EXCLUDED.evidence_detail,
+              updated_at = NOW()
+    """)
+
+    count = 0
+    for (st_code, st_school, uid), items in by_student_unit.items():
+        exam_m = exam_mastery_by_student.get(st_code)
+        m = finalize_mastery(items, exam_mastery=exam_m)
+        if m.raw_mastery is None:
+            continue
+
+        conf_int = CONFIDENCE_TO_INT.get(m.confidence, 1)
+        db.execute(
+            upsert_sql,
+            {
+                "st_code": st_code,
+                "subject_id": subject_id,
+                "so_school_id": st_school,
+                "unit_id": uid,
+                "semester_index": semester_index,
+                "raw_mastery": m.raw_mastery,
+                "n_items": m.n_items,
+                "n_correct": m.n_correct,
+                "coverage": m.coverage,
+                "lm_weight": m.lm_weight,
+                "exam_weight": m.exam_weight,
+                "adjusted_mastery": m.adjusted_mastery,
+                "confidence": conf_int,
+                "evidence_source": m.evidence_source,
+                "integrity_status": m.integrity_status,
+                "evidence_detail": json.dumps(m.evidence_detail) if m.evidence_detail else "{}",
+            },
+        )
+        count += 1
+
+    db.commit()
+    return count

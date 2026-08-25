@@ -16,10 +16,12 @@ from src.schemas.knowledge_gap import (
     KnowledgeGapItem,
     LmsQuestionBankItem,
     LmsQuestionUnitRef,
+    RecalcMasteryResult,
     StudentKnowledgeGaps,
     StudentOption,
     StudentRosterSummary,
 )
+from src.services.item_mastery import recalc_unit_mastery
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
 
 router = APIRouter(prefix="/knowledge-gaps", tags=["Knowledge Gaps"])
@@ -820,5 +822,24 @@ def get_class_diagnostic_roster(
         cheating_alert_count=sum(1 for s in roster if s.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING")),
         low_engagement_count=sum(1 for s in roster if s.integrity_status == "LOW_ENGAGEMENT"),
         students=roster,
+    )
+
+
+@router.post("/recalc-mastery", response_model=RecalcMasteryResult)
+def recalc_mastery_endpoint(
+    subject_id: int = Query(..., description="ID môn học cần tính lại năng lực"),
+    semester_index: int = Query(1, description="Học kỳ"),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Tính toán lại toàn bộ student_unit_mastery từ lms_question_response cho môn học."""
+    school_id = getattr(current_user, "so_school_id", None)
+    count = recalc_unit_mastery(db, subject_id=subject_id, semester_index=semester_index, school_id=school_id)
+    return RecalcMasteryResult(
+        success=True,
+        records_calculated=count,
+        subject_id=subject_id,
+        semester_index=semester_index,
+        message=f"Đã tính toán và cập nhật thành công {count} bản ghi năng lực học sinh",
     )
 
