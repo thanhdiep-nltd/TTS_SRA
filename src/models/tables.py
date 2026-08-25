@@ -363,6 +363,7 @@ class CurriculumBook(Base):
     __tablename__ = "curriculum_books"
     __table_args__ = (
         Index("idx_curri_book_subject_grade", "subject_id", "grade_number"),
+        Index("idx_curri_book_school_year", "school_year_id"),
         UniqueConstraint(
             "subject_id",
             "grade_number",
@@ -380,10 +381,48 @@ class CurriculumBook(Base):
     subject_id = Column(Integer, nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
     semester_number = Column(SmallInteger)
+    school_year_id = Column(Integer, nullable=True)  # Năm học áp dụng cuốn sách (s360.dim_school_year.id)
+    is_locked = Column(Boolean, nullable=False, server_default=text("false"))
     filename = Column(String(255))
     source = Column(String(30))
     created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class TeachingSchedule(Base):
+    """Phân phối chương trình giảng dạy 35 tuần theo năm học (kế hoạch dạy học)."""
+
+    __tablename__ = "teaching_schedules"
+    __table_args__ = (
+        CheckConstraint("grade_number BETWEEN 1 AND 12", name="ts_grade_number_valid"),
+        CheckConstraint("semester_number IN (1, 2)", name="ts_semester_number_valid"),
+        CheckConstraint("week_number BETWEEN 1 AND 52", name="ts_week_number_valid"),
+        CheckConstraint("num_periods > 0", name="ts_num_periods_valid"),
+        UniqueConstraint(
+            "school_year_id",
+            "subject_id",
+            "grade_number",
+            "semester_number",
+            "week_number",
+            "unit_id",
+            name="uq_teaching_schedule",
+        ),
+        Index("idx_ts_lookup", "school_year_id", "subject_id", "grade_number", "week_number"),
+        Index("idx_ts_unit", "unit_id"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    school_year_id = Column(Integer, nullable=False)  # Tham chiếu s360.dim_school_year.id
+    subject_id = Column(Integer, nullable=False)  # Tham chiếu s360.dim_subject.id
+    grade_number = Column(SmallInteger, nullable=False)
+    semester_number = Column(SmallInteger, nullable=False)
+    week_number = Column(SmallInteger, nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="SET NULL"), nullable=True)
+    topic = Column(String(255), nullable=True)
+    num_periods = Column(SmallInteger, nullable=False, server_default=text("2"))
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
 class CurriculumIngestJob(Base):

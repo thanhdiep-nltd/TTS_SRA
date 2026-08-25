@@ -102,10 +102,49 @@ class CurriculumBookRead(BaseModel):
     subject_id: int
     grade_number: int
     semester_number: int | None = None
+    school_year_id: int | None = None
+    school_year_name: str | None = None
+    is_locked: bool = False
     filename: str | None = None
     source: str | None = None
     unit_count: int = 0
     created_at: str | None = None
+
+
+class SchoolYearRead(BaseModel):
+    """Năm học học đường (s360.dim_school_year)."""
+
+    id: int
+    code: str
+    fullname: str
+    is_current: bool = False
+    is_locked: bool = False
+
+
+class TeachingScheduleRead(BaseModel):
+    """1 tuần trong phân phối chương trình môn học."""
+
+    id: int
+    school_year_id: int
+    subject_id: int
+    grade_number: int
+    semester_number: int
+    week_number: int
+    unit_id: int | None = None
+    unit_code: str | None = None
+    unit_name: str | None = None
+    topic: str | None = None
+    num_periods: int = 2
+    notes: str | None = None
+
+
+class BookLockToggleResult(BaseModel):
+    """Kết quả khóa/mở khóa cuốn sách giáo khoa."""
+
+    book_id: int
+    title: str
+    is_locked: bool
+    message: str
 
 
 class BookDeleteResult(BaseModel):
@@ -129,5 +168,6 @@ class BookReEnrichRequest(BaseModel):
     """Tham số khi yêu cầu chạy lại bước làm giàu nội dung cho một cuốn sách."""
 
     vlm_model: str | None = None
+
 
 

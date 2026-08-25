@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import {
   AlertTriangle,
   BookOpen,
+  Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -11,10 +12,13 @@ import {
   FileUp,
   Folder,
   FolderTree,
+  ListOrdered,
   Loader2,
+  Lock,
   RefreshCw,
   Sparkles,
   Trash2,
+  Unlock,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -51,9 +55,35 @@ interface CurriculumBookRow {
   subject_id: number;
   grade_number: number;
   semester_number: number | null;
+  school_year_id: number | null;
+  school_year_name?: string | null;
+  is_locked?: boolean;
   filename: string | null;
   unit_count: number;
   created_at: string | null;
+}
+
+interface SchoolYear {
+  id: number;
+  code: string;
+  fullname: string;
+  is_current: boolean;
+  is_locked: boolean;
+}
+
+interface TeachingScheduleRow {
+  id: number;
+  school_year_id: number;
+  subject_id: number;
+  grade_number: number;
+  semester_number: number;
+  week_number: number;
+  unit_id: number | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  topic: string | null;
+  num_periods: number;
+  notes: string | null;
 }
 
 interface UploadResult {
@@ -150,15 +180,19 @@ const FALLBACK_SUBJECT_OPTIONS = [
   { value: "GDCD", label: "Giáo dục công dân (GDCD)" },
 ];
 
-/** Card vuông 1 cuốn sách: ảnh bìa (trang đầu PDF) + tên + môn/khối + số node. */
+/** Card vuông 1 cuốn sách: ảnh bìa (trang đầu PDF) + tên + môn/khối + số node + Năm học & Khóa. */
 function BookCard({
   book,
   onOpen,
   onDelete,
+  onToggleLock,
+  togglingLockId,
 }: {
   book: CurriculumBookRow;
   onOpen: (b: CurriculumBookRow) => void;
   onDelete: (b: CurriculumBookRow) => void;
+  onToggleLock: (b: CurriculumBookRow) => void;
+  togglingLockId: number | null;
 }) {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
 
@@ -183,15 +217,47 @@ function BookCard({
 
   return (
     <div className="relative group flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm hover:shadow-md hover:border-brand-300 dark:hover:border-brand-700 transition-all text-left">
-      {/* Nút Xóa cuốn sách */}
+      {/* Nút Khóa / Mở khóa cuốn sách */}
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation();
+          onToggleLock(book);
+        }}
+        disabled={togglingLockId === book.id}
+        className={`absolute top-2 right-10 z-10 p-1.5 rounded-full shadow-xs border transition-all ${
+          book.is_locked
+            ? "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700"
+            : "bg-white/90 dark:bg-slate-900/90 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 border-slate-200 dark:border-slate-700"
+        } opacity-80 hover:opacity-100 hover:scale-105`}
+        title={book.is_locked ? "Sách đang KHÓA (Click để mở khóa)" : "Sách đang MỞ (Click để khóa bảo vệ dữ liệu)"}
+      >
+        {togglingLockId === book.id ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : book.is_locked ? (
+          <Lock className="w-3.5 h-3.5" />
+        ) : (
+          <Unlock className="w-3.5 h-3.5" />
+        )}
+      </button>
+
+      {/* Nút Xóa cuốn sách (vô hiệu hóa nếu sách bị khóa) */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (book.is_locked) {
+            alert("Cuốn sách này đã bị KHÓA. Hãy mở khóa sách trước khi xóa.");
+            return;
+          }
           onDelete(book);
         }}
-        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 shadow-xs border border-slate-200 dark:border-slate-700 transition-all opacity-70 hover:opacity-100 hover:scale-105"
-        title={`Xóa cuốn "${book.title}" và toàn bộ node`}
+        className={`absolute top-2 right-2 z-10 p-1.5 rounded-full shadow-xs border transition-all ${
+          book.is_locked
+            ? "bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 border-slate-200 dark:border-slate-700 cursor-not-allowed"
+            : "bg-white/90 dark:bg-slate-900/90 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100 hover:scale-105"
+        }`}
+        title={book.is_locked ? "Không thể xóa cuốn sách đang bị khóa" : `Xóa cuốn "${book.title}" và toàn bộ node`}
       >
         <Trash2 className="w-3.5 h-3.5" />
       </button>
@@ -221,10 +287,20 @@ function BookCard({
             Khối {book.grade_number}
             {book.semester_number ? ` · HK${book.semester_number}` : ""}
           </span>
+          {book.is_locked && (
+            <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white shadow-xs">
+              <Lock className="w-2.5 h-2.5" /> Đã khóa
+            </span>
+          )}
         </div>
         {/* Thông tin */}
         <div className="p-3 space-y-1 flex-1 flex flex-col justify-between">
           <div>
+            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                {book.school_year_name || "Năm 2024-2025"}
+              </span>
+            </div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
               {book.title}
             </p>
@@ -248,8 +324,18 @@ export default function AdminCurriculumPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [subjectOptions, setSubjectOptions] = useState(FALLBACK_SUBJECT_OPTIONS);
 
-  // Main Dashboard Tab: "catalog" = Thư viện Sách & Cây Mục Lục, "ingest" = Nạp Sách Mới & Hàng Đợi
-  const [mainTab, setMainTab] = useState<"catalog" | "ingest">("catalog");
+  // Danh mục năm học
+  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
+  const [selectedSchoolYearId, setSelectedSchoolYearId] = useState<number | null>(2025);
+  const [bookSchoolYearId, setBookSchoolYearId] = useState<string>("2025");
+  const [togglingLockId, setTogglingLockId] = useState<number | null>(null);
+
+  // Phân phối chương trình (Teaching Schedules)
+  const [teachingSchedules, setTeachingSchedules] = useState<TeachingScheduleRow[]>([]);
+  const [teachingSchedulesLoading, setTeachingSchedulesLoading] = useState(false);
+
+  // Main Dashboard Tab: "catalog" = Thư viện Sách & Cây Mục Lục, "ingest" = Nạp Sách Mới, "schedule" = Phân phối 35 tuần
+  const [mainTab, setMainTab] = useState<"catalog" | "ingest" | "schedule">("catalog");
 
   // Chế độ xem bên trong catalog: "books" = danh sách sách; "nodes" = node của 1 cuốn đang chọn
   const [view, setView] = useState<"books" | "nodes">("books");
@@ -310,6 +396,74 @@ export default function AdminCurriculumPage() {
   } | null>(null);
   const [warningSearch, setWarningSearch] = useState("");
   const [copiedWarningIdx, setCopiedWarningIdx] = useState<number | null>(null);
+
+  // Tải danh mục năm học từ backend
+  const fetchSchoolYears = useCallback(async () => {
+    try {
+      const res = await api.get<SchoolYear[]>("/curriculum/school-years");
+      if (res && res.length > 0) {
+        setSchoolYears(res);
+        const current = res.find((y) => y.is_current) || res[0];
+        if (current && !selectedSchoolYearId) {
+          setSelectedSchoolYearId(current.id);
+          setBookSchoolYearId(String(current.id));
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }, [selectedSchoolYearId]);
+
+  useEffect(() => {
+    fetchSchoolYears();
+  }, [fetchSchoolYears]);
+
+  // Khóa / Mở khóa cuốn sách
+  const handleToggleLock = useCallback(
+    async (book: CurriculumBookRow) => {
+      setTogglingLockId(book.id);
+      try {
+        const res = await api.post<{ book_id: number; is_locked: boolean; message: string }>(
+          `/curriculum/books/${book.id}/toggle-lock`
+        );
+        setBooks((prev) =>
+          prev.map((b) => (b.id === book.id ? { ...b, is_locked: res.is_locked } : b))
+        );
+        if (activeBook && activeBook.id === book.id) {
+          setActiveBook((prev) => (prev ? { ...prev, is_locked: res.is_locked } : null));
+        }
+      } catch (e: any) {
+        alert(e?.message ?? "Không thể thay đổi trạng thái khóa sách.");
+      } finally {
+        setTogglingLockId(null);
+      }
+    },
+    [activeBook]
+  );
+
+  // Tải phân phối chương trình 35 tuần
+  const fetchTeachingSchedules = useCallback(async () => {
+    setTeachingSchedulesLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedSchoolYearId) params.set("school_year_id", String(selectedSchoolYearId));
+      if (subjectCode) params.set("subject_code", subjectCode);
+      if (grade) params.set("grade", grade);
+      if (semester) params.set("semester", semester);
+      const rows = await api.get<TeachingScheduleRow[]>(`/curriculum/teaching-schedules?${params.toString()}`);
+      setTeachingSchedules(rows || []);
+    } catch {
+      setTeachingSchedules([]);
+    } finally {
+      setTeachingSchedulesLoading(false);
+    }
+  }, [selectedSchoolYearId, subjectCode, grade, semester]);
+
+  useEffect(() => {
+    if (mainTab === "schedule") {
+      fetchTeachingSchedules();
+    }
+  }, [mainTab, fetchTeachingSchedules]);
 
   const fetchUnits = useCallback(
     async (bookId?: number) => {
@@ -406,7 +560,7 @@ export default function AdminCurriculumPage() {
     return result;
   }, [units, collapsedParents]);
 
-  // Tải danh sách sách (view "books") — lọc theo môn/khối như cũ
+  // Tải danh sách sách (view "books") — lọc theo môn/khối/năm học
   const fetchBooks = useCallback(async () => {
     setBooksLoading(true);
     setError(null);
@@ -414,6 +568,7 @@ export default function AdminCurriculumPage() {
       const params = new URLSearchParams();
       if (subjectCode) params.set("subject_code", subjectCode);
       if (grade) params.set("grade", grade);
+      if (selectedSchoolYearId) params.set("school_year_id", String(selectedSchoolYearId));
       const rows = await api.get<CurriculumBookRow[]>(`/curriculum/books?${params.toString()}`);
       setBooks(rows || []);
     } catch (e: any) {
@@ -422,7 +577,7 @@ export default function AdminCurriculumPage() {
     } finally {
       setBooksLoading(false);
     }
-  }, [subjectCode, grade]);
+  }, [subjectCode, grade, selectedSchoolYearId]);
 
   // Bấm vào 1 cuốn → chuyển sang xem node của đúng cuốn đó
   const openBook = useCallback(
@@ -550,6 +705,7 @@ export default function AdminCurriculumPage() {
     formData.append("subject_code", subjectCode);
     formData.append("grade", bookGrade);
     if (bookSemester) formData.append("semester", bookSemester);
+    if (bookSchoolYearId) formData.append("school_year_id", bookSchoolYearId);
     if (bookTitle.trim()) formData.append("book_title", bookTitle.trim());
     if (includeLessons) formData.append("include_lessons", "true");
     if (enrichContent) formData.append("enrich", "true");
@@ -704,8 +860,8 @@ export default function AdminCurriculumPage() {
         </button>
       </header>
 
-      {/* 2-Tab Dashboard Navigation Bar */}
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+      {/* 3-Tab Dashboard Navigation Bar */}
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-3 flex-wrap">
         <button
           onClick={() => setMainTab("catalog")}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
@@ -722,6 +878,25 @@ export default function AdminCurriculumPage() {
             }`}
           >
             {books.length} cuốn
+          </span>
+        </button>
+
+        <button
+          onClick={() => setMainTab("schedule")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            mainTab === "schedule"
+              ? "bg-brand-600 text-white shadow-sm shadow-brand-600/30"
+              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          Phân phối chương trình (35 tuần)
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+              mainTab === "schedule" ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+            }`}
+          >
+            35 tuần
           </span>
         </button>
 
@@ -759,6 +934,27 @@ export default function AdminCurriculumPage() {
               Bạn có thể rời đi hoặc làm việc khác trong khi AI xử lý.
             </p>
             <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[180px]">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">
+                  Năm học áp dụng <span className="text-rose-500">*</span>
+                </label>
+                <SearchableSelect
+                  options={
+                    schoolYears.length > 0
+                      ? schoolYears.map((y) => ({
+                          value: String(y.id),
+                          label: y.fullname + (y.is_current ? " (Hiện tại)" : ""),
+                        }))
+                      : [
+                          { value: "2025", label: "Năm học 2024-2025 (Hiện tại)" },
+                          { value: "2026", label: "Năm học 2025-2026" },
+                        ]
+                  }
+                  value={bookSchoolYearId}
+                  onChange={setBookSchoolYearId}
+                  className="min-w-[180px]"
+                />
+              </div>
               <div className="min-w-[200px]">
                 <label className="text-xs font-semibold text-slate-500 mb-1 block">
                   Môn học <span className="text-rose-500">*</span>
@@ -1115,6 +1311,26 @@ export default function AdminCurriculumPage() {
           {/* Bộ lọc (chỉ hiển thị ở view danh sách sách; khi xem node của 1 cuốn thì ẩn) */}
           {view === "books" && (
             <section className="bg-white dark:bg-slate-900 border rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-sm">
+            <div className="min-w-[180px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Năm học</label>
+              <SearchableSelect
+                options={[
+                  { value: "", label: "Tất cả năm học" },
+                  ...(schoolYears.length > 0
+                    ? schoolYears.map((y) => ({
+                        value: String(y.id),
+                        label: y.fullname + (y.is_current ? " (Hiện tại)" : ""),
+                      }))
+                    : [
+                        { value: "2025", label: "Năm học 2024-2025" },
+                        { value: "2026", label: "Năm học 2025-2026" },
+                      ]),
+                ]}
+                value={selectedSchoolYearId ? String(selectedSchoolYearId) : ""}
+                onChange={(v) => setSelectedSchoolYearId(v ? Number(v) : null)}
+                className="min-w-[180px]"
+              />
+            </div>
             <div className="min-w-[200px]">
               <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học</label>
               <SearchableSelect
@@ -1197,7 +1413,14 @@ export default function AdminCurriculumPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
                 {books.map((b) => (
-                  <BookCard key={b.id} book={b} onOpen={openBook} onDelete={handleDeleteBook} />
+                  <BookCard
+                    key={b.id}
+                    book={b}
+                    onOpen={openBook}
+                    onDelete={handleDeleteBook}
+                    onToggleLock={handleToggleLock}
+                    togglingLockId={togglingLockId}
+                  />
                 ))}
               </div>
             )}
@@ -1236,10 +1459,30 @@ export default function AdminCurriculumPage() {
                 <>
                   <button
                     type="button"
+                    onClick={() => handleToggleLock(activeBook)}
+                    disabled={togglingLockId === activeBook.id}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      activeBook.is_locked
+                        ? "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200"
+                    }`}
+                    title={activeBook.is_locked ? "Click để mở khóa sách" : "Click để khóa sách"}
+                  >
+                    {togglingLockId === activeBook.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : activeBook.is_locked ? (
+                      <Lock className="w-3.5 h-3.5 text-amber-600" />
+                    ) : (
+                      <Unlock className="w-3.5 h-3.5" />
+                    )}
+                    <span>{activeBook.is_locked ? "Sách Đã Khóa 🔒" : "Khóa sách"}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleReEnrich}
-                    disabled={reEnriching || clearingEnrichment}
+                    disabled={reEnriching || clearingEnrichment || activeBook.is_locked}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-brand-200 dark:border-brand-900 bg-brand-50 dark:bg-brand-950/30 hover:bg-brand-100 dark:hover:bg-brand-900/50 text-brand-700 dark:text-brand-300 transition-colors disabled:opacity-50"
-                    title="Chạy lại bước làm giàu (tóm tắt/từ khóa/mục con) từ file PDF gốc đã lưu"
+                    title={activeBook.is_locked ? "Sách đã bị khóa" : "Chạy lại bước làm giàu (tóm tắt/từ khóa/mục con) từ file PDF gốc đã lưu"}
                   >
                     {reEnriching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                     <span>{reEnriching ? "Đang tạo job..." : "Làm giàu lại"}</span>
@@ -1247,9 +1490,9 @@ export default function AdminCurriculumPage() {
                   <button
                     type="button"
                     onClick={handleClearEnrichment}
-                    disabled={clearingEnrichment || reEnriching}
+                    disabled={clearingEnrichment || reEnriching || activeBook.is_locked}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 transition-colors disabled:opacity-50"
-                    title="Xóa sạch toàn bộ tóm tắt, từ khóa, mục con của cuốn này để làm giàu lại từ đầu"
+                    title={activeBook.is_locked ? "Sách đã bị khóa" : "Xóa sạch toàn bộ tóm tắt, từ khóa, mục con của cuốn này để làm giàu lại từ đầu"}
                   >
                     {clearingEnrichment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eraser className="w-3.5 h-3.5" />}
                     <span>{clearingEnrichment ? "Đang xóa..." : "Xóa tất cả làm giàu"}</span>
@@ -1257,9 +1500,9 @@ export default function AdminCurriculumPage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteBook(activeBook)}
-                    disabled={clearingEnrichment || reEnriching}
+                    disabled={clearingEnrichment || reEnriching || activeBook.is_locked}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 transition-colors disabled:opacity-50"
-                    title={`Xóa cuốn "${activeBook.title}" và toàn bộ node`}
+                    title={activeBook.is_locked ? "Sách đã bị khóa" : `Xóa cuốn "${activeBook.title}" và toàn bộ node`}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Xóa cuốn này</span>
@@ -1268,6 +1511,25 @@ export default function AdminCurriculumPage() {
               )}
             </div>
           </div>
+          {activeBook?.is_locked && (
+            <div className="mx-5 mt-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Sách đang bị KHÓA:</strong> Cuốn sách này đã được khóa cho năm học {activeBook.school_year_name || ""}. Các thao tác sửa đổi, làm giàu lại và xóa node tạm thời bị vô hiệu hóa để bảo vệ tính toàn vẹn dữ liệu.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggleLock(activeBook)}
+                disabled={togglingLockId === activeBook.id}
+                className="px-3 py-1 rounded-lg font-semibold bg-amber-600 hover:bg-amber-700 text-white shrink-0 transition flex items-center gap-1.5 cursor-pointer text-xs"
+              >
+                {togglingLockId === activeBook.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlock className="w-3 h-3" />}
+                Mở khóa sách
+              </button>
+            </div>
+          )}
           {reEnrichMsg && (
             <p className="px-5 py-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 border-b border-emerald-100 dark:border-emerald-900/40 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {reEnrichMsg}
@@ -1483,6 +1745,184 @@ export default function AdminCurriculumPage() {
           </div>
         </section>
       )}
+        </div>
+      )}
+
+      {/* TAB 3: PHÂN PHỐI CHƯƠNG TRÌNH 35 TUẦN */}
+      {mainTab === "schedule" && (
+        <div className="space-y-6">
+          {/* Bộ lọc phân phối chương trình */}
+          <section className="bg-white dark:bg-slate-900 border rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-sm">
+            <div className="min-w-[180px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Năm học</label>
+              <SearchableSelect
+                options={
+                  schoolYears.length > 0
+                    ? schoolYears.map((y) => ({
+                        value: String(y.id),
+                        label: y.fullname + (y.is_current ? " (Hiện tại)" : ""),
+                      }))
+                    : [
+                        { value: "2025", label: "Năm học 2024-2025 (Hiện tại)" },
+                        { value: "2026", label: "Năm học 2025-2026" },
+                      ]
+                }
+                value={selectedSchoolYearId ? String(selectedSchoolYearId) : "2025"}
+                onChange={(v) => setSelectedSchoolYearId(v ? Number(v) : 2025)}
+                className="min-w-[180px]"
+              />
+            </div>
+            <div className="min-w-[200px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Môn học</label>
+              <SearchableSelect
+                options={subjectOptions}
+                value={subjectCode}
+                onChange={setSubjectCode}
+                className="min-w-[200px]"
+              />
+            </div>
+            <div className="min-w-[130px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Khối</label>
+              <SearchableSelect
+                options={[
+                  { value: "", label: "Tất cả khối" },
+                  ...Array.from({ length: 7 }, (_, i) => ({ value: String(i + 6), label: `Khối ${i + 6}` })),
+                ]}
+                value={grade}
+                onChange={setGrade}
+                className="min-w-[130px]"
+              />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="text-xs font-semibold text-slate-500 mb-1 block">Học kỳ</label>
+              <SearchableSelect
+                options={[
+                  { value: "", label: "Cả năm (35 tuần)" },
+                  { value: "1", label: "Học kỳ 1 (Tuần 1-18)" },
+                  { value: "2", label: "Học kỳ 2 (Tuần 19-35)" },
+                ]}
+                value={semester}
+                onChange={setSemester}
+                className="min-w-[140px]"
+              />
+            </div>
+            <button
+              onClick={fetchTeachingSchedules}
+              disabled={teachingSchedulesLoading}
+              className="px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2 shadow-xs transition"
+            >
+              <RefreshCw className={`w-4 h-4 ${teachingSchedulesLoading ? "animate-spin" : ""}`} />
+              Tải lại
+            </button>
+          </section>
+
+          {/* Bảng Kế hoạch 35 tuần */}
+          <section className="bg-white dark:bg-slate-900 border rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <ListOrdered className="w-4 h-4 text-brand-500" />
+                  Kế hoạch Giảng dạy & Phân phối chương trình chi tiết
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Phân bổ 35 tuần học theo quy định GDPT 2018. Tự động ánh xạ bài học với mã node chuẩn để theo dõi tiến độ.
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-brand-600 bg-brand-50 dark:bg-brand-950/40 px-3 py-1 rounded-lg border border-brand-200 dark:border-brand-900">
+                {teachingSchedules.length} tuần học
+              </span>
+            </div>
+
+            {teachingSchedules.length === 0 ? (
+              <div className="p-10 text-center text-slate-400">
+                {teachingSchedulesLoading ? (
+                  <p className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Đang tải dữ liệu phân phối chương trình...
+                  </p>
+                ) : (
+                  <p>Chưa có dữ liệu phân phối chương trình cho bộ lọc này. Hãy chọn Môn Toán 6, Khối 6, Năm 2024-2025.</p>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
+                      <th className="px-4 py-3 font-semibold text-center w-16">Tuần</th>
+                      <th className="px-4 py-3 font-semibold w-24">Học kỳ</th>
+                      <th className="px-4 py-3 font-semibold">Chủ đề / Tên bài học</th>
+                      <th className="px-4 py-3 font-semibold w-36">Node bài học</th>
+                      <th className="px-4 py-3 font-semibold text-center w-24">Số tiết</th>
+                      <th className="px-4 py-3 font-semibold">Ghi chú / Mốc đánh giá</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                    {teachingSchedules.map((item) => {
+                      const isMidterm = item.week_number === 9 || item.week_number === 27;
+                      const isFinal = item.week_number === 18 || item.week_number === 35;
+                      const isSpecial = isMidterm || isFinal;
+
+                      return (
+                        <tr
+                          key={item.id}
+                          className={`transition-colors ${
+                            isSpecial
+                              ? "bg-amber-50/70 dark:bg-amber-950/20 font-semibold"
+                              : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center w-8 h-8 rounded-xl text-xs font-bold ${
+                                isSpecial
+                                  ? "bg-amber-500 text-white shadow-xs"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                              }`}
+                            >
+                              T{item.week_number}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              Học kỳ {item.semester_number}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-slate-800 dark:text-slate-200 font-medium">
+                              {item.topic || "—"}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {item.unit_code ? (
+                              <span className="inline-flex px-2 py-0.5 rounded font-mono text-[11px] font-semibold bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-900">
+                                {item.unit_code}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">Kiểm tra tập trung</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">
+                              {item.num_periods} tiết
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {isSpecial ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shadow-2xs">
+                                🎯 {isMidterm ? "Kiểm tra Giữa kỳ" : "Kiểm tra Cuối kỳ (Học kỳ)"}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">{item.notes || "—"}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
       )}
 

@@ -22,16 +22,19 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_db, require_roles
 from src.models import enums
-from src.models.tables import CurriculumBook, CurriculumIngestJob, CurriculumUnit, User
+from src.models.tables import CurriculumBook, CurriculumIngestJob, CurriculumUnit, TeachingSchedule, User
 from src.schemas.curriculum import (
     BookClearEnrichmentResult,
     BookDeleteResult,
     BookIngestJobRead,
     BookIngestResult,
+    BookLockToggleResult,
     BookReEnrichRequest,
     CurriculumBookRead,
     CurriculumUnitRead,
     CurriculumUploadResult,
+    SchoolYearRead,
+    TeachingScheduleRead,
 )
 from src.services import curriculum_catalog, curriculum_ingest
 from src.services.curriculum_job_worker import process_next_curriculum_ingest_job
@@ -330,6 +333,7 @@ def commit_book_catalog(
 def list_books(
     subject_code: str | None = None,
     grade: int | None = None,
+    school_year_id: int | None = None,
     db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Danh sách cuốn SGK đã nạp (kèm số node thuộc cuốn) — để UI hiển thị 'Cuốn sách'."""
@@ -338,6 +342,10 @@ def list_books(
         stmt = stmt.where(CurriculumBook.subject_code == subject_code.upper())
     if grade is not None:
         stmt = stmt.where(CurriculumBook.grade_number == grade)
+    if school_year_id is not None:
+        stmt = stmt.where(
+            or_(CurriculumBook.school_year_id == school_year_id, CurriculumBook.school_year_id.is_(None))
+        )
     books = list(db.execute(stmt).scalars().all())
     if not books:
         return []
@@ -346,6 +354,12 @@ def list_books(
         counts[bid] = (
             db.execute(select(CurriculumUnit.id).where(CurriculumUnit.book_id == bid)).scalars().all().__len__()
         )
+    years: dict[int, str] = {}
+    try:
+        y_rows = db.execute(text("SELECT id, fullname FROM s360.dim_school_year")).fetchall()
+        years = {int(r.id): str(r.fullname) for r in y_rows}
+    except Exception:
+        pass
     return [
         CurriculumBookRead(
             id=b.id,
@@ -354,6 +368,9 @@ def list_books(
             subject_id=b.subject_id,
             grade_number=b.grade_number,
             semester_number=b.semester_number,
+            school_year_id=b.school_year_id,
+            school_year_name=years.get(b.school_year_id) if b.school_year_id else (years.get(2025) or "Năm học 2025-2026"),
+            is_locked=bool(b.is_locked),
             filename=b.filename,
             source=b.source,
             unit_count=counts.get(b.id, 0),
@@ -493,12 +510,108 @@ def toggle_unit_active(unit_id: int, db: Annotated[Session, Depends(get_db)] = N
         book_id=unit.book_id,
     )
 
+@router.get("/school-years", response_model=list[SchoolYearRead])
+def list_school_years(db: Annotated[Session, Depends(get_db)] = None):
+    """Danh sách năm học từ s360.dim_school_year."""
+    try:
+        rows = db.execute(
+            text("SELECT id, code, fullname, COALESCE(is_current, 0) as is_current, COALESCE(is_locked, 0) as is_locked FROM s360.dim_school_year ORDER BY id DESC")
+        ).fetchall()
+        if rows:
+            return [
+                SchoolYearRead(
+                    id=int(r.id),
+                    code=str(r.code),
+                    fullname=str(r.fullname),
+                    is_current=bool(r.is_current),
+                    is_locked=bool(r.is_locked),
+                )
+                for r in rows
+            ]
+    except Exception as exc:
+        logger.warning("Không đọc được s360.dim_school_year: %s", exc)
+    return [
+        SchoolYearRead(id=2025, code="2024-2025", fullname="Năm học 2024-2025", is_current=True, is_locked=False),
+        SchoolYearRead(id=2026, code="2025-2026", fullname="Năm học 2025-2026", is_current=False, is_locked=False),
+    ]
+
+
+@router.post("/books/{book_id}/toggle-lock", response_model=BookLockToggleResult)
+def toggle_book_lock(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
+    """Khóa / mở khóa cuốn sách giáo khoa."""
+    book = db.get(CurriculumBook, book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+    book.is_locked = not book.is_locked
+    db.commit()
+    status_str = "đã được KHÓA 🔒" if book.is_locked else "đã được MỞ KHÓA 🔓"
+    return BookLockToggleResult(
+        book_id=book.id,
+        title=book.title,
+        is_locked=book.is_locked,
+        message=f"Cuốn sách '{book.title}' {status_str}.",
+    )
+
+
+@router.get("/teaching-schedules", response_model=list[TeachingScheduleRead])
+def list_teaching_schedules(
+    school_year_id: int = 2025,
+    subject_code: str | None = None,
+    grade: int | None = None,
+    semester: int | None = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """Danh sách 35 tuần phân phối chương trình môn học."""
+    stmt = select(TeachingSchedule).where(TeachingSchedule.school_year_id == school_year_id)
+    if grade is not None:
+        stmt = stmt.where(TeachingSchedule.grade_number == grade)
+    if semester in (1, 2):
+        stmt = stmt.where(TeachingSchedule.semester_number == semester)
+    if subject_code:
+        s_ids = _subject_ids(db, subject_code)
+        if s_ids:
+            stmt = stmt.where(TeachingSchedule.subject_id.in_(s_ids))
+
+    schedules = list(
+        db.execute(stmt.order_by(TeachingSchedule.semester_number, TeachingSchedule.week_number)).scalars().all()
+    )
+    unit_ids = {s.unit_id for s in schedules if s.unit_id is not None}
+    units_map = {}
+    if unit_ids:
+        units_map = {
+            u.id: u for u in db.execute(select(CurriculumUnit).where(CurriculumUnit.id.in_(unit_ids))).scalars().all()
+        }
+
+    return [
+        TeachingScheduleRead(
+            id=s.id,
+            school_year_id=s.school_year_id,
+            subject_id=s.subject_id,
+            grade_number=s.grade_number,
+            semester_number=s.semester_number,
+            week_number=s.week_number,
+            unit_id=s.unit_id,
+            unit_code=units_map[s.unit_id].code if s.unit_id in units_map else None,
+            unit_name=units_map[s.unit_id].name if s.unit_id in units_map else None,
+            topic=s.topic,
+            num_periods=s.num_periods,
+            notes=s.notes,
+        )
+        for s in schedules
+    ]
+
+
 @router.post("/books/{book_id}/clear-enrichment", response_model=BookClearEnrichmentResult)
 def clear_book_enrichment(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
     """Xóa sạch toàn bộ tóm tắt, từ khóa, mục con của tất cả các node thuộc 1 cuốn sách."""
     book = db.get(CurriculumBook, book_id)
     if book is None:
         raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+    if book.is_locked:
+        raise HTTPException(
+            status_code=400,
+            detail="Cuốn sách đã bị khóa cho năm học này. Vui lòng mở khóa trước khi xóa dữ liệu làm giàu.",
+        )
 
     units = list(
         db.execute(select(CurriculumUnit).where(CurriculumUnit.book_id == book_id)).scalars().all()
@@ -523,6 +636,11 @@ def delete_book(book_id: int, db: Annotated[Session, Depends(get_db)] = None):
     book = db.get(CurriculumBook, book_id)
     if book is None:
         raise HTTPException(status_code=404, detail="Cuốn sách không tồn tại")
+    if book.is_locked:
+        raise HTTPException(
+            status_code=400,
+            detail="Cuốn sách đã bị khóa cho năm học này. Vui lòng mở khóa trước khi xóa sách.",
+        )
 
     try:
         res = curriculum_catalog.delete_book_and_units(db, book_id)

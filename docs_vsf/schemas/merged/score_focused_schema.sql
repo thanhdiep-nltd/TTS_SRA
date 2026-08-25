@@ -30,8 +30,11 @@ DROP TABLE IF EXISTS public.ai_sessions CASCADE;
 DROP TABLE IF EXISTS public.classroom_recordings CASCADE;
 DROP TABLE IF EXISTS public.report_schedules CASCADE;
 DROP TABLE IF EXISTS public.audit_logs CASCADE;
+DROP TABLE IF EXISTS public.teaching_schedules CASCADE;
 DROP TABLE IF EXISTS public.exam_competencies CASCADE;
 DROP TABLE IF EXISTS public.curriculum_units CASCADE;
+DROP TABLE IF EXISTS public.curriculum_books CASCADE;
+DROP TABLE IF EXISTS public.curriculum_ingest_jobs CASCADE;
 DROP TABLE IF EXISTS public.exam_papers CASCADE;
 DROP TABLE IF EXISTS public.refresh_tokens CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
@@ -268,6 +271,8 @@ CREATE TABLE public.curriculum_books (
     subject_id      INTEGER NOT NULL,
     grade_number    SMALLINT NOT NULL,
     semester_number SMALLINT,               -- NULL = dạy cả năm; 1/2 = học kỳ (SGK tập 1/tập 2)
+    school_year_id  INTEGER,                -- Năm học áp dụng cuốn sách này (s360.dim_school_year.id)
+    is_locked       BOOLEAN NOT NULL DEFAULT FALSE, -- Khóa sách khi năm học bắt đầu, tránh sửa đổi làm lệch dữ liệu
     filename        VARCHAR(255),
     source          VARCHAR(30),
     created_by      BIGINT REFERENCES public.users(id) ON DELETE SET NULL,
@@ -275,8 +280,28 @@ CREATE TABLE public.curriculum_books (
     CONSTRAINT uq_curri_book_subject_grade_sem_title UNIQUE (subject_id, grade_number, semester_number, title)
 );
 CREATE INDEX idx_curri_book_subject_grade ON public.curriculum_books(subject_id, grade_number);
+CREATE INDEX idx_curri_book_school_year ON public.curriculum_books(school_year_id);
 
--- 4c. Job nạp sách giáo khoa (hàng đợi DB-backed — giống ews_pipeline_jobs)
+-- 4c. Phân phối Chương trình Giảng dạy (Teaching Schedules - Kế hoạch dạy học 35 tuần theo năm)
+CREATE TABLE public.teaching_schedules (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    school_year_id  INTEGER NOT NULL,       -- Tham chiếu s360.dim_school_year(id)
+    subject_id      INTEGER NOT NULL,       -- Tham chiếu s360.dim_subject(id)
+    grade_number    SMALLINT NOT NULL CHECK (grade_number BETWEEN 1 AND 12),
+    semester_number SMALLINT NOT NULL CHECK (semester_number IN (1, 2)),
+    week_number     SMALLINT NOT NULL CHECK (week_number BETWEEN 1 AND 52),
+    unit_id         BIGINT REFERENCES public.curriculum_units(id) ON DELETE SET NULL,
+    topic           VARCHAR(255),
+    num_periods     SMALLINT NOT NULL DEFAULT 2 CHECK (num_periods > 0),
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_teaching_schedule UNIQUE (school_year_id, subject_id, grade_number, semester_number, week_number, unit_id)
+);
+CREATE INDEX idx_ts_lookup ON public.teaching_schedules(school_year_id, subject_id, grade_number, week_number);
+CREATE INDEX idx_ts_unit   ON public.teaching_schedules(unit_id);
+
+-- 4d. Job nạp sách giáo khoa (hàng đợi DB-backed — giống ews_pipeline_jobs)
 CREATE TABLE public.curriculum_ingest_jobs (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     requested_by    BIGINT REFERENCES public.users(id) ON DELETE CASCADE,
@@ -288,6 +313,7 @@ CREATE TABLE public.curriculum_ingest_jobs (
     dry_run         BOOLEAN NOT NULL DEFAULT TRUE,
     filename        VARCHAR(255),
     book_title      VARCHAR(255),
+    vlm_model       VARCHAR(100),
     source_filepath TEXT,
     status          VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
     progress        INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),

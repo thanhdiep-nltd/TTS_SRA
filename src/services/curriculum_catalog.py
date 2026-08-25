@@ -178,6 +178,7 @@ def get_or_create_book(
     filename: str | None = None,
     source: str | None = None,
     created_by: int | None = None,
+    school_year_id: int | None = None,
 ) -> int:
     """Get cuốn SGK theo (subject_id, grade, semester, title) — nếu chưa có thì tạo; trả book_id.
 
@@ -204,11 +205,15 @@ def get_or_create_book(
             subject_id=subject_id,
             grade_number=grade,
             semester_number=semester,
+            school_year_id=school_year_id,
             filename=filename,
             source=source,
             created_by=created_by,
         )
         db.add(book)
+        db.flush()
+    elif school_year_id is not None and book.school_year_id is None:
+        book.school_year_id = school_year_id
         db.flush()
     return book.id
 
