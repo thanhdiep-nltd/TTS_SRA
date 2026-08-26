@@ -267,40 +267,69 @@ def build_assignments_and_bank(
     templates: dict[str, dict],
     lessons_by_chapter: dict[int, list[int]],
 ) -> tuple[list[dict], list[dict]]:
-    """GĐ 3 — Đọc 35 tuần teaching_schedules, sinh ~86 assignment và phân bổ câu hỏi từ templates JSON."""
+    """GĐ 3 — Phân bổ 32 bài học vào 35 tuần, sinh ~86 assignment và nạp đầy đủ ~1100 câu từ templates JSON."""
     print("[GĐ 3] Xây dựng Assignments (35 tuần) và Question Bank (~1100 câu)...")
     
-    # 1. Đọc teaching_schedules
+    # 1. Đọc metadata 32 bài học Toán 6
     cur.execute("""
-        SELECT 
-            ts.semester_number,
-            ts.week_number,
-            ts.unit_id,
-            ts.topic,
-            cu.name AS unit_name,
-            cu.parent_id AS chapter_id,
-            COALESCE(pcu.name, 'CHƯƠNG TỔNG HỢP') AS chapter_name
-        FROM public.teaching_schedules ts
-        LEFT JOIN public.curriculum_units cu ON ts.unit_id = cu.id
+        SELECT cu.id, cu.name, cu.parent_id, COALESCE(pcu.name, 'TOÁN 6') as chapter_name
+        FROM public.curriculum_units cu
         LEFT JOIN public.curriculum_units pcu ON cu.parent_id = pcu.id
-        WHERE ts.subject_id = %s AND ts.grade_number = 6
-        ORDER BY ts.semester_number, ts.week_number, ts.unit_id
+        WHERE cu.subject_id = %s AND cu.grade_number = 6 AND cu.parent_id IS NOT NULL
+        ORDER BY cu.parent_id, cu.id
     """, (SUBJECT_ID,))
-    schedule_rows = cur.fetchall()
+    unit_rows = cur.fetchall()
+    unit_map: dict[int, dict] = {
+        r[0]: {"unit_id": r[0], "unit_name": r[1], "chapter_id": r[2], "chapter_name": r[3]}
+        for r in unit_rows
+    }
+    all_32_units = [r[0] for r in unit_rows]
 
-    # Nhóm theo (semester, week)
-    weeks_map: dict[tuple[int, int], list[dict]] = {}
-    for r in schedule_rows:
-        key = (r[0], r[1])
-        weeks_map.setdefault(key, []).append({
-            "semester": r[0],
-            "week": r[1],
-            "unit_id": r[2],
-            "topic": r[3],
-            "unit_name": r[4] or "Bài học",
-            "chapter_id": r[5] or 391,
-            "chapter_name": r[6],
-        })
+    # Phân bổ lịch 35 tuần cho 32 bài học:
+    # HK1 (Tuần 1 -> 18): Chương 1 (15 bài: W1-W10), Chương 2 (6 bài: W11-W14), Chương 3 (5 bài: W15-W17), W18: Ôn tập CK1
+    # HK2 (Tuần 19 -> 35): Chương 4 (6 bài: W19-W24), Ôn tập chuyên đề các chương (W25-W35)
+    week_schedule: dict[tuple[int, int], list[int]] = {
+        # Chương 1 (392 -> 406)
+        (1, 1): [392],
+        (1, 2): [393],
+        (1, 3): [394],
+        (1, 4): [395],
+        (1, 5): [396],
+        (1, 6): [397],
+        (1, 7): [398],
+        (1, 8): [399],
+        (1, 9): [400],           # Ôn tập GK1 & Bài 9
+        (1, 10): [401, 402],
+        (1, 11): [403, 404],
+        (1, 12): [405, 406],
+        # Chương 2 (408 -> 413)
+        (1, 13): [408, 409],
+        (1, 14): [410, 411],
+        (1, 15): [412, 413],
+        # Chương 3 (415 -> 419)
+        (1, 16): [415, 416],
+        (1, 17): [417, 418, 419],
+        (1, 18): [],             # Ôn tập Cuối kỳ 1
+        # Chương 4 (421 -> 426)
+        (2, 19): [421],
+        (2, 20): [422],
+        (2, 21): [423],
+        (2, 22): [424],
+        (2, 23): [425],
+        (2, 24): [426],
+        # Tuần 25 -> 35: Ôn tập chuyên đề & kiểm tra theo tuần
+        (2, 25): [392, 396],
+        (2, 26): [400, 403],
+        (2, 27): [408, 410],
+        (2, 28): [415, 417],
+        (2, 29): [421, 424],
+        (2, 30): [395, 411],
+        (2, 31): [416, 422],
+        (2, 32): [404, 423],
+        (2, 33): [401, 425],
+        (2, 34): [406, 413],
+        (2, 35): [419, 426],
+    }
 
     assignments: list[dict] = []
     questions: list[dict] = []
@@ -309,145 +338,163 @@ def build_assignments_and_bank(
     qid = 70001
     all_past_unit_ids: list[int] = []
 
-    # Danh sách các tuần ôn tập / kiểm tra
-    REVIEW_WEEKS_SET = {(1, 9), (1, 18), (2, 9), (2, 17)}  # Tuần 9, 18 HK1; Tuần 27, 35 toàn năm
+    REVIEW_WEEKS_SET = {(1, 9), (1, 18), (2, 9), (2, 17), (2, 35)}
 
-    for (sem, week), u_list in sorted(weeks_map.items()):
-        primary_u = u_list[0]
-        unit_id = primary_u["unit_id"]
-        if unit_id is None:
-            unit_id = all_past_unit_ids[-1] if all_past_unit_ids else 392
-
-        unit_name = primary_u["unit_name"] or "Bài học"
-        chapter_id = primary_u["chapter_id"] or 391
-        chapter_name = primary_u["chapter_name"] or "TOÁN 6"
-
-        if unit_id not in all_past_unit_ids:
-            all_past_unit_ids.append(unit_id)
-
-        # Tính due_date cơ sở
+    for (sem, week), u_list in sorted(week_schedule.items()):
         start_date = WEEK_START if sem == 1 else HK2_START
         week_due_base = start_date + timedelta(weeks=week - 1)
 
-        # Số bài trong tuần: tuần ôn tập = 2 bài ôn; tuần thường = 2-3 bài
-        if (sem, week) in REVIEW_WEEKS_SET:
+        if not u_list:  # Tuần ôn tập chung (như W18)
             num_assigns = 2
-            plan = [("review", "Ôn tập tổng hợp"), ("review", "Luyện đề đánh giá năng lực")]
-        elif week % 4 == 0:
-            num_assigns = 3
-            plan = [
-                ("regular", f"Bài tập: {unit_name}"),
-                ("review", f"Ôn tập chuyên đề {chapter_name}"),
-                ("advanced", f"Thử thách Nâng cao: {unit_name}"),
-            ]
-        else:
-            num_assigns = 2
-            plan = [
-                ("regular", f"Bài tập 1: {unit_name}"),
-                ("regular", f"Bài tập 2: {unit_name}"),
-            ]
+            cand_units = all_past_unit_ids[-6:] if len(all_past_unit_ids) >= 6 else all_past_unit_ids
+            for k, aname_suffix in enumerate(["Ôn tập tổng hợp", "Luyện đề đánh giá năng lực"]):
+                due_date = week_due_base + timedelta(days=2 * k + 3)
+                assign_dict = {
+                    "assignment_id": assign_id,
+                    "so_school_id": SO_SCHOOL_ID,
+                    "grade_id": 6,
+                    "semester_index": sem,
+                    "subject_id": SUBJECT_ID,
+                    "code": f"LMS_T6_S{sem}_W{week:02d}_A{k+1}",
+                    "fullname": f"[Toán 6 - W{week:02d}] {aname_suffix}",
+                    "max_grade": 10.0,
+                    "date_assigned": due_date - timedelta(days=5),
+                    "due_date": due_date.date(),
+                    "week": week,
+                    "semester": sem,
+                    "type": "review",
+                    "unit_id": cand_units[-1] if cand_units else 392,
+                    "chapter_id": 391,
+                }
+                assignments.append(assign_dict)
 
-        for k, (atype, aname_suffix) in enumerate(plan):
-            due_date = week_due_base + timedelta(days=2 * k + 3)
-            fullname = f"[Toán 6 - W{week:02d}] {aname_suffix}"
-            code = f"LMS_T6_S{sem}_W{week:02d}_A{k+1}"
-
-            assign_dict = {
-                "assignment_id": assign_id,
-                "so_school_id": SO_SCHOOL_ID,
-                "grade_id": 6,
-                "semester_index": sem,
-                "subject_id": SUBJECT_ID,
-                "code": code,
-                "fullname": fullname,
-                "max_grade": 10.0,
-                "date_assigned": due_date - timedelta(days=5),
-                "due_date": due_date.date(),
-                "week": week,
-                "semester": sem,
-                "type": atype,
-                "unit_id": unit_id,
-                "chapter_id": chapter_id,
-            }
-            assignments.append(assign_dict)
-
-            # Lấy pool câu hỏi từ JSON
-            unit_data = templates.get(str(unit_id), {})
-            pool = unit_data.get("questions", [])
-
-            selected_qs: list[tuple[int, dict]] = []
-
-            if atype == "regular":
-                # 10-12 câu, lấy từ pool của unit chính tuần này (đảm bảo Bloom 1-6)
-                target_count = 10
-                if pool:
-                    by_bloom: dict[int, list[dict]] = {}
-                    for q in pool:
-                        by_bloom.setdefault(q.get("bloom_level", 2), []).append(q)
-                    
-                    for b in range(1, 7):
-                        if by_bloom.get(b):
-                            selected_qs.append((unit_id, RNG.choice(by_bloom[b])))
-                    
-                    remaining_pool = [q for q in pool if not any(sq[1] == q for sq in selected_qs)]
-                    needed = target_count - len(selected_qs)
-                    if needed > 0 and remaining_pool:
-                        for item in RNG.sample(remaining_pool, min(needed, len(remaining_pool))):
-                            selected_qs.append((unit_id, item))
-                else:
-                    for b in [1, 2, 2, 3, 3, 4, 5, 6]:
-                        selected_qs.append((unit_id, {
-                            "text": f"Câu hỏi {unit_name} cấp độ Bloom {b}",
-                            "bloom_level": b,
-                            "options": ["A. Đúng", "B. Sai", "C. Chưa đủ dữ kiện", "D. Khác"],
-                            "correct": 0,
-                            "explanation": "Lời giải tự động",
-                        }))
-
-            elif atype == "review":
-                # 15-18 câu từ 2-3 unit khác nhau
-                target_count = 16
-                candidate_units = all_past_unit_ids[-4:] if len(all_past_unit_ids) >= 4 else all_past_unit_ids
-                for cand_id in candidate_units:
+                # Chọn 16 câu từ các units trước đó
+                for cand_id in (cand_units or [392]):
                     c_pool = templates.get(str(cand_id), {}).get("questions", [])
                     if c_pool:
-                        for item in RNG.sample(c_pool, min(4, len(c_pool))):
-                            selected_qs.append((cand_id, item))
-                if len(selected_qs) < target_count and pool:
-                    rem = [q for q in pool if not any(sq[1] == q for sq in selected_qs)]
-                    for item in RNG.sample(rem, min(target_count - len(selected_qs), len(rem))):
-                        selected_qs.append((unit_id, item))
+                        for q_item in RNG.sample(c_pool, min(3, len(c_pool))):
+                            qid += 1
+                            questions.append({
+                                "question_id": qid,
+                                "assignment_id": assign_id,
+                                "unit_id": cand_id,
+                                "lesson_id": cand_id,
+                                "chapter_id": unit_map.get(cand_id, {}).get("chapter_id", 391),
+                                "bloom_level": q_item.get("bloom_level", 2),
+                                "units": [(cand_id, 1.0)],
+                                "question_text": q_item.get("text", f"Câu hỏi {qid}"),
+                            })
+                assign_id += 1
+            continue
 
-            else:  # advanced
-                # 10-12 câu, ưu tiên Bloom 4-6
-                target_count = 10
-                adv_pool = [q for q in pool if q.get("bloom_level", 1) >= 4]
-                if len(adv_pool) >= 6:
-                    for item in RNG.sample(adv_pool, min(target_count, len(adv_pool))):
-                        selected_qs.append((unit_id, item))
-                if len(selected_qs) < target_count and pool:
-                    rem = [q for q in pool if not any(sq[1] == q for sq in selected_qs)]
-                    for item in RNG.sample(rem, min(target_count - len(selected_qs), len(rem))):
-                        selected_qs.append((unit_id, item))
+        for u_id in u_list:
+            if u_id not in all_past_unit_ids:
+                all_past_unit_ids.append(u_id)
 
-            # Đăng ký vào bank questions
-            for q_uid, q_item in selected_qs:
-                qid += 1
-                q_bloom = q_item.get("bloom_level", 2)
-                q_text = q_item.get("text", f"Câu hỏi {qid}")
-                
-                questions.append({
-                    "question_id": qid,
+            u_meta = unit_map.get(u_id, {"unit_name": f"Bài {u_id}", "chapter_id": 391, "chapter_name": "TOÁN 6"})
+            unit_name = u_meta["unit_name"]
+            chapter_id = u_meta["chapter_id"]
+            chapter_name = u_meta["chapter_name"]
+
+            pool = templates.get(str(u_id), {}).get("questions", [])
+
+            # Nếu là tuần ôn tập chuyên đề (W25-W35): tạo 1 bài tập chuyên đề (12 câu)
+            if week >= 25:
+                due_date = week_due_base + timedelta(days=3)
+                assign_dict = {
                     "assignment_id": assign_id,
-                    "unit_id": q_uid,
-                    "lesson_id": q_uid,
+                    "so_school_id": SO_SCHOOL_ID,
+                    "grade_id": 6,
+                    "semester_index": sem,
+                    "subject_id": SUBJECT_ID,
+                    "code": f"LMS_T6_S{sem}_W{week:02d}_U{u_id}",
+                    "fullname": f"[Toán 6 - W{week:02d}] Ôn tập: {unit_name}",
+                    "max_grade": 10.0,
+                    "date_assigned": due_date - timedelta(days=5),
+                    "due_date": due_date.date(),
+                    "week": week,
+                    "semester": sem,
+                    "type": "review",
+                    "unit_id": u_id,
                     "chapter_id": chapter_id,
-                    "bloom_level": q_bloom,
-                    "units": [(q_uid, 1.0)],
-                    "question_text": q_text,
-                })
+                }
+                assignments.append(assign_dict)
+                if pool:
+                    for q_item in RNG.sample(pool, min(10, len(pool))):
+                        qid += 1
+                        questions.append({
+                            "question_id": qid,
+                            "assignment_id": assign_id,
+                            "unit_id": u_id,
+                            "lesson_id": u_id,
+                            "chapter_id": chapter_id,
+                            "bloom_level": q_item.get("bloom_level", 2),
+                            "units": [(u_id, 1.0)],
+                            "question_text": q_item.get("text", f"Câu hỏi {qid}"),
+                        })
+                assign_id += 1
+                continue
 
-            assign_id += 1
+            # Tuần học chính khoá (W1 -> W24): Tạo 2 bài tập bao phủ TOÀN BỘ câu hỏi trong pool (~35 câu)
+            # Bài 1: Nửa đầu pool (~18 câu), Bài 2: Nửa sau pool (~17 câu)
+            half = len(pool) // 2 if pool else 0
+            sub_plans = [
+                ("Bài tập cơ bản & thông hiểu", pool[:half] if pool else []),
+                ("Bài tập vận dụng & nâng cao", pool[half:] if pool else []),
+            ]
+            if week % 4 == 0 and len(u_list) == 1:
+                # Tuần thứ 4 có thêm 1 bài nâng cao
+                sub_plans.append(("Thử thách Bloom 4-6", [q for q in pool if q.get("bloom_level", 1) >= 4][:8]))
+
+            for k, (sub_title, q_subset) in enumerate(sub_plans):
+                due_date = week_due_base + timedelta(days=2 * k + 3)
+                assign_dict = {
+                    "assignment_id": assign_id,
+                    "so_school_id": SO_SCHOOL_ID,
+                    "grade_id": 6,
+                    "semester_index": sem,
+                    "subject_id": SUBJECT_ID,
+                    "code": f"LMS_T6_S{sem}_W{week:02d}_A{k+1}_U{u_id}",
+                    "fullname": f"[Toán 6 - W{week:02d}] {sub_title}: {unit_name}",
+                    "max_grade": 10.0,
+                    "date_assigned": due_date - timedelta(days=5),
+                    "due_date": due_date.date(),
+                    "week": week,
+                    "semester": sem,
+                    "type": "regular" if k < 2 else "advanced",
+                    "unit_id": u_id,
+                    "chapter_id": chapter_id,
+                }
+                assignments.append(assign_dict)
+
+                # Nạp câu hỏi
+                if q_subset:
+                    for q_item in q_subset:
+                        qid += 1
+                        questions.append({
+                            "question_id": qid,
+                            "assignment_id": assign_id,
+                            "unit_id": u_id,
+                            "lesson_id": u_id,
+                            "chapter_id": chapter_id,
+                            "bloom_level": q_item.get("bloom_level", 2),
+                            "units": [(u_id, 1.0)],
+                            "question_text": q_item.get("text", f"Câu hỏi {qid}"),
+                        })
+                else:
+                    for b in range(1, 7):
+                        qid += 1
+                        questions.append({
+                            "question_id": qid,
+                            "assignment_id": assign_id,
+                            "unit_id": u_id,
+                            "lesson_id": u_id,
+                            "chapter_id": chapter_id,
+                            "bloom_level": b,
+                            "units": [(u_id, 1.0)],
+                            "question_text": f"Câu hỏi {unit_name} cấp độ Bloom {b}",
+                        })
+                assign_id += 1
 
     # Insert dim_so_assignment
     cur.executemany(
