@@ -165,16 +165,3 @@ Verdict:
 | CDI adjustment | Hoạt động | Điều chỉnh điểm theo độ khó nội dung |
 | Batch query chống N+1 | Hoạt động | 1 query LMS cho tất cả HS |
 | Pure function | Hoạt động | Module không DB, không LLM → dễ test |
-
----
-
-## 8. Cách chạy thử
-
-```bash
-# 1. API
-curl "http://localhost:8000/api/v1/pass-fail-forecast?exam_paper_id=101&subject_id=1&semester_index=1" \
-  -H "Authorization: Bearer <token>"
-
-# 2. Test unit (pure functions, không cần DB)
-pytest tests/test_pass_fail_forecast.py -v
-```

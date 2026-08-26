@@ -148,24 +148,4 @@ UPSERT vào fact_student_subject_risk_predictions:
 | Risk level classification | Hoạt động | risk_score, risk_level, risk_probability |
 | Progress tracking | Hoạt động | Frontend poll job.progress 0-100% |
 
----
 
-## 7. Cách chạy thử
-
-```bash
-# 1. Chạy EWS pipeline từ command line
-python scripts/run_ews_pipeline.py
-
-# 2. Gọi API
-curl -X POST http://localhost:8000/api/v1/ews/predict \
-  -H "Authorization: Bearer <token_admin>" \
-  -H "Content-Type: application/json" \
-  -d '{"school_year_id": 2025, "semester_index": 1, "evaluated_at_week": 12}'
-
-# 3. Xem danh sách job
-curl http://localhost:8000/api/v1/ews/predict/jobs \
-  -H "Authorization: Bearer <token_admin>"
-
-# 4. Chạy test
-pytest tests/test_ews*.py -v
-```

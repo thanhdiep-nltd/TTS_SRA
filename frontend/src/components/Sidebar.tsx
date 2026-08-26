@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 
 import PresentationModal from "./PresentationModal";
+import PresentationModalV2 from "./PresentationModal_v2";
+import PresentationModalV3 from "./PresentationModal_v3";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { QUESTION_BANK_ROLES, ROLE_LABELS } from "@/lib/types";
@@ -72,6 +74,8 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
+  const [showPresentationV2, setShowPresentationV2] = useState(false);
+  const [showPresentationV3, setShowPresentationV3] = useState(false);
 
   const mainMenuItems = useMemo(() => {
     const items = [...MENU];
@@ -322,7 +326,7 @@ export default function Sidebar() {
                 )}
               </button>
 
-              {/* Item 2.5: Thuyết trình */}
+              {/* Item 2.5: Thuyết trình (v1) */}
               <button
                 type="button"
                 onClick={() => {
@@ -332,7 +336,33 @@ export default function Sidebar() {
                 className="px-4 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition w-full"
               >
                 <Presentation className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
-                <span>Thuyết trình dự án</span>
+                <span>Thuyết trình dự án (v1)</span>
+              </button>
+
+              {/* Item 2.6: Thuyết trình (v2) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPresentationV2(true);
+                  setShowSettingsPopover(false);
+                }}
+                className="px-4 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition w-full"
+              >
+                <Presentation className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span>Thuyết trình dự án (v2)</span>
+              </button>
+
+              {/* Item 2.7: Thuyết trình (v3 — 6 flow) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPresentationV3(true);
+                  setShowSettingsPopover(false);
+                }}
+                className="px-4 py-2.5 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition w-full"
+              >
+                <Presentation className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Thuyết trình (v3 — 6 flow)</span>
               </button>
 
               <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
@@ -410,6 +440,16 @@ export default function Sidebar() {
       <PresentationModal
         isOpen={showPresentation}
         onClose={() => setShowPresentation(false)}
+        theme={theme}
+      />
+      <PresentationModalV2
+        isOpen={showPresentationV2}
+        onClose={() => setShowPresentationV2(false)}
+        theme={theme}
+      />
+      <PresentationModalV3
+        isOpen={showPresentationV3}
+        onClose={() => setShowPresentationV3(false)}
         theme={theme}
       />
     </aside>

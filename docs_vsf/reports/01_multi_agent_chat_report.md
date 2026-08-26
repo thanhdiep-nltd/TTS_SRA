@@ -125,30 +125,6 @@ StreamingResponse gửi token về frontend
 
 ---
 
-## 6. Cách chạy thử
-
-```bash
-# 1. Khởi động backend
-uvicorn src.main:app --reload --port 8000
-
-# 2. Login lấy token
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "admin@admin.edu.vn", "password": "admin123"}'
-
-# 3. Chat thử nghiệm
-curl -X POST http://localhost:8000/api/v1/chat \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": null, "message": "Cho tôi xem điểm trung bình môn Toán của lớp 9A"}'
-
-# 4. Kiểm tra agent status
-curl http://localhost:8000/api/v1/status
-
-# 5. Chạy test
-pytest tests/test_agents/ -v
-```
-
 **Tài khoản demo:**
 - ADMIN: admin@admin.edu.vn / admin123
 - HIỆU TRƯỞNG: principal.c2@nguyendu.edu.vn / password123

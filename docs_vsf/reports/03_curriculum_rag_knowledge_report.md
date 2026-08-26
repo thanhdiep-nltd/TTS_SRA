@@ -164,31 +164,3 @@ User hỏi: "Định nghĩa phân số là gì? (lớp 6)"
 | RAG grounding | Hoạt động | search_textbook BẮT BUỘC gọi Qdrant trước, không bịa |
 | DOCX/TXT/MD support | Hoạt động | Ngoài PDF, có thể nạp DOCX (heading styles), TXT/MD (regex) |
 | Chunk enrichment | Hoạt động | Tóm tắt + từ khóa + mục con cho mỗi bài |
-
----
-
-## 6. Cách chạy thử
-
-```bash
-# 1. Nạp sách (dry run)
-curl -X POST http://localhost:8000/api/v1/curriculum/ingest-book \
-  -H "Authorization: Bearer <token_admin>" \
-  -F "file=@sgk_toan6.pdf" \
-  -F "subject_code=TOAN" \
-  -F "grade_number=6" \
-  -F "semester_number=1" \
-  -F "dry_run=true"
-
-# 2. Xem danh sách job
-curl http://localhost:8000/api/v1/curriculum/ingest-book/jobs \
-  -H "Authorization: Bearer <token_admin>"
-
-# 3. Test knowledge agent
-curl -X POST http://localhost:8000/api/v1/chat \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": null, "message": "Định nghĩa phân số là gì? (lớp 6)"}'
-
-# 4. Test
-pytest tests/test_curriculum_*.py tests/test_agents/test_knowledge_agent.py -v
-```
