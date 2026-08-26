@@ -3,6 +3,17 @@
 from pydantic import BaseModel, Field
 
 
+class BloomStatItem(BaseModel):
+    """Thống kê kết quả làm bài theo từng bậc Bloom nhận thức (1..6)."""
+
+    bloom_level: int
+    bloom_name: str
+    total_questions: int
+    correct_count: int
+    incorrect_count: int
+    accuracy_pct: float
+
+
 class KnowledgeGapItem(BaseModel):
     """1 unit (Chương hoặc Bài học) hổng của 1 học sinh."""
 
@@ -28,10 +39,13 @@ class KnowledgeGapItem(BaseModel):
     n_correct: int | None = None  # số câu đúng
     lm_weight: float | None = None  # trọng số LMS trong adjusted
     exam_weight: float | None = None  # trọng số điểm thi trong adjusted
+    # Phân rã theo thang nhận thức Bloom 1-6 (Nhớ, Hiểu, Vận dụng, Phân tích, Đánh giá, Sáng tạo):
+    bloom_breakdown: list[BloomStatItem] = Field(default_factory=list)
     # Cây phân cấp Bài học con (nếu đây là node Chương):
     lessons: list["KnowledgeGapItem"] = Field(default_factory=list)
     gap_lessons_count: int = 0
     total_lessons_count: int = 0
+
 
 
 
@@ -144,3 +158,38 @@ class RecalcMasteryResult(BaseModel):
     subject_id: int
     semester_index: int = 1
     message: str = "Tính toán lại năng lực thành công"
+
+
+class StudentUnitQuestionItem(BaseModel):
+    """Chi tiết 1 câu hỏi trắc nghiệm của unit kèm kết quả làm bài của học sinh."""
+
+    question_id: int
+    assignment_id: int | None = None
+    assignment_name: str | None = None
+    question_text: str
+    bloom_level: int
+    is_correct: bool | None = None
+    score_received: float = 0.0
+    max_score: float = 1.0
+    response_time_seconds: int | None = None
+    attempt_number: int | None = 1
+    integrity_flag: int | None = 0
+    chosen_option: str | int | None = None
+    options: list[str] | None = None
+    correct_option: int | None = None
+    explanation: str | None = None
+
+
+class StudentUnitBloomDrilldownResponse(BaseModel):
+    """Dữ liệu drilldown phân tích Bloom và danh sách câu hỏi của 1 học sinh theo bài học."""
+
+    student_code: str
+    unit_id: int
+    unit_name: str
+    chapter_name: str
+    total_items: int
+    total_correct: int
+    raw_mastery: float
+    bloom_stats: list[BloomStatItem]
+    questions: list[StudentUnitQuestionItem]
+

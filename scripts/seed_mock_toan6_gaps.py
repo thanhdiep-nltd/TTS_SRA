@@ -1,35 +1,14 @@
-"""Seed mock Toan 6 (subject 106) — xoa de cu + re-mock day du luong danh gia.
+"""Seed mock Toan 6 (subject 106) — Tích hợp EWS & Lỗ Hổng Kiến Thức.
 
-Mock lai TU DAU du lieu mon Toan 6 khoi 6 (so_school_id=1, grade 6) de chay
-full luong danh gia lo hong kien thuc (`/knowledge-gaps/students/{code}`):
-
-  GĐ 0. Xóa sạch dữ liệu cũ subject 106 (chỉ môn 106, school 1 cho điểm trên lớp).
-  GĐ 1. 6 đề thi khối 6 (GK1 MIDTERM có map unit; CK1 FINAL; TX1–TX4 REGULAR).
-  GĐ 2. Re-mock điểm thi trên lớp (`fact_gradebooks`, so_exam_id 1061 TX + 1062 GK).
-  GĐ 3. `lms_question_bank`: 34 bài LMS (16 tuần × 2 bài + tuần 8/16 ôn tập thêm 1)
-        × 10 câu = 340 câu trắc nghiệm; mỗi câu map tới BÀI con (lms_question_unit,
-        unit_id = bài, parent_id = chương) — câu tổng hợp 2 chương góp weight vào 2 bài.
-  GĐ 4. `lms_question_response`: item-response hàng tuần cho học sinh khối 6
-        (attempt, best-attempt, thời gian làm, cờ integrity, ngày theo tuần).
-  GĐ 5. Tính `student_unit_mastery` bằng service thật (finalize_mastery +
-        compute_unit_mastery) → upsert (theo BÀI con).
-  GĐ 6. In bảng tổng kết để đối chiếu.
-
-QUAN TRỌNG (chống vỡ khi chạy lại `generate_full_system_mock_v4.py`):
-- Script v4 LUÔN TRUNCATE + seed lại `dim_homeroom_class_student`,
-  `dim_homeroom_class`, `fact_gradebooks`, `public.users` — nhưng KHÔNG đụng
-  `exam_papers`, `exam_competencies`, `curriculum_units`, `lms_question_*`,
-  `student_unit_mastery`. → Script này phải chạy SAU v4, discover học sinh ĐỘNG
-  theo rank (thứ tự student_code), không hardcode mã HS, tự dọn subject-106
-  trước mỗi lần seed (idempotent).
-
-GHI CHÚ CALIBRATION: `exam_competencies` dùng bloom_level đồng nhất = 3 cho cả
-4 chương. Lý do: fallback/calibration dùng `compute_unit_mastery(total, 10,
-units)` — nếu các unit có bloom khác nhau (vd 407 bloom 4, 420 bloom 2) thì
-một điểm tổng duy nhất sẽ luôn cho mastery 407 thấp hơn/420 cao hơn → học sinh
-giỏi LMS bị gắn cờ SUSPECTED_CHEATING oan ở chương khó/dễ. Bloom đa dạng 1–4
-vẫn được giữ ở tầng câu hỏi LMS (`lms_question_bank.bloom_level`), nơi item-level
-mastery dùng `_BLOOM_DIFFICULTY` — đúng thiết kế (LMS = chi tiết, đề = tổng).
+Nguồn dữ liệu:
+  - 35 tuần từ `public.teaching_schedules` (Toán 6, HK1 & HK2) -> ~86 bài tập LMS (dim_so_assignment)
+  - ~1100 câu hỏi trắc nghiệm chuẩn Bloom 1-6 từ `data/question_templates_toan6.json`
+  - 3 phân loại bài tập LMS:
+      * Regular (~70% = 60 bài): 10-12 câu từ pool của unit tuần hiện tại (đủ Bloom 1-6)
+      * Review (~20% = 17 bài): 15-20 câu tổng hợp từ 2-3 unit trước đó
+      * Advanced (~10% = 9 bài): 10-12 câu vận dụng cao (Bloom 4-6)
+  - Sinh item-response (lms_question_response) + tính điểm bài tập (fact_so_assignment_grade)
+  - Tính toán và upsert `student_unit_mastery` bằng service chuẩn.
 
 Chạy:
     python scripts/seed_mock_toan6_gaps.py
@@ -37,6 +16,7 @@ Chạy:
 
 from __future__ import annotations
 
+import json
 import os
 import random
 import sys
@@ -50,8 +30,7 @@ if sys.platform.startswith("win"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 _ROOT = Path(__file__).resolve().parent.parent
-env_path = _ROOT / ".env"
-load_dotenv(dotenv_path=env_path)
+load_dotenv(dotenv_path=_ROOT / ".env")
 
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
@@ -69,7 +48,7 @@ from src.services.item_mastery import (  # noqa: E402
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery  # noqa: E402
 
 # ============================================================================
-# HẰNG SỐ MOCK
+# HẰNG SỐ CƠ BẢN
 # ============================================================================
 SUBJECT_ID = 106  # TOAN_6 (s360.dim_subject)
 SO_SCHOOL_ID = 1
@@ -77,27 +56,21 @@ SCHOOL_YEAR_ID = 2025
 SEMESTER = 1
 MAX_GRADE = 10.0
 
-# 4 chương Toán 6 (curriculum_units — node cha, tồn tại ổn định qua v4)
+# 4 chương HK1 Toán 6 (curriculum_units cha)
 UNITS = [391, 407, 414, 420]
 UNIT_NAMES = {391: "SỐ TỰ NHIÊN", 407: "SỐ NGUYÊN", 414: "HÌNH PHẲNG", 420: "THỐNG KÊ"}
 
-# Map đề GK1 → (unit, weight) — bloom đồng nhất 3 (xem docstring calibration)
+# Map đề GK1 -> (unit_cha, weight)
 EXAM_COMPETENCIES = [(391, 0.40), (407, 0.30), (414, 0.20), (420, 0.10)]
 
-# Lịch LMS HK1: 16 tuần (tuần 1 = 2025-09-01), mỗi tuần 2 bài; tuần 8, 16 có bài ôn tập
+# Khởi đầu năm học: 2025-09-01 (Tuần 1 HK1)
 WEEK_START = datetime(2025, 9, 1, 8, 0, 0)
-N_WEEKS = 16
-REVIEW_WEEKS = {8, 16}
-ASSIGNMENTS_PER_WEEK = 2  # +1 bài ôn tập ở tuần review
-QUESTIONS_PER_ASSIGNMENT = 10
-
-# Tuần trọng tâm chương: 1–4 → 391, 5–8 → 407, 9–12 → 414, 13–16 → 420
-WEEK_FOCUS = {w: UNITS[(w - 1) // 4] for w in range(1, N_WEEKS + 1)}
+HK2_START = datetime(2026, 1, 19, 8, 0, 0)
 
 # ============================================================================
-# PROFILE HỌC SINH (gán theo rank — thứ tự student_code, không hardcode mã)
+# PROFILE HỌC SINH (gán theo rank - thứ tự student_code)
 # ============================================================================
-# p = {unit: xác suất đúng LMS}, gk = điểm Giữa HK1 (so_exam_id 1062).
+# p = {chapter_id: xác suất đúng LMS}, gk = điểm Giữa HK1.
 PROFILES: list[dict] = [
     {"name": "GIOI_DEU", "p": {391: 0.95, 407: 0.93, 414: 0.96, 420: 0.97}, "gk": 9.2},
     {"name": "TE_407", "p": {391: 0.90, 407: 0.08, 414: 0.88, 420: 0.90}, "gk": 6.8},
@@ -112,352 +85,29 @@ PROFILES: list[dict] = [
     {"name": "TB_KHA_3", "p": {391: 0.85, 407: 0.72, 414: 0.74, 420: 0.78}, "gk": 7.5},
     {"name": "TB_KHA_4", "p": {391: 0.72, 407: 0.74, 414: 0.76, 420: 0.70}, "gk": 7.0},
     {"name": "TB_1", "p": {391: 0.68, 407: 0.62, 414: 0.66, 420: 0.70}, "gk": 6.6},
-    # rank 13: KHÔNG có item LMS → INSUFFICIENT → API fallback EXAM
     {"name": "NO_LMS", "p": None, "gk": 5.2},
 ]
 AVERAGE_PROFILE = {"name": "TB_TRUNG_BINH", "p": {391: 0.78, 407: 0.74, 414: 0.72, 420: 0.78}, "gk": 7.2}
 
-# Chuyển confidence (chuỗi từ service) → SMALLINT theo DDL student_unit_mastery
 CONFIDENCE_INT = {"HIGH": 3, "MEDIUM": 2, "LOW": 1, "INSUFFICIENT": 1}
-
 RNG = random.Random(20250901)
 
-# ============================================================================
-# NỘI DUNG MOCK CÂU HỎI (question_text) — mỗi câu KHÁC NHAU (số ngẫu nhiên theo cấp độ)
-# ============================================================================
-# Mỗi mẫu: (template_text, lesson_id, (min_a, max_a, min_b, max_b)).
-# Template chứa placeholder {a}/{b} được điền số ngẫu nhiên trong dải phù hợp
-# cấp độ (Bloom) + bài (lesson) — khớp pipeline "Kiểm tra câu hỏi" (AI xác định
-# chương + bài trong SGK đã nạp). Dải () = câu định tính, không điền số.
-# Bài con Toán 6 (curriculum_units):
-#   391 SỐ TỰ NHIÊN: 392 Tập hợp | 393 Ghi số tự nhiên | 394 Phép tính | 395 Lũy thừa
-#       396 Thứ tự thực hiện | 398 Dấu hiệu chia hết 2,5 | 399 Dấu hiệu 3,9 | 401 Số nguyên tố
-#       403 ƯCLN | 404 BCNN | 406 BTCC
-#   407 SỐ NGUYÊN: 408 Số nguyên âm | 409 Thứ tự | 410 Cộng-trừ | 411 Nhân-chia | 412 THTN
-#   414 HÌNH PHẲNG: 415 Hình vuông-Tam giác-Lục giác | 416 HCN-Thoi-BH-Thang cân
-#       417 Chu vi-Diện tích | 418 THTN
-#   420 THỐNG KÊ: 421 Thu thập | 422 Biểu diễn bảng | 423 Biểu đồ tranh | 424 Biểu đồ cột | 425 THTN
-# (text, lesson_id, ranges) — ranges = (a_min, a_max, b_min, b_max) hoặc ()
-QUESTION_TEMPLATES: dict[int, dict[int, list[tuple[str, int, tuple[int, int, int, int] | tuple[()]]]]] = {
-    391: {  # SỐ TỰ NHIÊN
-        1: [
-            ("Trong các số −{a}, {b}, {c}, số nào là số tự nhiên?", 393, (1, 9, 10, 99, 2, 9)),
-            ("Tập hợp các số tự nhiên nhỏ hơn {a} gồm bao nhiêu phần tử?", 392, (2, 15)),
-            ("Số tự nhiên liền sau của {a} là bao nhiêu?", 393, (1, 99)),
-            ("Số tự nhiên liền trước của {a} là bao nhiêu?", 393, (2, 99)),
-            ("Số tự nhiên nhỏ nhất có {a} chữ số là số nào?", 393, (2, 9)),
-            ("Số tự nhiên lớn nhất có {a} chữ số là số nào?", 393, (1, 5)),
-            ("Tập hợp {a}, {b}, {c} — phần tử nào thuộc tập hợp số tự nhiên?", 392, (1, 9, 10, 99, 2, 9)),
-        ],
-        2: [
-            ("Kết quả của phép tính {a} + {b} bằng bao nhiêu?", 394, (10, 500, 10, 500)),
-            ("Giá trị của biểu thức {a} − {b} × 3 là bao nhiêu?", 396, (50, 200, 2, 30)),
-            ("Tính: {a} × {b} = ?", 394, (10, 99, 2, 9)),
-            ("Giá trị của {a} + {b} : 2 là bao nhiêu?", 396, (10, 100, 10, 90)),
-            ("Kết quả của {a} : {b} + 15 là bao nhiêu?", 394, (20, 90, 2, 9)),
-            ("Tính nhanh: {a} + {b} + {c} = ?", 394, (10, 200, 10, 200, 10, 200)),
-            ("Tính: {a} × 100 + {b} = ?", 394, (1, 9, 10, 99)),
-            ("Một lớp có {a} học sinh, chia đều thành {b} nhóm — mỗi nhóm mấy bạn?", 394, (20, 45, 2, 9)),
-            ("Kết quả của {a} − {b} + {c} là bao nhiêu?", 396, (50, 200, 10, 90, 1, 50)),
-            ("Tính: {a} : {b} × {c} = ?", 394, (24, 96, 2, 8, 2, 9)),
-        ],
-        3: [
-            ("Ước chung lớn nhất của {a} và {b} là bao nhiêu?", 403, (12, 96, 8, 60)),
-            ("Trong các số {a}, {b}, {c}, số nào chia hết cho cả 2 và 3?", 399, (10, 90, 10, 90, 10, 90)),
-            ("Ước chung của {a} và {b} gồm những số nào?", 403, (12, 48, 18, 60)),
-            ("Trong các số {a}, {b}, {c}, số nào vừa chia hết cho 2 vừa chia hết cho 5?", 398, (10, 90, 10, 90, 10, 90)),
-            ("Số nào trong các số {a}, {b}, {c} chia hết cho 9?", 399, (10, 90, 10, 90, 10, 90)),
-            ("ƯCLN(12, {a}) bằng bao nhiêu?", 403, (18, 96)),
-            ("Số {a} chia hết cho những số nào trong các số 2, 3, 5?", 398, (12, 90)),
-            ("Tổng {a} + {b} chia hết cho mấy trong các số 2, 3, 5?", 398, (10, 90, 10, 90)),
-        ],
-        4: [
-            ("Phân tích số {a} ra thừa số nguyên tố, kết quả nào đúng?", 401, (30, 120)),
-            ("Bội chung nhỏ nhất của {a} và {b} là bao nhiêu?", 404, (4, 24, 6, 30)),
-            ("Trong các số {a}, {b}, {c}, số nào là hợp số?", 401, (10, 90, 10, 90, 10, 90)),
-            ("Tìm số nguyên tố nhỏ hơn {a}?", 401, (20, 100)),
-            ("Số {a} có bao nhiêu ước nguyên tố?", 401, (12, 100)),
-            ("BCNN(4, {a}) là bao nhiêu?", 404, (5, 30)),
-        ],
-        5: [
-            ("Chứng minh nào sau đây đúng về tính chia hết của 10^n?", 395, ()),
-            ("Nhận định nào đúng khi so sánh {a}^2 và {b}^2?", 395, (2, 9, 3, 9)),
-            ("Giá trị của {a}^3 là bao nhiêu?", 395, (2, 9)),
-            ("So sánh {a}^2 và {b}^3, khẳng định nào đúng?", 395, (3, 6, 2, 4)),
-            ("Tính: {a}^2 × {b} = ?", 395, (2, 9, 2, 9)),
-        ],
-        6: [
-            ("Bài toán nào cần vận dụng kết hợp nhiều quy tắc số tự nhiên để giải?", 406, ()),
-            ("Bài toán thực tế nào dùng BCNN để giải quyết?", 406, ()),
-            ("Để chia đều {a} viên kẹo cho các nhóm mà không thừa, cần dùng kiến thức gì?", 406, (24, 120)),
-        ],
-    },
-    407: {  # SỐ NGUYÊN
-        1: [
-            ("Trong các số −{a}, 0, {b}, −{c}, số nguyên âm nào nhỏ hơn −3?", 408, (2, 20, 1, 9, 1, 9)),
-            ("Số đối của −{a} là bao nhiêu?", 408, (1, 99)),
-            ("Trong các số −{a}, 0, {b}, số nào là số nguyên âm?", 409, (5, 20, 2, 9)),
-            ("Số nguyên nào nằm giữa −{a} và 0?", 409, (2, 20)),
-            ("−{a} thuộc tập hợp nào sau đây?", 408, (1, 99)),
-        ],
-        2: [
-            ("Kết quả của (−{a}) + (−{b}) bằng bao nhiêu?", 410, (3, 40, 3, 40)),
-            ("Giá trị của (−{a}) − (−{b}) là bao nhiêu?", 410, (5, 50, 2, 40)),
-            ("Tính: {a} + (−{b}) = ?", 410, (10, 60, 5, 50)),
-            ("Tính: (−{a}) + {b} = ?", 410, (10, 60, 5, 50)),
-            ("Tính: (−{a}) − {b} = ?", 410, (10, 60, 5, 50)),
-            ("Tính: (−{a}) + 0 = ?", 410, (5, 90)),
-            ("Tính: {a} − {b} − {c} = ?", 410, (20, 90, 5, 40, 5, 30)),
-        ],
-        3: [
-            ("Tích của (−{a}) × (−{b}) bằng bao nhiêu?", 411, (2, 20, 2, 20)),
-            ("Phép chia (−{a}) : {b} có kết quả là bao nhiêu?", 411, (20, 90, 2, 9)),
-            ("Tính: (−{a}) × {b} = ?", 411, (2, 20, 2, 20)),
-            ("Tính: {a} : (−{b}) = ?", 411, (20, 90, 2, 9)),
-            ("Tính: (−{a}) × (−{b}) : {c} = ?", 411, (4, 20, 2, 10, 2, 5)),
-            ("Dấu của tích (−{a}) × {b} là gì?", 411, (1, 20, 1, 20)),
-        ],
-        4: [
-            ("Sắp xếp các số −{a}, 0, {b}, −{c} theo thứ tự tăng dần, kết quả nào đúng?", 409, (5, 20, 2, 9, 1, 9)),
-            ("So sánh −{a} và −{b}, khẳng định nào đúng?", 409, (5, 30, 3, 20)),
-            ("Số nào lớn nhất trong các số −{a}, −{b}, 0, {c}?", 409, (5, 20, 3, 15, 1, 9)),
-        ],
-        5: [
-            ("Tính giá trị biểu thức chứa dấu ngoặc: (−{a} + {b}) × (−{c}) = ?", 411, (5, 40, 2, 30, 2, 9)),
-            ("Tính: −[{a} − (−{b})] = ?", 411, (5, 40, 2, 30)),
-            ("Biểu thức {a} − (−{b} + {c}) có giá trị bằng bao nhiêu?", 411, (20, 60, 5, 30, 2, 20)),
-        ],
-        6: [
-            ("Bài toán thực tế nào dùng số nguyên để biểu diễn nhiệt độ âm?", 412, ()),
-            ("Nhiệt độ buổi sáng là −{a}°C, buổi trưa tăng {b}°C — nhiệt độ trưa là bao nhiêu?", 412, (1, 9, 1, 9)),
-            ("Tàu ngầm lặn ở độ sâu −{a} m, dâng lên {b} m — vị trí mới là bao nhiêu?", 412, (20, 90, 5, 40)),
-        ],
-    },
-    414: {  # CÁC HÌNH PHẲNG TRONG THỰC TIỄN
-        1: [
-            ("Hình nào sau đây là hình tam giác đều?", 415, ()),
-            ("Hình có 4 cạnh bằng nhau là hình gì?", 416, ()),
-            ("Hình lục giác đều có mấy cạnh?", 415, ()),
-            ("Hình bình hành có đặc điểm nào sau đây?", 416, ()),
-            ("Hình tam giác đều có mấy góc bằng nhau?", 415, ()),
-            ("Hình chữ nhật có mấy trục đối xứng?", 416, ()),
-            ("Hình thang cân có mấy trục đối xứng?", 416, ()),
-            ("Hình vuông có phải là hình thoi không?", 416, ()),
-        ],
-        2: [
-            ("Chu vi hình vuông cạnh {a} cm bằng bao nhiêu?", 417, (3, 25)),
-            ("Diện tích hình chữ nhật {a} cm × {b} cm bằng bao nhiêu?", 417, (3, 20, 4, 25)),
-            ("Chu vi hình chữ nhật dài {a} cm, rộng {b} cm là bao nhiêu?", 417, (5, 30, 2, 15)),
-            ("Diện tích hình vuông cạnh {a} cm là bao nhiêu?", 417, (3, 25)),
-            ("Chu vi hình tam giác đều cạnh {a} cm là bao nhiêu?", 415, (3, 20)),
-            ("Cạnh hình vuông có chu vi {a} cm là bao nhiêu?", 417, (8, 40)),
-        ],
-        3: [
-            ("Chu vi hình thoi cạnh {a} cm là bao nhiêu?", 417, (5, 25)),
-            ("Diện tích hình thang có tổng hai đáy {a} cm, chiều cao {b} cm là bao nhiêu?", 417, (8, 40, 3, 20)),
-            ("Diện tích hình thoi có hai đường chéo {a} cm và {b} cm là bao nhiêu?", 417, (4, 30, 4, 30)),
-            ("Chu vi hình bình hành cạnh {a} cm và {b} cm là bao nhiêu?", 416, (4, 20, 3, 15)),
-            ("Chu vi hình thang cân có hai cạnh đáy {a} cm, {b} cm và cạnh bên {c} cm?", 416, (5, 20, 4, 15, 2, 10)),
-            ("Diện tích tam giác có đáy {a} cm, chiều cao {b} cm là bao nhiêu?", 417, (4, 20, 3, 15)),
-            ("Diện tích hình chữ nhật {a} cm × {b} cm, cạnh {a} tăng gấp đôi — diện tích mới?", 417, (3, 15, 4, 20)),
-        ],
-        4: [
-            ("Phân biệt hình nào có trục đối xứng và hình nào không?", 415, ()),
-            ("Hình thang cân có đặc điểm nào sau đây?", 416, ()),
-            ("Hình nào có nhiều trục đối xứng hơn?", 415, ()),
-            ("Hình chữ nhật và hình thoi khác nhau ở điểm nào?", 416, ()),
-            ("Lục giác đều được tạo từ mấy tam giác đều?", 415, ()),
-            ("Hình bình hành có chu vi {a} cm — nhận định nào đúng về cạnh?", 416, (8, 30)),
-            ("Ghép 2 hình tam giác đều được hình gì?", 415, ()),
-        ],
-        5: [
-            ("Ghép các mảnh ghép hình học để tạo thành hình lục giác đều, cách nào đúng?", 415, ()),
-            ("Sắp xếp các hình theo thứ tự diện tích tăng dần, thứ tự nào đúng?", 417, ()),
-            ("Lập luận nào đúng khi tính diện tích mảnh đất có hình dạng bất kỳ?", 417, ()),
-            ("So sánh diện tích hình vuông cạnh {a} cm và hình chữ nhật {a} cm × {b} cm?", 417, (4, 12, 2, 8)),
-            ("Cách nào hợp lý để tính diện tích hình H gồm 2 hình chữ nhật?", 417, ()),
-        ],
-        6: [
-            ("Ứng dụng hình học phẳng vào bài toán lát gạch sân trường, cách tính nào hợp lý?", 418, ()),
-            ("Thiết kế chuồng nuôi hình chữ nhật có chu vi {a} m để diện tích lớn nhất?", 418, (20, 100)),
-            ("Đo đạc mảnh vườn hình thang {a} m, {b} m — cần biết thêm gì để tính diện tích?", 418, (5, 20, 4, 15)),
-            ("Thực hành: ước lượng diện tích nền phòng học bằng cách nào?", 418, ()),
-        ],
-    },
-    420: {  # MỘT SỐ YẾU TỐ THỐNG KÊ
-        1: [
-            ("Trong các dữ liệu sau, dữ liệu nào là dữ liệu định lượng?", 421, ()),
-            ("Bảng thống kê gồm những thành phần nào?", 422, ()),
-            ("Cách nào dùng để thu thập dữ liệu về sở thích của lớp?", 421, ()),
-            ("Dữ liệu nào sau đây là dữ liệu định tính?", 421, ()),
-            ("Phân loại dữ liệu: điểm kiểm tra thuộc loại nào?", 421, ()),
-            ("Chiều cao của học sinh trong lớp thuộc loại dữ liệu nào?", 421, ()),
-            ("Câu hỏi nào phù hợp để thu thập dữ liệu về môn thể thao yêu thích?", 421, ()),
-            ("Màu sắc yêu thích của học sinh thuộc loại dữ liệu nào?", 421, ()),
-            ("Cân nặng của học sinh thuộc loại dữ liệu nào?", 421, ()),
-        ],
-        2: [
-            ("Cách đọc biểu đồ cột: cột cao nhất biểu thị điều gì?", 424, ()),
-            ("Số học sinh thích môn Toán trong biểu đồ là {a} hay {b}?", 424, (10, 30, 5, 25)),
-            ("Trong bảng tần số, dòng nào cho biết số lần xuất hiện?", 422, ()),
-            ("Biểu đồ tranh dùng hình ảnh gì để biểu diễn dữ liệu?", 423, ()),
-            ("Bảng số liệu dùng để làm gì?", 422, ()),
-            ("Cột nào trong biểu đồ cột cho biết số lượng nhiều nhất?", 424, ()),
-            ("Tên bảng thống kê thường đặt ở đâu?", 422, ()),
-            ("Biểu đồ tranh: 1 hình tròn biểu thị {a} bạn — cần mấy hình cho {b} bạn?", 423, (2, 5, 6, 25)),
-            ("Trong bảng thống kê, cột đầu tiên thường ghi gì?", 422, ()),
-            ("Biểu đồ cột dùng để biểu diễn dữ liệu gì?", 424, ()),
-        ],
-        3: [
-            ("Từ biểu đồ tranh, mỗi hình tròn biểu thị {a} bạn — có {b} hình thì có bao nhiêu bạn?", 423, (2, 5, 3, 15)),
-            ("Tính tổng số học sinh từ bảng tần số: {a} + {b} + {c} = ?", 422, (3, 12, 4, 15, 2, 10)),
-            ("Biểu đồ cột kép dùng để làm gì?", 424, ()),
-            ("Từ biểu đồ cột, nhóm có số lượng {a} nhiều hơn nhóm {b} đúng không?", 424, (2, 9, 2, 9)),
-            ("Biểu đồ tranh nào phù hợp để so sánh số lượng giữa 2 nhóm?", 423, ()),
-            ("Từ bảng tần số, số học sinh đạt điểm {a} là bao nhiêu?", 422, (3, 12)),
-            ("Từ biểu đồ cột, cột {a} thấp hơn cột {b} bao nhiêu đơn vị?", 424, (2, 8, 4, 12)),
-            ("So sánh biểu đồ tranh và biểu đồ cột — cách nào cho số liệu chính xác hơn?", 423, ()),
-            ("Từ biểu đồ cột kép, nhóm nào có tổng lớn hơn?", 424, ()),
-        ],
-        4: [
-            ("Nhận xét nào đúng khi so sánh hai biểu đồ cột?", 424, ()),
-            ("Biểu đồ nào biểu diễn tốt hơn sự thay đổi theo thời gian?", 424, ()),
-            ("Từ biểu đồ cột kép, kết luận nào về hai nhóm là hợp lý?", 424, ()),
-            ("Chọn dữ liệu phù hợp để vẽ biểu đồ cột?", 422, ()),
-            ("Nhận xét nào đúng khi đọc biểu đồ cột có cột cao gấp đôi cột khác?", 424, ()),
-            ("So sánh bảng thống kê và biểu đồ tranh — cách nào trực quan hơn?", 423, ()),
-            ("Phân tích bảng tần số: nhóm nào chiếm nhiều nhất và tại sao?", 422, ()),
-        ],
-        5: [
-            ("Dự đoán xu hướng từ chuỗi dữ liệu thời tiết, kết luận nào hợp lý?", 425, ()),
-            ("Đánh giá cách trình bày dữ liệu bằng biểu đồ nào hiệu quả hơn?", 425, ()),
-            ("Dự đoán số lượng từ bảng tần số đã thu thập, cách nào hợp lý?", 425, ()),
-            ("Từ dữ liệu nhiệt độ {a} ngày, dự đoán ngày tiếp theo như thế nào?", 425, (5, 14)),
-            ("Nhận xét xu hướng: số học sinh tham gia câu lạc bộ tăng qua các tuần, kết luận nào đúng?", 425, ()),
-        ],
-        6: [
-            ("Thiết kế câu hỏi khảo sát hợp lý để thu thập dữ liệu về thói quen đọc sách.", 421, ()),
-            ("Lập kế hoạch thu thập dữ liệu về chiều cao học sinh trong lớp.", 421, ()),
-            ("Đề xuất cách thu thập dữ liệu về thời gian học bài mỗi ngày của học sinh.", 421, ()),
-            ("Thiết kế bảng thống kê cho dữ liệu về món ăn yêu thích của lớp.", 422, ()),
-        ],
-    },
-}
-# Chương chưa có template → dùng mẫu chung (lesson None — không map được bài)
-FALLBACK_TEMPLATES: dict[int, list[tuple[str, int | None, tuple[()]]]] = {
-    1: [("Câu hỏi nhận biết chương này?", None, ()), ("Câu hỏi đúng/sai về khái niệm chương này?", None, ())],
-    2: [("Tính toán cơ bản liên quan chương này?", None, ()), ("Bài tập vận dụng trực tiếp công thức chương này?", None, ())],
-    3: [("Bài tập vận dụng mức vừa phải chương này?", None, ()), ("Tình huống cần áp dụng quy tắc chương này?", None, ())],
-    4: [("Phân tích và so sánh các trường hợp trong chương này?", None, ()), ("Bài tập suy luận nhiều bước chương này?", None, ())],
-    5: [("Đánh giá lời giải trong bài toán chương này?", None, ()), ("Chọn nhận định đúng về tính chất chương này?", None, ())],
-    6: [("Bài toán sáng tạo/liên hệ thực tế chương này?", None, ()), ("Thiết kế phương án giải quyết vấn đề chương này?", None, ())],
-}
 
-
-def _fill_numbers(text: str, ranges: tuple[int, int, int, int] | tuple[()]) -> str:
-    """Điền {a}/{b}/{c} bằng số ngẫu nhiên trong dải (a_min,a_max,b_min,b_max,...)."""
-    nums: dict[str, int] = {}
-    for key, (lo, hi) in zip(("a", "b", "c"), (ranges[i : i + 2] for i in range(0, len(ranges), 2))):
-        if lo <= hi:
-            nums[key] = RNG.randint(lo, hi)
-    out = text
-    for key, val in nums.items():
-        out = out.replace("{" + key + "}", str(val))
-    return out
-
-
-def question_text_for(unit_id: int, bloom: int, seq: int) -> tuple[str, int | None]:
-    """Nội dung mock + bài con (lesson_id) cho 1 câu — khớp pipeline test câu hỏi.
-
-    Xoay vòng template theo seq và điền số ngẫu nhiên theo cấp độ/bài để mỗi câu khác nhau.
-    """
-    pool = QUESTION_TEMPLATES.get(unit_id, FALLBACK_TEMPLATES).get(bloom, FALLBACK_TEMPLATES[3])
-    text, lesson_id, ranges = pool[seq % len(pool)]
-    return _fill_numbers(text, ranges), lesson_id
-
-
-def build_assignments() -> list[dict]:
-    """34 bài LMS: (assignment_id, week, is_review, focus_unit)."""
-    assignments: list[dict] = []
-    n = 1
-    for week in range(1, N_WEEKS + 1):
-        count = ASSIGNMENTS_PER_WEEK + (1 if week in REVIEW_WEEKS else 0)
-        for k in range(count):
-            assignments.append(
-                {
-                    "assignment_id": 9000 + n,
-                    "week": week,
-                    "is_review": k >= ASSIGNMENTS_PER_WEEK,
-                    "focus": WEEK_FOCUS[week],
-                }
-            )
-            n += 1
-    return assignments
-
-
-def build_bank_questions(assignments: list[dict], lessons_by_chapter: dict[int, list[int]]) -> list[dict]:
-    """340 câu: mỗi bài 6 câu chương trọng tâm + 4 câu ôn chương trước.
-
-    Bloom 1–4 (ưu tiên 2–3) — đa dạng ở tầng câu LMS (item-level mastery).
-    Một số câu ôn tập được map NHIỀU BÀI (multi-bài, lms_question_unit): câu tổng hợp
-    2 chương → góp vào bài chính (weight 0.6) + 1 bài của chương kia (weight 0.4).
-    `unit_id` = BÀI chính (weight cao nhất); `lesson_id` = bài chính (khớp pipeline
-    "Kiểm tra câu hỏi"); `units` = [(bài_id, weight)] đầy đủ; `chapter_id` = chương
-    gốc (tính xác suất đúng + chọn template nội dung).
-    """
-    questions: list[dict] = []
-    qid = 70000
-    prev_units: list[int] = []
-    seq_by_chapter: dict[int, int] = {}  # đếm số câu/chương để xoay vòng template nội dung
-    for a in assignments:
-        focus = a["focus"]
-        units: list[int] = []
-        for _ in range(6):
-            units.append(focus)
-        pool = prev_units or [u for u in UNITS if u != focus]
-        for _ in range(4):
-            units.append(RNG.choice(pool))
-        prev_units = list(dict.fromkeys(prev_units + [focus]))
-        for chapter_id in units:
-            # Bloom 1–4 chủ yếu + 5/6 thi thoảng (câu định tính của bài như Lũy thừa,
-            # BTCC, HĐ trải nghiệm) — để bài nào cũng có câu hỏi (chia theo bài).
-            bloom = RNG.choices([1, 2, 3, 4, 5, 6], weights=[15, 35, 35, 10, 3, 2])[0]
-            qid += 1
-            seq_by_chapter[chapter_id] = seq_by_chapter.get(chapter_id, 0) + 1
-            text, lesson_id = question_text_for(chapter_id, bloom, seq_by_chapter[chapter_id])
-            if lesson_id is None:
-                lesson_id = chapter_id  # fallback: không map được bài → map chương
-            # ~12% câu ôn tập thành câu tổng hợp 2 chương (multi-bài): bài chính 0.6
-            # + 1 bài của chương kia 0.4 → đóng góp mastery vào cả 2 bài.
-            is_multi = RNG.random() < 0.12 and chapter_id != focus
-            if is_multi:
-                other_ch = RNG.choice([u for u in UNITS if u != chapter_id])
-                others = lessons_by_chapter.get(other_ch) or [other_ch]
-                other_lesson = RNG.choice(others)
-                unit_weights = [(lesson_id, 0.6), (other_lesson, 0.4)]
-                text = f"{text} (tổng hợp: {UNIT_NAMES[other_ch]})"
-            else:
-                unit_weights = [(lesson_id, 1.0)]
-            # Bài chính (unit_id) = bài có weight cao nhất; units sắp giảm dần weight.
-            unit_weights.sort(key=lambda uw: uw[1], reverse=True)
-            primary = unit_weights[0][0]
-            questions.append(
-                {
-                    "question_id": qid,
-                    "assignment_id": a["assignment_id"],
-                    "unit_id": primary,
-                    "lesson_id": primary,
-                    "chapter_id": chapter_id,
-                    "bloom_level": bloom,
-                    "units": unit_weights,
-                    "question_text": text,
-                }
-            )
-    return questions
+def load_question_templates() -> dict[str, dict]:
+    """Đọc ngân hàng câu hỏi đã sinh từ file JSON."""
+    json_path = _ROOT / "data" / "question_templates_toan6.json"
+    if not json_path.exists():
+        print(f"[ERROR] Không tìm thấy file {json_path}. Chạy scripts/generate_question_templates.py trước!")
+        sys.exit(1)
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    total_qs = sum(len(v.get("questions", [])) for v in data.values())
+    print(f"[INFO] Đã nạp {len(data)} bài học với tổng cộng {total_qs} câu hỏi trắc nghiệm từ JSON.")
+    return data
 
 
 def discover_students(cur) -> list[dict]:
-    """Học sinh khối 6 school 1 (động — chạy SAU v4). Order theo student_code."""
+    """Học sinh khối 6 trường 1."""
     cur.execute(
         """
         SELECT student_code, homeroom_class_id
@@ -470,7 +120,7 @@ def discover_students(cur) -> list[dict]:
     )
     rows = cur.fetchall()
     if not rows:
-        print("[ERROR] Không tìm thấy học sinh khối 6 school 1. Chạy generate_full_system_mock_v4.py trước!")
+        print("[ERROR] Không tìm thấy học sinh khối 6. Cần chạy generate_full_system_mock_v4.py trước!")
         sys.exit(1)
     return [{"student_code": r[0], "homeroom_class_id": r[1]} for r in rows]
 
@@ -482,29 +132,25 @@ def profile_for(rank: int) -> dict:
 
 
 def gd0_cleanup(cur) -> None:
-    """GĐ 0 — Xóa sạch dữ liệu cũ subject 106 (idempotent, chạy đầu mỗi lần)."""
+    """GĐ 0 — Xóa dữ liệu cũ subject 106 school 1."""
     print("[GĐ 0] Dọn dữ liệu cũ subject 106...")
-    cur.execute("DELETE FROM public.lms_question_response;")
-    cur.execute(
-        "DELETE FROM public.lms_question_unit WHERE question_id IN (SELECT question_id FROM public.lms_question_bank WHERE subject_id = %s);",
-        (SUBJECT_ID,),
-    )
-    cur.execute("DELETE FROM public.lms_question_bank WHERE subject_id = %s;", (SUBJECT_ID,))
+    # 1. LMS responses & question bank
+    cur.execute("DELETE FROM public.lms_question_response WHERE assignment_id IN (SELECT assignment_id FROM s360.dim_so_assignment WHERE subject_id = %s AND so_school_id = %s);", (SUBJECT_ID, SO_SCHOOL_ID))
+    cur.execute("DELETE FROM public.lms_question_unit WHERE question_id IN (SELECT question_id FROM public.lms_question_bank WHERE subject_id = %s AND so_school_id = %s);", (SUBJECT_ID, SO_SCHOOL_ID))
+    cur.execute("DELETE FROM public.lms_question_bank WHERE subject_id = %s AND so_school_id = %s;", (SUBJECT_ID, SO_SCHOOL_ID))
+    # 2. Assignment grades & assignments
+    cur.execute("DELETE FROM s360.fact_so_assignment_grade WHERE assignment_id IN (SELECT assignment_id FROM s360.dim_so_assignment WHERE subject_id = %s AND so_school_id = %s);", (SUBJECT_ID, SO_SCHOOL_ID))
+    cur.execute("DELETE FROM s360.dim_so_assignment WHERE subject_id = %s AND so_school_id = %s;", (SUBJECT_ID, SO_SCHOOL_ID))
+    # 3. Mastery
     cur.execute("DELETE FROM public.student_unit_mastery WHERE subject_id = %s;", (SUBJECT_ID,))
-    cur.execute(
-        """DELETE FROM public.exam_competencies
-           WHERE exam_paper_id IN (SELECT id FROM public.exam_papers WHERE subject_id = %s);""",
-        (SUBJECT_ID,),
-    )
-    cur.execute("DELETE FROM public.exam_papers WHERE subject_id = %s;", (SUBJECT_ID,))
-    cur.execute(
-        "DELETE FROM s360.fact_gradebooks WHERE subject_id = %s AND so_school_id = %s;",
-        (SUBJECT_ID, SO_SCHOOL_ID),
-    )
+    # 4. Exam papers
+    cur.execute("DELETE FROM public.exam_competencies WHERE exam_paper_id IN (SELECT id FROM public.exam_papers WHERE subject_id = %s);", (SUBJECT_ID,))
+    cur.execute("DELETE FROM public.exam_papers WHERE subject_id = %s AND so_school_id = %s;", (SUBJECT_ID, SO_SCHOOL_ID))
+    # 5. Gradebooks
+    cur.execute("DELETE FROM s360.fact_gradebooks WHERE subject_id = %s AND so_school_id = %s;", (SUBJECT_ID, SO_SCHOOL_ID))
 
 
 def _split_even_preserving_total(weight: float, n: int) -> list[float]:
-    """Chia đều `weight` cho `n` phần, bảo toàn tổng (largest-remainder, 3 số thập phân)."""
     if n <= 0:
         return []
     base = round(weight / n, 3)
@@ -520,7 +166,7 @@ def _split_even_preserving_total(weight: float, n: int) -> list[float]:
 
 
 def gd1_exam_papers(cur, lessons_by_chapter: dict[int, list[int]]) -> int:
-    """GĐ 1 — 6 đề khối 6 + map competencies cấp BÀI (chỉ GK1). Trả id đề GK1."""
+    """GĐ 1 — Tạo 6 đề thi khối 6 (exam_papers) và map competencies đề GK1."""
     print("[GĐ 1] Seed 6 đề khối 6 (exam_papers)...")
     papers = [
         ("Đề thi Giữa kỳ 1 Toán 6 Khối 6 (GK1)", "MIDTERM", 10, 10.0),
@@ -546,9 +192,7 @@ def gd1_exam_papers(cur, lessons_by_chapter: dict[int, list[int]]) -> int:
         if cat == "MIDTERM":
             gk1_id = pid
 
-    assert gk1_id is not None, "Không tạo được đề GK1 (MIDTERM)"
-    # Map competencies CHỈ trên GK1 (cấp BÀI): mỗi chương → các bài con, chia đều weight.
-    # Tránh trùng unit khi API gộp competencies theo subject+semester.
+    assert gk1_id is not None, "Không tạo được đề GK1"
     comp_rows: list[tuple] = []
     for chapter_id, weight in EXAM_COMPETENCIES:
         lessons = lessons_by_chapter.get(chapter_id) or [chapter_id]
@@ -564,12 +208,12 @@ def gd1_exam_papers(cur, lessons_by_chapter: dict[int, list[int]]) -> int:
         """,
         comp_rows,
     )
-    print(f"  → {len(comp_rows)} competency (đề GK1, cấp bài, bloom=3)")
+    print(f"  → {len(comp_rows)} competency (đề GK1, bloom=3)")
     return gk1_id
 
 
 def gd2_gradebooks(cur, students: list[dict], profiles: list[dict]) -> None:
-    """GĐ 2 — Re-mock điểm thi trên lớp (TX 1061 + GK 1062, đã khóa)."""
+    """GĐ 2 — Seed điểm fact_gradebooks (TX 1061 + GK 1062)."""
     print("[GĐ 2] Re-mock fact_gradebooks subject 106 (TX + GK)...")
     cur.execute("SELECT COALESCE(MAX(id), 0) FROM s360.fact_gradebooks")
     fid = cur.fetchone()[0]
@@ -615,49 +259,256 @@ def gd2_gradebooks(cur, students: list[dict], profiles: list[dict]) -> None:
         """,
         rows,
     )
-    print(f"  → {len(rows)} dòng điểm (TX + GK)")
+    print(f"  → {len(rows)} dòng điểm sổ điểm (TX + GK)")
 
 
-def gd3_bank(cur, questions: list[dict]) -> None:
-    """GĐ 3 — lms_question_bank (340 câu) + lms_question_unit (map BÀI, kể cả multi-bài)."""
-    print("[GĐ 3] Seed lms_question_bank + lms_question_unit...")
-    rows = [
-        (
-            q["question_id"],
-            q["assignment_id"],
-            SO_SCHOOL_ID,
-            SUBJECT_ID,
-            q["unit_id"],
-            q["lesson_id"],
-            q["bloom_level"],
-            "MCQ",
-            q.get("question_text"),
-            1.0,
-            1,
-        )
-        for q in questions
-    ]
+def build_assignments_and_bank(
+    cur,
+    templates: dict[str, dict],
+    lessons_by_chapter: dict[int, list[int]],
+) -> tuple[list[dict], list[dict]]:
+    """GĐ 3 — Đọc 35 tuần teaching_schedules, sinh ~86 assignment và phân bổ câu hỏi từ templates JSON."""
+    print("[GĐ 3] Xây dựng Assignments (35 tuần) và Question Bank (~1100 câu)...")
+    
+    # 1. Đọc teaching_schedules
+    cur.execute("""
+        SELECT 
+            ts.semester_number,
+            ts.week_number,
+            ts.unit_id,
+            ts.topic,
+            cu.name AS unit_name,
+            cu.parent_id AS chapter_id,
+            COALESCE(pcu.name, 'CHƯƠNG TỔNG HỢP') AS chapter_name
+        FROM public.teaching_schedules ts
+        LEFT JOIN public.curriculum_units cu ON ts.unit_id = cu.id
+        LEFT JOIN public.curriculum_units pcu ON cu.parent_id = pcu.id
+        WHERE ts.subject_id = %s AND ts.grade_number = 6
+        ORDER BY ts.semester_number, ts.week_number, ts.unit_id
+    """, (SUBJECT_ID,))
+    schedule_rows = cur.fetchall()
+
+    # Nhóm theo (semester, week)
+    weeks_map: dict[tuple[int, int], list[dict]] = {}
+    for r in schedule_rows:
+        key = (r[0], r[1])
+        weeks_map.setdefault(key, []).append({
+            "semester": r[0],
+            "week": r[1],
+            "unit_id": r[2],
+            "topic": r[3],
+            "unit_name": r[4] or "Bài học",
+            "chapter_id": r[5] or 391,
+            "chapter_name": r[6],
+        })
+
+    assignments: list[dict] = []
+    questions: list[dict] = []
+    
+    assign_id = 106001
+    qid = 70001
+    all_past_unit_ids: list[int] = []
+
+    # Danh sách các tuần ôn tập / kiểm tra
+    REVIEW_WEEKS_SET = {(1, 9), (1, 18), (2, 9), (2, 17)}  # Tuần 9, 18 HK1; Tuần 27, 35 toàn năm
+
+    for (sem, week), u_list in sorted(weeks_map.items()):
+        primary_u = u_list[0]
+        unit_id = primary_u["unit_id"]
+        if unit_id is None:
+            unit_id = all_past_unit_ids[-1] if all_past_unit_ids else 392
+
+        unit_name = primary_u["unit_name"] or "Bài học"
+        chapter_id = primary_u["chapter_id"] or 391
+        chapter_name = primary_u["chapter_name"] or "TOÁN 6"
+
+        if unit_id not in all_past_unit_ids:
+            all_past_unit_ids.append(unit_id)
+
+        # Tính due_date cơ sở
+        start_date = WEEK_START if sem == 1 else HK2_START
+        week_due_base = start_date + timedelta(weeks=week - 1)
+
+        # Số bài trong tuần: tuần ôn tập = 2 bài ôn; tuần thường = 2-3 bài
+        if (sem, week) in REVIEW_WEEKS_SET:
+            num_assigns = 2
+            plan = [("review", "Ôn tập tổng hợp"), ("review", "Luyện đề đánh giá năng lực")]
+        elif week % 4 == 0:
+            num_assigns = 3
+            plan = [
+                ("regular", f"Bài tập: {unit_name}"),
+                ("review", f"Ôn tập chuyên đề {chapter_name}"),
+                ("advanced", f"Thử thách Nâng cao: {unit_name}"),
+            ]
+        else:
+            num_assigns = 2
+            plan = [
+                ("regular", f"Bài tập 1: {unit_name}"),
+                ("regular", f"Bài tập 2: {unit_name}"),
+            ]
+
+        for k, (atype, aname_suffix) in enumerate(plan):
+            due_date = week_due_base + timedelta(days=2 * k + 3)
+            fullname = f"[Toán 6 - W{week:02d}] {aname_suffix}"
+            code = f"LMS_T6_S{sem}_W{week:02d}_A{k+1}"
+
+            assign_dict = {
+                "assignment_id": assign_id,
+                "so_school_id": SO_SCHOOL_ID,
+                "grade_id": 6,
+                "semester_index": sem,
+                "subject_id": SUBJECT_ID,
+                "code": code,
+                "fullname": fullname,
+                "max_grade": 10.0,
+                "date_assigned": due_date - timedelta(days=5),
+                "due_date": due_date.date(),
+                "week": week,
+                "semester": sem,
+                "type": atype,
+                "unit_id": unit_id,
+                "chapter_id": chapter_id,
+            }
+            assignments.append(assign_dict)
+
+            # Lấy pool câu hỏi từ JSON
+            unit_data = templates.get(str(unit_id), {})
+            pool = unit_data.get("questions", [])
+
+            selected_qs: list[tuple[int, dict]] = []
+
+            if atype == "regular":
+                # 10-12 câu, lấy từ pool của unit chính tuần này (đảm bảo Bloom 1-6)
+                target_count = 10
+                if pool:
+                    by_bloom: dict[int, list[dict]] = {}
+                    for q in pool:
+                        by_bloom.setdefault(q.get("bloom_level", 2), []).append(q)
+                    
+                    for b in range(1, 7):
+                        if by_bloom.get(b):
+                            selected_qs.append((unit_id, RNG.choice(by_bloom[b])))
+                    
+                    remaining_pool = [q for q in pool if not any(sq[1] == q for sq in selected_qs)]
+                    needed = target_count - len(selected_qs)
+                    if needed > 0 and remaining_pool:
+                        for item in RNG.sample(remaining_pool, min(needed, len(remaining_pool))):
+                            selected_qs.append((unit_id, item))
+                else:
+                    for b in [1, 2, 2, 3, 3, 4, 5, 6]:
+                        selected_qs.append((unit_id, {
+                            "text": f"Câu hỏi {unit_name} cấp độ Bloom {b}",
+                            "bloom_level": b,
+                            "options": ["A. Đúng", "B. Sai", "C. Chưa đủ dữ kiện", "D. Khác"],
+                            "correct": 0,
+                            "explanation": "Lời giải tự động",
+                        }))
+
+            elif atype == "review":
+                # 15-18 câu từ 2-3 unit khác nhau
+                target_count = 16
+                candidate_units = all_past_unit_ids[-4:] if len(all_past_unit_ids) >= 4 else all_past_unit_ids
+                for cand_id in candidate_units:
+                    c_pool = templates.get(str(cand_id), {}).get("questions", [])
+                    if c_pool:
+                        for item in RNG.sample(c_pool, min(4, len(c_pool))):
+                            selected_qs.append((cand_id, item))
+                if len(selected_qs) < target_count and pool:
+                    rem = [q for q in pool if not any(sq[1] == q for sq in selected_qs)]
+                    for item in RNG.sample(rem, min(target_count - len(selected_qs), len(rem))):
+                        selected_qs.append((unit_id, item))
+
+            else:  # advanced
+                # 10-12 câu, ưu tiên Bloom 4-6
+                target_count = 10
+                adv_pool = [q for q in pool if q.get("bloom_level", 1) >= 4]
+                if len(adv_pool) >= 6:
+                    for item in RNG.sample(adv_pool, min(target_count, len(adv_pool))):
+                        selected_qs.append((unit_id, item))
+                if len(selected_qs) < target_count and pool:
+                    rem = [q for q in pool if not any(sq[1] == q for sq in selected_qs)]
+                    for item in RNG.sample(rem, min(target_count - len(selected_qs), len(rem))):
+                        selected_qs.append((unit_id, item))
+
+            # Đăng ký vào bank questions
+            for q_uid, q_item in selected_qs:
+                qid += 1
+                q_bloom = q_item.get("bloom_level", 2)
+                q_text = q_item.get("text", f"Câu hỏi {qid}")
+                
+                questions.append({
+                    "question_id": qid,
+                    "assignment_id": assign_id,
+                    "unit_id": q_uid,
+                    "lesson_id": q_uid,
+                    "chapter_id": chapter_id,
+                    "bloom_level": q_bloom,
+                    "units": [(q_uid, 1.0)],
+                    "question_text": q_text,
+                })
+
+            assign_id += 1
+
+    # Insert dim_so_assignment
+    cur.executemany(
+        """
+        INSERT INTO s360.dim_so_assignment
+            (assignment_id, so_school_id, grade_id, semester_index, subject_id,
+             code, fullname, max_grade, date_assigned, due_date, allow_attempts, time_limit_sec, source_system)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 2, 1800, 'LMS')
+        ON CONFLICT (assignment_id) DO UPDATE
+          SET fullname = EXCLUDED.fullname, due_date = EXCLUDED.due_date
+        """,
+        [
+            (
+                a["assignment_id"],
+                a["so_school_id"],
+                a["grade_id"],
+                a["semester_index"],
+                a["subject_id"],
+                a["code"],
+                a["fullname"],
+                a["max_grade"],
+                a["date_assigned"],
+                a["due_date"],
+            )
+            for a in assignments
+        ],
+    )
+    print(f"  → Đã tạo {len(assignments)} bài tập LMS (dim_so_assignment) cho 35 tuần.")
+
+    # Insert lms_question_bank
     cur.executemany(
         """
         INSERT INTO public.lms_question_bank
             (question_id, assignment_id, so_school_id, subject_id, unit_id,
              lesson_id, bloom_level, question_type, question_text, item_weight, is_active)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'MCQ', %s, 1.0, 1)
         ON CONFLICT (question_id) DO UPDATE
           SET assignment_id = EXCLUDED.assignment_id, unit_id = EXCLUDED.unit_id,
               lesson_id = EXCLUDED.lesson_id, bloom_level = EXCLUDED.bloom_level,
               question_text = EXCLUDED.question_text, is_active = 1
         """,
-        rows,
+        [
+            (
+                q["question_id"],
+                q["assignment_id"],
+                SO_SCHOOL_ID,
+                SUBJECT_ID,
+                q["unit_id"],
+                q["lesson_id"],
+                q["bloom_level"],
+                q["question_text"],
+            )
+            for q in questions
+        ],
     )
-    # Map câu → BÀI (lms_question_unit) — câu đơn 1 bài weight 1.0, câu tổng hợp
-    # 2 chương có weight phân bổ (0.6/0.4) sang bài của chương kia.
-    # lesson_id đã lưu riêng ở lms_question_bank.lesson_id (= bài chính);
-    # mastery tính theo BÀI (chi tiết hơn chương, khớp yêu cầu "chia theo bài").
+
+    # Insert lms_question_unit
     unit_rows = [
-        (q["question_id"], unit_id, weight)
+        (q["question_id"], uid, weight)
         for q in questions
-        for unit_id, weight in q["units"]
+        for uid, weight in q["units"]
     ]
     cur.executemany(
         """
@@ -668,48 +519,66 @@ def gd3_bank(cur, questions: list[dict]) -> None:
         """,
         unit_rows,
     )
-    n_multi = sum(1 for q in questions if len(q["units"]) > 1)
-    print(f"  → {len(rows)} câu hỏi ({len(questions) // QUESTIONS_PER_ASSIGNMENT} bài), "
-          f"{len(unit_rows)} dòng map bài, {n_multi} câu multi-bài")
+    print(f"  → Đã nạp {len(questions)} câu hỏi vào lms_question_bank + lms_question_unit.")
+
+    return assignments, questions
 
 
-def gd4_responses(cur, students: list[dict], profiles: list[dict], questions: list[dict], assignments: list[dict]) -> None:
-    """GĐ 4 — lms_question_response: item-response hàng tuần (quá trình làm LMS).
-
-    Mỗi HS × mỗi bài (trừ NO_LMS): trả lời 10 câu; yếu chương → thử lại (attempt 2)
-    nhưng vẫn sai (effortful-but-lost); HS gian lận → trả lời siêu nhanh (< 2s,
-    integrity_flag=1) kèm điểm cao.
-    """
-    print("[GĐ 4] Seed lms_question_response (quá trình làm LMS hàng tuần)...")
+def gd4_responses_and_grades(
+    cur,
+    students: list[dict],
+    profiles: list[dict],
+    assignments: list[dict],
+    questions: list[dict],
+) -> None:
+    """GĐ 4 — Sinh lms_question_response và tính fact_so_assignment_grade chi tiết."""
+    print("[GĐ 4] Sinh item-responses & fact_so_assignment_grade...")
     by_assign: dict[int, list[dict]] = {}
     for q in questions:
         by_assign.setdefault(q["assignment_id"], []).append(q)
-    week_of = {a["assignment_id"]: a["week"] for a in assignments}
 
-    rows: list[tuple] = []
+    cur.execute("SELECT COALESCE(MAX(id), 0) FROM s360.fact_so_assignment_grade")
+    grade_id_seq = cur.fetchone()[0]
+
+    resp_rows: list[tuple] = []
+    grade_rows: list[tuple] = []
+
     for st, prof in zip(students, profiles, strict=False):
-        if prof["p"] is None:  # NO_LMS — không có item nào
+        if prof["p"] is None:  # NO_LMS
             continue
         p_map = prof["p"]
         cheat = bool(prof.get("cheat"))
         weak_units = {u for u in UNITS if p_map.get(u, 0.0) < 0.35}
-        for assignment_id, qs in by_assign.items():
-            week = week_of[assignment_id]
-            attempt_date = WEEK_START + timedelta(weeks=week - 1, hours=RNG.randint(16, 21), minutes=RNG.randint(0, 59))
+
+        for a in assignments:
+            assignment_id = a["assignment_id"]
+            qs = by_assign.get(assignment_id, [])
+            if not qs:
+                continue
+
+            due_d = a["due_date"]
+            attempt_date = datetime.combine(due_d, datetime.min.time()) - timedelta(hours=RNG.randint(2, 24), minutes=RNG.randint(0, 59))
+
+            correct_count = 0
+            total_time = 0
+
             for q in qs:
                 chapter = q["chapter_id"]
-                correct = RNG.random() < p_map.get(chapter, 0.7)
-                # HS gian lận: trả lời siêu nhanh (integrity_flag=1) + luôn đúng
+                correct = RNG.random() < p_map.get(chapter, 0.75)
                 if cheat:
                     correct = True
                     rtime = RNG.randint(1, 2)
                     flag = 1
                 else:
-                    rtime = RNG.randint(15, 600)
+                    rtime = RNG.randint(15, 450)
                     flag = 0
-                # Effortful-but-lost: câu sai ở chương yếu → thử lại nhưng vẫn sai
+
+                total_time += rtime
+                if correct:
+                    correct_count += 1
+
                 retry = not correct and chapter in weak_units and RNG.random() < 0.5
-                rows.append(
+                resp_rows.append(
                     (
                         SO_SCHOOL_ID,
                         st["student_code"],
@@ -719,7 +588,7 @@ def gd4_responses(cur, students: list[dict], profiles: list[dict], questions: li
                         q["bloom_level"],
                         "MCQ",
                         1,
-                        not retry,  # is_best_attempt: chỉ đúng trên 1 dòng/câu
+                        not retry,
                         correct,
                         1.0 if correct else 0.0,
                         1.0,
@@ -729,8 +598,11 @@ def gd4_responses(cur, students: list[dict], profiles: list[dict], questions: li
                         attempt_date,
                     )
                 )
+
                 if retry:
-                    rows.append(
+                    retry_time = RNG.randint(60, 600)
+                    total_time += retry_time
+                    resp_rows.append(
                         (
                             SO_SCHOOL_ID,
                             st["student_code"],
@@ -744,12 +616,35 @@ def gd4_responses(cur, students: list[dict], profiles: list[dict], questions: li
                             False,
                             0.0,
                             1.0,
-                            RNG.randint(60, 900),
+                            retry_time,
                             Jsonb({"chosen_option": RNG.choice(["A", "B", "C", "D"])}),
                             flag,
                             attempt_date + timedelta(minutes=RNG.randint(2, 30)),
                         )
                     )
+
+            # Tính điểm bài tập
+            final_grade = round((correct_count / len(qs)) * 10.0, 1)
+            grade_id_seq += 1
+            grade_rows.append(
+                (
+                    grade_id_seq,
+                    SO_SCHOOL_ID,
+                    assignment_id,
+                    st["student_code"],
+                    final_grade,
+                    1,
+                    attempt_date - timedelta(seconds=total_time),
+                    attempt_date,
+                    2 if any(chapter in weak_units for q in qs) else 1,
+                    total_time,
+                    total_time,
+                    0,
+                    0,
+                    0 if cheat else 1,
+                )
+            )
+
     cur.executemany(
         """
         INSERT INTO public.lms_question_response
@@ -758,205 +653,212 @@ def gd4_responses(cur, students: list[dict], profiles: list[dict], questions: li
              score_received, max_score, response_time_seconds, response_payload,
              integrity_flag, attempt_date)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-        ON CONFLICT (student_code, assignment_id, question_id, attempt_number) DO NOTHING
         """,
-        rows,
+        resp_rows,
     )
-    print(f"  → {len(rows)} response ({len(students)} HS × {len(by_assign)} bài)")
+
+    cur.executemany(
+        """
+        INSERT INTO s360.fact_so_assignment_grade
+            (id, so_school_id, assignment_id, student_code, final_grade, is_locked,
+             started_at, submitted_at, attempt_count, time_spent_sec, active_time_sec,
+             tab_hidden_count, idle_sec, rte)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        grade_rows,
+    )
+    print(f"  → Đã sinh {len(resp_rows)} item-response và {len(grade_rows)} dòng điểm fact_so_assignment_grade.")
 
 
-def gd5_mastery(cur, students: list[dict], profiles: list[dict], gk1_units: list[UnitWeight]) -> None:
-    """GĐ 5 — Tính student_unit_mastery bằng service thật (finalize_mastery)."""
-    print("[GĐ 5] Tính student_unit_mastery (finalize_mastery + compute_unit_mastery)...")
-    # Map câu → [(bài_id, weight)] — câu multi-bài đóng góp vào nhiều bài theo trọng số.
-    cur.execute("SELECT question_id, unit_id, weight FROM public.lms_question_unit")
-    unit_map: dict[int, list[tuple[int, float]]] = {}
-    for qid, uid, w in cur.fetchall():
-        unit_map.setdefault(qid, []).append((uid, float(w)))
-
+def gd5_mastery(cur, students: list[dict], profiles: list[dict], lessons_by_chapter: dict[int, list[int]]) -> None:
+    """GĐ 5 — Tính và upsert student_unit_mastery theo từng BÀI con."""
+    print("[GĐ 5] Tính student_unit_mastery qua service chuẩn...")
+    
+    # 1. Đọc responses
     cur.execute(
         """
-        SELECT student_code, question_id, bloom_level, is_correct, score_received, max_score
-        FROM public.lms_question_response
-        WHERE so_school_id = %s AND is_best_attempt = TRUE
-        ORDER BY student_code, question_id
+        SELECT r.student_code, r.unit_id, r.bloom_level, r.is_correct,
+               r.response_time_seconds, r.integrity_flag, r.attempt_number, r.attempt_date
+        FROM public.lms_question_response r
+        WHERE r.so_school_id = %s AND r.is_best_attempt = true
+        ORDER BY r.student_code, r.unit_id, r.attempt_date
         """,
         (SO_SCHOOL_ID,),
     )
     resp_rows = cur.fetchall()
-    by_student: dict[str, list[ItemResult]] = {}
-    for r in resp_rows:
-        score = float(r[4]) if r[4] is not None else (1.0 if r[3] else 0.0)
-        max_score = float(r[5]) if r[5] is not None else 1.0
-        for uid, weight in unit_map.get(r[1], [(None, 1.0)]):
-            if uid is None:
-                continue  # câu chưa map chương → bỏ qua (không đóng góp mastery)
-            by_student.setdefault(r[0], []).append(
-                ItemResult(
-                    unit_id=uid,
-                    bloom_level=r[2],
-                    score_received=score,
-                    max_score=max_score,
-                    unit_weight=weight,
-                )
-            )
 
-    # exam_mastery theo chương từ điểm GK (1062) — khớp fallback EXAM của API
-    gk_by_student: dict[str, float] = {}
+    student_items: dict[tuple[str, int], list[ItemResult]] = {}
+    for sc, uid, bloom, corr, rtime, flag, att_n, dt in resp_rows:
+        student_items.setdefault((sc, uid), []).append(
+            ItemResult(
+                unit_id=uid,
+                bloom_level=bloom or 2,
+                score_received=1.0 if corr else 0.0,
+                max_score=1.0,
+                unit_weight=1.0,
+            )
+        )
+
+    # 2. Đọc điểm GK1
+    cur.execute(
+        """
+        SELECT student_code, final_grade
+        FROM s360.fact_gradebooks
+        WHERE so_school_id = %s AND subject_id = %s AND so_exam_id = 1062
+        """,
+        (SO_SCHOOL_ID, SUBJECT_ID),
+    )
+    gk_scores = {r[0]: float(r[1]) for r in cur.fetchall()}
+
+    mastery_rows: list[tuple] = []
+    mastery_rows: list[tuple] = []
     for st, prof in zip(students, profiles, strict=False):
-        gk_by_student[st["student_code"]] = float(prof["gk"])
+        sc = st["student_code"]
+        gk = gk_scores.get(sc)
+        gk_mastery = (gk / 10.0) if gk is not None else None
 
-    # Lấy parent_id của các unit để gán điểm thi tương ứng từ chương cha
-    cur.execute("SELECT id, parent_id FROM public.curriculum_units WHERE subject_id = %s", (SUBJECT_ID,))
-    parent_map = {r[0]: r[1] for r in cur.fetchall()}
+        for ch_id, l_list in lessons_by_chapter.items():
+            for lesson_id in l_list:
+                items = student_items.get((sc, lesson_id), [])
+                if items:
+                    fm = finalize_mastery(items, gk_mastery)
+                    mastery_val = fm.raw_mastery if fm.raw_mastery is not None else 0.5
+                    adj_val = fm.adjusted_mastery if fm.adjusted_mastery is not None else mastery_val
+                    conf_str = fm.confidence
+                    src_str = fm.evidence_source
+                    integ_str = fm.integrity_status
+                    n_items = fm.n_items
+                    n_correct = fm.n_correct
+                    cov = fm.coverage
+                    lm_w = fm.lm_weight
+                    ex_w = fm.exam_weight
+                    evidence = fm.evidence_detail
+                else:
+                    mastery_val = gk_mastery if gk_mastery is not None else 0.5
+                    adj_val = mastery_val
+                    conf_str = "INSUFFICIENT"
+                    src_str = "EXAM"
+                    integ_str = "EXAM_ONLY"
+                    n_items = 0
+                    n_correct = 0
+                    cov = 0.0
+                    lm_w = 0.0
+                    ex_w = 1.0
+                    evidence = {"fallback": "EXAM_ONLY"}
 
-    upserts: list[tuple] = []
-    skipped = 0
-    for st in students:
-        code = st["student_code"]
-        if code not in by_student:
-            skipped += 1  # NO_LMS → không insert → API fallback EXAM
-            continue
-        items = by_student[code]
-        gk = gk_by_student[code]
-        exam_list = compute_unit_mastery(gk, MAX_GRADE, gk1_units)
-        exam_by_unit = {m.unit_id: m.mastery for m in exam_list}
-
-        # Tính mastery cho toàn bộ unit (cả chương cha và bài con)
-        all_uids = set(i.unit_id for i in items)
-        for unit_id in all_uids:
-            unit_items = [i for i in items if i.unit_id == unit_id]
-            if not unit_items:
-                continue
-            parent_ch = parent_map.get(unit_id) or unit_id
-            exam_m = exam_by_unit.get(parent_ch)
-            m = finalize_mastery(unit_items, exam_m)
-            upserts.append(
-                (
-                    code,
-                    SUBJECT_ID,
-                    SO_SCHOOL_ID,
-                    unit_id,
-                    SEMESTER,
-                    m.raw_mastery,
-                    m.n_items,
-                    m.n_correct,
-                    m.coverage,
-                    m.lm_weight,
-                    m.exam_weight,
-                    m.adjusted_mastery,
-                    CONFIDENCE_INT.get(m.confidence, 1),
-                    m.evidence_source,
-                    m.integrity_status,
-                    Jsonb(m.evidence_detail) if m.evidence_detail else None,
+                conf_int = CONFIDENCE_INT.get(conf_str, 1)
+                mastery_rows.append(
+                    (
+                        SO_SCHOOL_ID,
+                        sc,
+                        SUBJECT_ID,
+                        lesson_id,
+                        SEMESTER,
+                        round(mastery_val, 4),
+                        n_items,
+                        n_correct,
+                        round(cov, 4),
+                        round(lm_w, 2),
+                        round(ex_w, 2),
+                        round(adj_val, 4),
+                        conf_int,
+                        src_str,
+                        integ_str,
+                        Jsonb(evidence),
+                        datetime.now(),
+                        datetime.now(),
+                    )
                 )
-            )
+
     cur.executemany(
         """
         INSERT INTO public.student_unit_mastery
-            (student_code, subject_id, so_school_id, unit_id, semester_index,
+            (so_school_id, student_code, subject_id, unit_id, semester_index,
              raw_mastery, n_items, n_correct, coverage, lm_weight, exam_weight,
              adjusted_mastery, confidence, evidence_source, integrity_status,
-             evidence_detail, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, NOW())
+             evidence_detail, detected_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (so_school_id, student_code, subject_id, unit_id, semester_index) DO UPDATE
-          SET raw_mastery = EXCLUDED.raw_mastery, adjusted_mastery = EXCLUDED.adjusted_mastery,
-              n_items = EXCLUDED.n_items, n_correct = EXCLUDED.n_correct,
-              coverage = EXCLUDED.coverage, lm_weight = EXCLUDED.lm_weight,
-              exam_weight = EXCLUDED.exam_weight, confidence = EXCLUDED.confidence,
+          SET raw_mastery = EXCLUDED.raw_mastery,
+              n_items = EXCLUDED.n_items,
+              n_correct = EXCLUDED.n_correct,
+              coverage = EXCLUDED.coverage,
+              lm_weight = EXCLUDED.lm_weight,
+              exam_weight = EXCLUDED.exam_weight,
+              adjusted_mastery = EXCLUDED.adjusted_mastery,
+              confidence = EXCLUDED.confidence,
               evidence_source = EXCLUDED.evidence_source,
               integrity_status = EXCLUDED.integrity_status,
-              evidence_detail = EXCLUDED.evidence_detail, updated_at = NOW()
+              evidence_detail = EXCLUDED.evidence_detail,
+              updated_at = EXCLUDED.updated_at
         """,
-        upserts,
+        mastery_rows,
     )
-    print(f"  → {len(upserts)} dòng mastery ({skipped} HS không có item → fallback EXAM)")
+    print(f"  → Đã tính và lưu {len(mastery_rows)} bản ghi student_unit_mastery.")
 
 
 def gd6_summary(cur, students: list[dict], profiles: list[dict]) -> None:
-    """GĐ 6 — In bảng tổng kết để đối chiếu (gộp mastery các bài con → chương)."""
-    print("\n[GĐ 6] BẢNG TỔNG KẾT (HS | lớp | GK | LMS/chương | adjusted/chương | conf | integrity)")
-    cur.execute("SELECT id, parent_id FROM public.curriculum_units WHERE subject_id = %s", (SUBJECT_ID,))
-    parent_map = {r[0]: r[1] for r in cur.fetchall()}
-    cur.execute(
-        """
-        SELECT student_code, unit_id, adjusted_mastery, raw_mastery, confidence, integrity_status
-        FROM public.student_unit_mastery
-        WHERE subject_id = %s AND so_school_id = %s AND semester_index = %s
-        ORDER BY student_code, unit_id
-        """,
-        (SUBJECT_ID, SO_SCHOOL_ID, SEMESTER),
-    )
-    rows = cur.fetchall()
-    by_code: dict[str, list] = {}
-    for r in rows:
-        by_code.setdefault(r[0], []).append(r)
-    conf_str = {3: "HIGH", 2: "MEDIUM", 1: "LOW"}
-    for st, prof in zip(students, profiles, strict=False):
-        code = st["student_code"]
-        gk = float(prof["gk"])
-        mrows = by_code.get(code, [])
-        if not mrows:
-            print(f"{code}  lớp {st['homeroom_class_id']:<3} GK={gk:<5} → (không có item LMS → fallback EXAM)")
-            continue
-        # Gộp các dòng bài con theo chương cha (parent_id) để in gọn theo chương.
-        ch_raw: dict[int, list[float]] = {}
-        ch_adj: dict[int, list[float]] = {}
-        for r in mrows:
-            ch = parent_map.get(r[1]) or r[1]
-            ch_raw.setdefault(ch, []).append(r[3])
-            ch_adj.setdefault(ch, []).append(r[2])
-        lms = " ".join(f"{UNIT_NAMES[c]}:{sum(v) / len(v):.2f}" for c, v in ch_raw.items())
-        adj = " ".join(f"{UNIT_NAMES[c]}:{sum(v) / len(v):.2f}" for c, v in ch_adj.items())
-        conf = conf_str.get(int(mrows[0][4]), "?")
-        integ = mrows[0][5]
-        print(f"{code}  lớp {st['homeroom_class_id']:<3} GK={gk:<5} LMS[{lms}] ADJ[{adj}] {conf} {integ}")
-    print("\n[SUCCESS] Seed mock Toan 6 hoàn tất. Kiểm chứng: /knowledge-gaps/students/<HS>?subject_id=106")
+    """GĐ 6 — In bảng tổng kết đối chiếu."""
+    print("\n" + "=" * 95)
+    print("📊 BẢNG TỔNG KẾT MOCK TOÁN 6 — LỖ HỔNG KIẾN THỨC & EWS")
+    print("=" * 95)
+    print(f"{'Mã HS':<10} | {'Profile':<14} | {'GK':<5} | {'LMS Assign':<10} | {'LMS Responses':<14} | {'Lỗ Hổng (Mastery < 0.6)'}")
+    print("-" * 95)
+
+    for st, prof in zip(students[:14], profiles[:14], strict=False):
+        sc = st["student_code"]
+        cur.execute("SELECT COUNT(*) FROM s360.fact_so_assignment_grade WHERE student_code = %s", (sc,))
+        n_grades = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM public.lms_question_response WHERE student_code = %s AND is_best_attempt = true", (sc,))
+        n_resp = cur.fetchone()[0]
+        cur.execute("""
+            SELECT cu.name, m.adjusted_mastery, m.confidence, m.integrity_status
+            FROM public.student_unit_mastery m
+            JOIN public.curriculum_units cu ON m.unit_id = cu.id
+            WHERE m.student_code = %s AND m.adjusted_mastery < 0.6
+            LIMIT 3
+        """, (sc,))
+        gaps = cur.fetchall()
+        gap_str = ", ".join(f"{g[0][:15]} ({g[1]:.2f}-{g[3]})" for g in gaps) or "None (All Mastered)"
+        print(f"{sc:<10} | {prof['name']:<14} | {prof['gk']:<5.1f} | {n_grades:<10} | {n_resp:<14} | {gap_str}")
+    print("=" * 95 + "\n")
 
 
-def main() -> None:
-    print(f"[INFO] Seeding Mock Toan 6 (subject 106, school 1) on: {DB_URL[:40]}...")
-    conn = psycopg.connect(DB_URL, autocommit=True)
-    cur = conn.cursor()
-    try:
-        students = discover_students(cur)
-        n_profiles = min(len(students), len(PROFILES))
-        print(f"[INFO] Tìm thấy {len(students)} HS khối 6 school 1; gán {n_profiles} profile mục tiêu theo rank.")
-        if len(students) < len(PROFILES):
-            print(f"[WARN] Chỉ có {len(students)} HS (< {len(PROFILES)} profile) — gán profile cho số có, phần còn lại trung bình.")
-        profiles = [profile_for(i) for i in range(len(students))]
+def main():
+    templates = load_question_templates()
 
-        gd0_cleanup(cur)
+    with psycopg.connect(DB_URL) as conn:
+        with conn.cursor() as cur:
+            students = discover_students(cur)
+            profiles = [profile_for(i) for i in range(len(students))]
 
-        # Bản đồ chương → các bài con (curriculum_units) — dùng cho ma trận đề cấp bài (gd1)
-        # và chọn bài cho câu multi-bài (gd3).
-        cur.execute(
-            "SELECT id, parent_id FROM public.curriculum_units WHERE subject_id = %s",
-            (SUBJECT_ID,),
-        )
-        lessons_by_chapter: dict[int, list[int]] = {}
-        for uid, pid in cur.fetchall():
-            if pid is not None:
-                lessons_by_chapter.setdefault(pid, []).append(uid)
+            # Tìm danh sách bài con theo chương
+            cur.execute(
+                """
+                SELECT parent_id, id FROM public.curriculum_units
+                WHERE subject_id = %s AND grade_number = 6 AND parent_id IS NOT NULL
+                ORDER BY parent_id, id
+                """,
+                (SUBJECT_ID,),
+            )
+            lessons_by_chapter: dict[int, list[int]] = {}
+            for p_id, u_id in cur.fetchall():
+                lessons_by_chapter.setdefault(p_id, []).append(u_id)
 
-        gk1_id = gd1_exam_papers(cur, lessons_by_chapter)
-        gd2_gradebooks(cur, students, profiles)
+            print(f"[INFO] Bắt đầu seed mock Toán 6 cho {len(students)} học sinh...\n")
 
-        assignments = build_assignments()
-        questions = build_bank_questions(assignments, lessons_by_chapter)
-        gd3_bank(cur, questions)
-        gd4_responses(cur, students, profiles, questions, assignments)
+            gd0_cleanup(cur)
+            gd1_exam_papers(cur, lessons_by_chapter)
+            gd2_gradebooks(cur, students, profiles)
+            assignments, questions = build_assignments_and_bank(cur, templates, lessons_by_chapter)
+            gd4_responses_and_grades(cur, students, profiles, assignments, questions)
+            gd5_mastery(cur, students, profiles, lessons_by_chapter)
+            conn.commit()
 
-        gk1_units = [
-            UnitWeight(unit_id=u, weight=w, bloom_level=3)
-            for u, w in EXAM_COMPETENCIES
-        ]
-        gd5_mastery(cur, students, profiles, gk1_units)
-        gd6_summary(cur, students, profiles)
-        print(f"[INFO] GK1 exam_paper id = {gk1_id} (competencies cấp bài theo 4 chương)")
-    finally:
-        cur.close()
-        conn.close()
+            gd6_summary(cur, students, profiles)
+
+    print("🎉 SEED TOÁN 6 (EWS + KNOWLEDGE GAPS) HOÀN TẤT THÀNH CÔNG!")
 
 
 if __name__ == "__main__":

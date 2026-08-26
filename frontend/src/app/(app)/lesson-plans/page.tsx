@@ -256,7 +256,7 @@ function LessonPlansContent() {
     window.print();
   };
 
-  const selectedSubjectObj = subjects.find((s) => s.id === selectedSubjectId);
+  const selectedSubjectObj = subjects.find((s) => String(s.id) === String(selectedSubjectId));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">

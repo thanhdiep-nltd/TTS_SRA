@@ -184,6 +184,7 @@ class EwsRawScore(BaseModel):
 
 class EwsRawLmsItem(BaseModel):
     """Một bài tập LMS trong cửa sổ hiện diện [join_date, cutoff]."""
+    assignment_id: Optional[int] = None
     code: Optional[str] = None
     fullname: Optional[str] = None
     max_grade: Optional[float] = None
@@ -414,4 +415,36 @@ class EwsValidWeeks(BaseModel):
     """Các tuần hợp lệ để dự đoán theo học kỳ."""
     semester_1: List[int]
     semester_2: List[int]
+
+
+class EwsAssignmentQuestionItem(BaseModel):
+    """Chi tiết 1 câu hỏi LMS trong bài tập kèm kết quả làm bài của học sinh."""
+    question_id: int
+    question_text: str
+    options: List[str] = Field(default_factory=list)
+    bloom_level: int
+    unit_id: Optional[int] = None
+    lesson_name: Optional[str] = None
+    is_correct: Optional[bool] = None
+    score: Optional[float] = None
+    max_score: Optional[float] = None
+    response_time_seconds: Optional[int] = None
+    attempt_number: Optional[int] = None
+    integrity_flag: Optional[int] = None
+    chosen_option: Optional[str] = None
+    explanation: Optional[str] = None
+
+
+class EwsAssignmentDrilldownResponse(BaseModel):
+    """Dữ liệu chi tiết drill-down khi click vào 1 bài tập LMS trong EWS."""
+    assignment_id: int
+    assignment_name: str
+    student_code: str
+    total_questions: int
+    correct_count: int
+    score: Optional[float] = None
+    max_grade: Optional[float] = None
+    submitted: bool = False
+    submitted_at: Optional[datetime] = None
+    questions: List[EwsAssignmentQuestionItem] = Field(default_factory=list)
 

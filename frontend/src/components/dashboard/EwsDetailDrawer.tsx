@@ -7,6 +7,8 @@ import {
   BookOpen,
   Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
   Clock,
   GraduationCap,
@@ -22,11 +24,13 @@ import {
   Sparkles,
   User,
   X,
+  XCircle,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import {
   EWS_RISK_COLORS,
   EWS_RISK_LABELS,
+  type EwsAssignmentDrilldownResponse,
   type EwsPredictionRow,
   type EwsRawDetail,
   type EwsRiskLevel,
@@ -184,15 +188,44 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
     };
   }, [item, schoolYearId, semesterIndex]);
 
+  // ==== LMS Assignment Drilldown (10-15 câu hỏi) ====
+  const [expandedAssignmentId, setExpandedAssignmentId] = useState<number | null>(null);
+  const [drilldownData, setDrilldownData] = useState<Record<number, EwsAssignmentDrilldownResponse>>({});
+  const [drilldownLoading, setDrilldownLoading] = useState<Record<number, boolean>>({});
+
+  const toggleAssignmentDrilldown = async (assignmentId?: number | null) => {
+    if (!assignmentId || !item) return;
+    if (expandedAssignmentId === assignmentId) {
+      setExpandedAssignmentId(null);
+      return;
+    }
+    setExpandedAssignmentId(assignmentId);
+    if (!drilldownData[assignmentId]) {
+      setDrilldownLoading((prev) => ({ ...prev, [assignmentId]: true }));
+      try {
+        const res = await api.get<EwsAssignmentDrilldownResponse>(
+          `/ews/assignments/${assignmentId}/drilldown?student_code=${encodeURIComponent(item.student_code)}`
+        );
+        setDrilldownData((prev) => ({ ...prev, [assignmentId]: res }));
+      } catch (e) {
+        console.error("Failed to load assignment drilldown", e);
+      } finally {
+        setDrilldownLoading((prev) => ({ ...prev, [assignmentId]: false }));
+      }
+    }
+  };
+
   // ==== LLM-based Forecasting (M5) — kích hoạt thủ công + hiển thị phân tích định tính ====
   const [llmResult, setLlmResult] = useState<EwsPredictionRow | null>(null);
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmError, setLlmError] = useState<string | null>(null);
 
-  // Reset kết quả LLM khi học sinh/môn thay đổi (drawer dùng chung nhiều item)
+  // Reset kết quả LLM & Drilldown khi học sinh/môn thay đổi (drawer dùng chung nhiều item)
   useEffect(() => {
     setLlmResult(null);
     setLlmError(null);
+    setExpandedAssignmentId(null);
+    setDrilldownData({});
   }, [item?.student_code, item?.subject_id]);
 
   const runLlmForecast = async () => {
@@ -973,6 +1006,7 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                     <table className="w-full text-[11px]">
                       <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         <tr>
+                          <th className="px-3 py-2 text-left font-semibold w-8"></th>
                           <th className="px-3 py-2 text-left font-semibold">Mã</th>
                           <th className="px-3 py-2 text-left font-semibold">Tên bài</th>
                           <th className="px-3 py-2 text-right font-semibold">Hạn nộp</th>
@@ -981,25 +1015,175 @@ export default function EwsDetailDrawer({ item, onClose, schoolYearId, semesterI
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {raw.lms.map((a, i) => (
-                          <tr key={i}>
-                            <td className="px-3 py-1.5 font-mono text-slate-500">{a.code || "—"}</td>
-                            <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300">{a.fullname || "—"}</td>
-                            <td className="px-3 py-1.5 text-right text-slate-500">{fmtDate(a.due_date)}</td>
-                            <td className={`px-3 py-1.5 text-right font-bold ${a.submitted ? "text-slate-800 dark:text-slate-200" : "text-slate-400"}`}>{a.submitted ? (a.final_grade ?? "—") : "—"}</td>
-                            <td className="px-3 py-1.5 text-center">
-                              {a.submitted ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                  <CheckCircle2 className="w-3 h-3" /> Đã nộp
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-500">
-                                  <Clock className="w-3 h-3" /> Chưa nộp
-                                </span>
+                        {raw.lms.map((a, i) => {
+                          const isExpanded = Boolean(a.assignment_id && expandedAssignmentId === a.assignment_id);
+                          const drill = a.assignment_id ? drilldownData[a.assignment_id] : null;
+                          const isLoading = Boolean(a.assignment_id && drilldownLoading[a.assignment_id]);
+
+                          return (
+                            <React.Fragment key={i}>
+                              <tr
+                                onClick={() => a.assignment_id && toggleAssignmentDrilldown(a.assignment_id)}
+                                className={`cursor-pointer transition-colors ${
+                                  isExpanded
+                                    ? "bg-blue-50/60 dark:bg-blue-950/20"
+                                    : "hover:bg-slate-50/80 dark:hover:bg-slate-800/50"
+                                }`}
+                              >
+                                <td className="px-2 py-1.5 text-center text-slate-400">
+                                  {a.assignment_id ? (
+                                    isExpanded ? (
+                                      <ChevronDown className="w-3.5 h-3.5 text-blue-500" />
+                                    ) : (
+                                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                                    )
+                                  ) : null}
+                                </td>
+                                <td className="px-3 py-1.5 font-mono text-slate-500">{a.code || "—"}</td>
+                                <td className="px-3 py-1.5 text-slate-700 dark:text-slate-300 font-medium">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{a.fullname || "—"}</span>
+                                    {a.assignment_id && (
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 font-normal">
+                                        Chi tiết
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-1.5 text-right text-slate-500">{fmtDate(a.due_date)}</td>
+                                <td className={`px-3 py-1.5 text-right font-bold ${a.submitted ? "text-slate-800 dark:text-slate-200" : "text-slate-400"}`}>
+                                  {a.submitted ? (a.final_grade ?? "—") : "—"}
+                                </td>
+                                <td className="px-3 py-1.5 text-center">
+                                  {a.submitted ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                      <CheckCircle2 className="w-3 h-3" /> Đã nộp
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/10 text-slate-500">
+                                      <Clock className="w-3 h-3" /> Chưa nộp
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+
+                              {/* ACCORDION DRILLDOWN CONTENT */}
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={6} className="px-4 py-3 bg-slate-50/90 dark:bg-slate-950/60 border-t border-b border-blue-100 dark:border-blue-900/30">
+                                    {isLoading ? (
+                                      <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-400">
+                                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                                        Đang tải chi tiết từng câu hỏi của bài tập...
+                                      </div>
+                                    ) : drill ? (
+                                      <div className="space-y-3">
+                                        <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/60 dark:border-slate-800 text-[11px]">
+                                          <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                            📝 Danh sách câu hỏi ({drill.questions.length} câu)
+                                          </span>
+                                          <div className="flex items-center gap-2 font-medium">
+                                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                              Đúng: {drill.correct_count}/{drill.total_questions} câu
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                              Điểm: {drill.score ?? "—"}/{drill.max_grade ?? 10}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                                          {drill.questions.map((q, qIdx) => {
+                                            const bloomColors: Record<number, string> = {
+                                              1: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                                              2: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+                                              3: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+                                              4: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+                                              5: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+                                              6: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+                                            };
+                                            const bloomNames: Record<number, string> = {
+                                              1: "Bloom 1 (Nhớ)",
+                                              2: "Bloom 2 (Hiểu)",
+                                              3: "Bloom 3 (Vận dụng)",
+                                              4: "Bloom 4 (Phân tích)",
+                                              5: "Bloom 5 (Đánh giá)",
+                                              6: "Bloom 6 (Sáng tạo)",
+                                            };
+
+                                            return (
+                                              <div
+                                                key={q.question_id || qIdx}
+                                                className={`p-2.5 rounded-xl border text-[11px] space-y-1.5 ${
+                                                  q.is_correct
+                                                    ? "bg-white dark:bg-slate-900 border-emerald-200/80 dark:border-emerald-900/40"
+                                                    : q.is_correct === false
+                                                    ? "bg-rose-50/40 dark:bg-rose-950/20 border-rose-200/80 dark:border-rose-900/40"
+                                                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                                                }`}
+                                              >
+                                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                      Câu {qIdx + 1}:
+                                                    </span>
+                                                    <span
+                                                      className={`px-1.5 py-0.2 rounded text-[10px] font-semibold border ${
+                                                        bloomColors[q.bloom_level] || "bg-slate-100 text-slate-600"
+                                                      }`}
+                                                    >
+                                                      {bloomNames[q.bloom_level] || `Bloom ${q.bloom_level}`}
+                                                    </span>
+                                                    {q.lesson_name && (
+                                                      <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium">
+                                                        {q.lesson_name}
+                                                      </span>
+                                                    )}
+                                                  </div>
+
+                                                  <div className="flex items-center gap-2 text-[10px]">
+                                                    {q.is_correct ? (
+                                                      <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                                        <CheckCircle2 className="w-3 h-3" /> Đúng (+1.0đ)
+                                                      </span>
+                                                    ) : q.is_correct === false ? (
+                                                      <span className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                                                        <XCircle className="w-3 h-3" /> Sai (0đ)
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-slate-400">Chưa làm</span>
+                                                    )}
+
+                                                    {q.response_time_seconds !== null && q.response_time_seconds !== undefined && (
+                                                      <span className="text-slate-400">
+                                                        ⏱️ {q.response_time_seconds}s
+                                                      </span>
+                                                    )}
+                                                    {q.integrity_flag === 1 && (
+                                                      <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20 font-semibold text-[9px]">
+                                                        ⚡ Siêu nhanh (&lt;2s)
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+
+                                                <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+                                                  {q.question_text}
+                                                </p>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-[11px] text-slate-400 py-2">Không tìm thấy chi tiết bài tập.</p>
+                                    )}
+                                  </td>
+                                </tr>
                               )}
-                            </td>
-                          </tr>
-                        ))}
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

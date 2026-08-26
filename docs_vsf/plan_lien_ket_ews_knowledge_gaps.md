@@ -239,21 +239,40 @@ Cần đối chiếu tên bài trong docx với lesson name trong `curriculum_un
 
 #### 3.2. Sinh assignment từ teaching_schedules (thay vì v4 cũ)
 
-**Mục tiêu:** Mỗi tuần trong teaching_schedules → 2-3 bài tập LMS về nhà. TOÁN 6 có 35 tuần × 2.5 = ~88 assignment, không phải 4 như v4 cũ.
+**Mục tiêu:** Mỗi tuần trong teaching_schedules → 2-3 bài tập LMS về nhà. TOÁN 6 có 35 tuần × 2.5 = ~86 assignment, không phải 4 như v4 cũ.
 
-**Phân phối cụ thể:**
+**⚠️ QUAN TRỌNG — Phân loại assignment theo 3 loại:**
 
-| Tuần | Nội dung chính | Số bài LMS |
-|:----:|:---------------|:----------:|
-| 1-8 | Chương 1: Số tự nhiên (8 tuần × 3) | ~24 bài |
-| 9 | Ôn tập + Kiểm tra GK1 | 2 bài |
-| 10-17 | Chương 2-4 (8 tuần × 2-3) | ~20 bài |
-| 18 | Ôn tập + Thi CK1 | 2 bài |
-| 19-26 | Chương 5-6: Phân số + Số thập phân | ~16 bài |
-| 27 | Kiểm tra GK2 | 2 bài |
-| 28-34 | Chương 7-9 (7 tuần × 2-3) | ~18 bài |
-| 35 | Ôn tập + Thi CK2 | 2 bài |
-| | **Tổng** | **~86 assignment** |
+```
+Loại 1 — Assignment thường (70% = ~60 cái):
+  - Thuộc đúng unit của tuần hiện tại
+  - 10-12 câu, lấy từ pool 30-40 câu của unit đó
+  - Bloom tập trung Nhớ-Hiểu-Vận dụng (1-3)
+
+Loại 2 — Assignment ôn tập (20% = ~17 cái):
+  - Gồm câu hỏi từ nhiều chương khác nhau (2-3 unit)
+  - 15-20 câu, kiểu "kiểm tra tổng hợp" giữa kỳ
+  - Bloom đa dạng 1-6, có câu tích hợp nhiều unit
+
+Loại 3 — Assignment nâng cao (10% = ~9 cái):
+  - Tích hợp nhiều unit, yêu cầu tư duy tổng hợp
+  - Bloom 4-6 nhiều hơn
+  - Phân bố vào cuối chương hoặc trước kiểm tra
+```
+
+**Phân phối cụ thể theo tuần:**
+
+| Tuần | Nội dung chính | Số bài LMS | Loại |
+|:----:|:---------------|:----------:|:----:|
+| 1-8 | Chương 1: Số tự nhiên (8 tuần × 3) | ~24 bài | Thường (18) + Ôn tập (4) + NC (2) |
+| 9 | Ôn tập + Kiểm tra GK1 | 2 bài | Ôn tập |
+| 10-17 | Chương 2-4 (8 tuần × 2-3) | ~20 bài | Thường (15) + Ôn tập (3) + NC (2) |
+| 18 | Ôn tập + Thi CK1 | 2 bài | Ôn tập |
+| 19-26 | Chương 5-6: Phân số + Số thập phân | ~16 bài | Thường (12) + Ôn tập (2) + NC (2) |
+| 27 | Kiểm tra GK2 | 2 bài | Ôn tập |
+| 28-34 | Chương 7-9 (7 tuần × 2-3) | ~18 bài | Thường (13) + Ôn tập (3) + NC (2) |
+| 35 | Ôn tập + Thi CK2 | 2 bài | Ôn tập |
+| | **Tổng** | **~86 assignment** | Thường ~60 + Ôn tập ~17 + NC ~9 |
 
 **File sửa:** `data_mock/mock_full_data/generate_full_system_mock_v4.py`
 
@@ -261,6 +280,7 @@ Cần đối chiếu tên bài trong docx với lesson name trong `curriculum_un
 - TOAN_6: tạo đủ số assignment phù hợp với 35 tuần (không giới hạn 4 bài/HK như cũ)
 - Các môn khác: giữ nguyên 4 bài/HK (hoặc 8-12 tùy)
 - Mỗi assignment có `due_date` theo đúng tuần, `max_grade = 10`
+- Có trường `assignment_type: "regular" | "review" | "advanced"` để phân loại
 
 ---
 
@@ -284,18 +304,73 @@ Hiện tại `QUESTION_TEMPLATES` trong `seed_mock_toan6_gaps.py` là hardcode:
 ```
 teaching_schedules (35 tuần, unit_id cụ thể)
     ↓
-Nhóm các unit_id duy nhất cần tạo câu hỏi
+Nhóm các unit_id duy nhất cần tạo câu hỏi (~32 unit)
     ↓
 Với mỗi unit_id:
-    → Gọi DeepSeek với prompt:
-        "Tạo 12 câu trắc nghiệm Toán 6 cho bài [tên bài]...
-         Phân bố Bloom: 2 Nhớ + 3 Hiểu + 3 Vận dụng + 2 Phân tích + 1 Đánh giá + 1 Sáng tạo"
-    → Parse JSON response
+    → Gọi DeepSeek 2-3 lần (mỗi lần ~15 câu — tránh truncate)
+    → Mỗi lần prompt yêu cầu phân bố Bloom khác nhau
+    → Gộp → mỗi unit có 30-40 câu
     ↓
 Gộp → lưu file: data/question_templates_toan6.json
 ```
 
-**Cấu trúc output JSON:**
+**Tổng số câu hỏi:** 32 unit × 30-40 câu = **~960 - 1280 câu**, chốt mục tiêu **~1100 câu**.
+
+**Phân bố Bloom mục tiêu cho mỗi unit (30-40 câu):**
+
+| Bloom | Số câu | Tỉ lệ |
+|:-----|:------|:-----:|
+| 1 — Nhớ | 5-6 | ~15% |
+| 2 — Hiểu | 8-9 | ~25% |
+| 3 — Vận dụng | 8-9 | ~25% |
+| 4 — Phân tích | 5-6 | ~15% |
+| 5 — Đánh giá | 3-4 | ~10% |
+| 6 — Sáng tạo | 3-4 | ~10% |
+
+**Prompt DeepSeek mẫu (cho 1 unit, 1 lần gọi ~15 câu):**
+
+```python
+prompt = f"""
+Bạn là chuyên gia khảo thí môn Toán lớp 6.
+Hãy tạo 15 câu hỏi trắc nghiệm (4 đáp án A/B/C/D) cho:
+
+📖 Chương: {chapter_name}
+📖 Bài: {unit_name}
+
+Yêu cầu phân bố Bloom cho 15 câu này:
+- Bloom 1 (Nhớ): 2 câu
+- Bloom 2 (Hiểu): 4 câu  
+- Bloom 3 (Vận dụng): 4 câu
+- Bloom 4 (Phân tích): 2 câu
+- Bloom 5 (Đánh giá): 2 câu
+- Bloom 6 (Sáng tạo): 1 câu
+
+Quy tắc:
+1. Câu hỏi phải test kiến thức ĐẶC THÙ của bài này, không chung chung.
+2. ĐA DẠNG: có câu tính toán, câu lý thuyết, câu thực tế, câu đúng-sai.
+3. Mỗi lần gọi, câu hỏi PHẢI KHÁC với các lần gọi trước (đề xuất: lần 1 tập trung lý thuyết + nhận biết, lần 2 tính toán + vận dụng, lần 3 thực tế + tổng hợp).
+4. Đáp án sai (nhiễu) phải hợp lý — dựa trên lỗi sai phổ biến của học sinh.
+5. KHÔNG dùng câu "Tất cả các đáp án trên" hoặc "Không có đáp án nào".
+
+Trả về JSON array, mỗi object có: text, options (mảng 4 string), correct (0-3), bloom_level (1-6), explanation (string).
+"""
+```
+
+**Chiến lược gọi API cho mỗi unit (3 lần):**
+
+| Lần | Số câu | Trọng tâm | Bloom chính |
+|:---:|:------:|:----------|:-----------|
+| 1 | 12 | Lý thuyết, nhận biết, khái niệm | 1-2 |
+| 2 | 12 | Tính toán, vận dụng, bài tập | 2-4 |
+| 3 | 12 | Thực tế, tổng hợp, đánh giá | 3-6 |
+
+→ Mỗi unit có **36 câu** (có thể trùng ~5-6 câu giữa các lần → sau khi gộp còn ~30-35 câu unique).
+
+**Chi phí:** ~32 unit × 36 câu × ~150 token = ~173K tokens ≈ **$0.02** (DeepSeek).
+
+#### File lưu: `data/question_templates_toan6.json` (cố định, không đổi khi seed)
+
+#### Cấu trúc output JSON:
 
 ```json
 {
@@ -310,7 +385,7 @@ Gộp → lưu file: data/question_templates_toan6.json
         "bloom_level": 1,
         "explanation": "Các số tự nhiên nhỏ hơn 5 là 0,1,2,3,4 → 4 thuộc A"
       },
-      // ... 11 câu nữa, trải đều Bloom 1-6
+      // ... 29-35 câu nữa, trải đều Bloom 1-6
     ]
   },
   "393": { ... },
@@ -318,77 +393,51 @@ Gộp → lưu file: data/question_templates_toan6.json
 }
 ```
 
-**Prompt DeepSeek mẫu (cho 1 unit):**
-
-```python
-prompt = f"""
-Bạn là chuyên gia khảo thí môn Toán lớp 6.
-Hãy tạo 12 câu hỏi trắc nghiệm (4 đáp án A/B/C/D) cho:
-
-📖 Chương: {chapter_name}
-📖 Bài: {unit_name}
-
-Yêu cầu phân bố Bloom:
-- Bloom 1 (Nhớ - nhận biết kiến thức): 2 câu
-- Bloom 2 (Hiểu - giải thích được): 3 câu  
-- Bloom 3 (Vận dụng - áp dụng vào tình huống quen): 3 câu
-- Bloom 4 (Phân tích - tách thành phần): 2 câu
-- Bloom 5 (Đánh giá - nhận xét đúng sai): 1 câu
-- Bloom 6 (Sáng tạo - tổng hợp, tình huống mới): 1 câu
-
-Quy tắc:
-1. Câu hỏi phải test kiến thức ĐẶC THÙ của bài này, không chung chung.
-2. Có câu tính toán số cụ thể (học sinh phải làm ra kết quả).
-3. Có câu lý thuyết (học sinh phải hiểu bản chất).
-4. Có câu thực tế (áp dụng vào tình huống đời thường).
-5. Đáp án sai (nhiễu) phải hợp lý — dựa trên lỗi sai phổ biến của học sinh.
-6. KHÔNG dùng câu "Tất cả các đáp án trên" hoặc "Không có đáp án nào".
-
-Trả về JSON array, mỗi object có: text, options (mảng 4 string), correct (0-3), bloom_level (1-6), explanation (string).
-"""
-```
-
-**Chi phí:** ~86 unit × 12 câu × ~150 token = ~155K tokens ≈ $0.02 (DeepSeek).
-
-#### File lưu: `data/question_templates_toan6.json` (cố định, không đổi khi seed)
-
-#### Phân bố câu hỏi cho 1 assignment khi seed:
+#### Phân bổ câu hỏi vào assignment khi seed:
 
 ```
-Mỗi assignment = 10-12 câu, chọn từ template của unit tương ứng:
-  ├── 8 câu (70%): thuộc unit chính của tuần
-  │     └── lấy ngẫu nhiên từ 12 câu template, đảm bảo đủ bloom
-  ├── 2 câu (20%): ôn tập unit tuần trước (spaced repetition)
-  └── 1-2 câu (10%): tổng hợp/chéo chương (Bloom 4-6)
+Assignment thường (regular):
+  └── 10-12 câu, lấy từ pool 30-35 câu của unit chính tuần đó
+  └── Đảm bảo mỗi assignment có đủ bloom 1-6 (ít nhất 1 câu mỗi bloom)
+
+Assignment ôn tập (review):
+  └── 15-20 câu, lấy từ pool của 2-3 unit khác nhau
+  └── Phân bố: 40% unit gần nhất + 30% unit giữa kỳ + 30% unit đầu kỳ
+  └── Bloom mở rộng 1-6
+
+Assignment nâng cao (advanced):
+  └── 10-12 câu, ưu tiên Bloom 4-6
+  └── Câu hỏi tích hợp nhiều unit yêu cầu tư duy tổng hợp
+
+Lưu ý: Cùng 1 câu hỏi có thể xuất hiện trong NHIỀU assignment khác nhau
+(vì pool 30-35 câu/unit, seed sẽ random chọn subset mỗi lần).
 ```
 
 ---
 
-### 🔧 BƯỚC 5: SỬA seed_mock_toan6_gaps.py (ĐỌC TỪ JSON, BỎ ID GIẢ)
+### 🔧 BƯỚC 5: SỬA seed_mock_toan6_gaps.py (ĐỌC TỪ JSON, PHÂN LOẠI ASSIGNMENT 3 LOẠI)
 
 **File sửa:** `scripts/seed_mock_toan6_gaps.py`
 
 **Sửa chính:**
 
-1. **Đọc `QUESTION_TEMPLATES` từ `data/question_templates_toan6.json`** thay vì hardcode trong file
+1. **Đọc `QUESTION_TEMPLATES` từ `data/question_templates_toan6.json`** — mỗi unit có 30-35 câu
 2. **Đọc `assignment_id` thật từ `dim_so_assignment`** thay vì ID giả 9001-9034
-3. **Dùng `teaching_schedules`** để biết assignment nào thuộc unit nào, tuần nào
+3. **Phân loại assignment theo 3 loại** (regular / review / advanced) và phân bổ câu hỏi khác nhau
+4. **Dùng `teaching_schedules`** để biết assignment nào thuộc unit nào
 
 ```python
-# THAY VÌ (hiện tại — hardcode):
+# THAY VÌ (hiện tại — hardcode 340 câu, 34 assignment ID giả):
 QUESTION_TEMPLATES = {391: {1: [...], 2: [...], ...}}
+assignments = [{"assignment_id": 9000 + n, ...}]
 
-# THÀNH (đọc từ JSON):
+# THÀNH (đọc từ JSON + assignment thật từ DB):
 import json
 with open("data/question_templates_toan6.json") as f:
-    QUESTION_TEMPLATES = json.load(f)
+    TEMPLATES = json.load(f)  # 32 units × 30-35 câu = ~1100 câu
 
-# THAY VÌ ID GIẢ:
-"assignment_id": 9000 + n
-
-# THÀNH — đọc assignment thật từ DB:
 cur.execute("""
-    SELECT a.assignment_id, ts.unit_id, ts.week_number
+    SELECT a.assignment_id, ts.unit_id, ts.week_number, a.fullname
     FROM s360.dim_so_assignment a
     JOIN public.teaching_schedules ts 
       ON a.subject_id = ts.subject_id 
@@ -397,10 +446,37 @@ cur.execute("""
     WHERE a.subject_id = 106
     ORDER BY a.assignment_id
 """)
-real_assignments = [dict(r) for r in cur.fetchall()]
+assignments = [dict(r) for r in cur.fetchall()]  # ~86 assignment thật
 ```
 
-**Tổng số câu hỏi LMS:** ~86 assignment × 10-12 câu = **~880 câu** (từ DeepSeek templates)
+**Phân bổ câu hỏi theo loại assignment trong seed:**
+
+```python
+for assign in assignments:
+    unit_id = assign["unit_id"]
+    pool = TEMPLATES[str(unit_id)]["questions"]  # 30-35 câu cho unit này
+    
+    if assign["type"] == "regular":
+        # 10-12 câu, lấy subset random từ pool, đảm bảo đủ bloom 1-6
+        selected = sample_to_cover_bloom(pool, n=10, min_per_bloom={1:1,2:2,3:2,4:1,5:1,6:1})
+    elif assign["type"] == "review":
+        # 15-20 câu, lấy từ 2-3 unit khác nhau
+        # 40% unit gần nhất + 30% unit giữa kỳ + 30% unit đầu kỳ
+        selected = sample_multi_unit(pool, other_units_pools, n=15)
+    elif assign["type"] == "advanced":
+        # 10-12 câu, ưu tiên Bloom 4-6
+        selected = sample_advanced(pool, n=10, min_bloom=4)
+    
+    # Lưu vào lms_question_bank
+    for q in selected:
+        insert_question(assign["assignment_id"], q["text"], q["options"],
+                       q["correct"], q["bloom_level"], unit_id)
+```
+
+**Tổng số câu hỏi trong `lms_question_bank`:**
+- ~86 assignment × 10-15 câu = **~860 - 1290 bản ghi**
+- Nhưng vì câu hỏi có thể dùng lại (cùng 1 câu xuất hiện ở nhiều assignment), số **câu unique** vẫn là ~1100 (trong JSON templates)
+- Số bản ghi trong `lms_question_bank` = số câu × số assignment ≠ số unique
 
 ---
 
@@ -496,10 +572,10 @@ Thêm prop `drilldownData` và state expandable rows.
 | 3 | `src/api/v1/curriculum.py` | 🛠 SỬA | Thêm progress tracking chi tiết |
 | 4 | `src/db/mini_migrations.py` | ➕ THÊM | Bảng `teaching_schedule` |
 | 5 | `docs_vsf/giao_an_toan_6/import_toan6_lesson_plans.py` | 🆕 TẠO MỚI | Parse docx → cm_* + teaching_schedule |
-| 6 | `scripts/generate_question_templates.py` | 🆕 **TẠO MỚI** | Gọi DeepSeek sinh câu hỏi → lưu JSON |
-| 7 | `data/question_templates_toan6.json` | 🆕 **TẠO MỚI** | Templates cố định, đọc bởi seed script |
-| 8 | `scripts/seed_mock_toan6_gaps.py` | 🛠 SỬA | Đọc JSON templates + assignment_id thật |
-| 9 | `data_mock/mock_full_data/generate_full_system_mock_v4.py` | 🛠 SỬA | Tăng assignment TOAN_6, gọi seed script |
+| 6 | `scripts/generate_question_templates.py` | 🆕 **TẠO MỚI** | Gọi DeepSeek sinh 30-35 câu/unit → ~1100 câu |
+| 7 | `data/question_templates_toan6.json` | 🆕 **TẠO MỚI** | Templates cố định ~1100 câu |
+| 8 | `scripts/seed_mock_toan6_gaps.py` | 🛠 SỬA | Đọc JSON templates + assignment_id thật + phân loại 3 loại assignment |
+| 9 | `data_mock/mock_full_data/generate_full_system_mock_v4.py` | 🛠 SỬA | Tăng assignment TOAN_6 từ 4 → ~86 (thường/ôn tập/nâng cao) |
 | 10 | `src/api/v1/ews.py` | ➕ THÊM | Endpoint /assignments/{id}/drilldown |
 | 11 | `frontend/.../EwsDetailDrawer.tsx` | 🛠 SỬA | UI drill-down từng câu hỏi |
 | 12 | `frontend/.../LmsEvidenceBlock.tsx` | 🛠 SỬA | Expandable drill-down rows |
@@ -527,11 +603,12 @@ graph TD
 
 1. **TOÁN 6 là pilot** — các môn khác giữ nguyên cấu trúc v4 cũ (4 bài/HK)
 2. **lesson_id mapping** cần kiểm tra tay: tên trong docx và tên trong `curriculum_units` có thể không khớp chính xác vì khác bộ SGK (CTST vs Cánh Diều)
-3. **`generate_question_templates.py` chạy 1 lần** — output JSON được commit vào git, không cần chạy lại mỗi lần seed
-4. **`seed_mock_toan6_gaps.py` vẫn giữ nguyên cấu trúc** — chỉ thay nguồn templates và assignment_id
-5. **2 file docx gốc** là nguồn duy nhất — không sửa file gốc, chỉ đọc
-6. **VLM ingest fix** là priority cao nhất vì ảnh hưởng trực tiếp tới UX khi add sách
-7. **Chi phí DeepSeek** ~$0.02 cho ~86 unit × 12 câu — rẻ hơn rất nhiều so với viết tay
+3. **`generate_question_templates.py` chạy 1 lần** — mỗi unit gọi DeepSeek 3 lần (mỗi lần ~15 câu) → tổng ~1100 câu. Output JSON được commit vào git, không cần chạy lại mỗi lần seed
+4. **`seed_mock_toan6_gaps.py` vẫn giữ nguyên cấu trúc** — chỉ thay nguồn templates (từ JSON) + đọc assignment_id thật từ DB + phân loại assignment theo 3 loại
+5. **Assignment có 3 loại** — thường (70%), ôn tập (20%), nâng cao (10%) — phân bố khác nhau về số câu, bloom, unit phủ
+6. **2 file docx gốc** là nguồn duy nhất — không sửa file gốc, chỉ đọc
+7. **VLM ingest fix** là priority cao nhất vì ảnh hưởng trực tiếp tới UX khi add sách
+8. **Chi phí DeepSeek** ~$0.02 cho ~32 unit × 36 câu × 150 token = ~173K tokens — rất rẻ
 
 ---
 

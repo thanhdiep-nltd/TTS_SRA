@@ -1689,6 +1689,14 @@ def seed_golden_set_v4(session, n_students_per_school: int = 100, skip_metadata:
     else:
         logger.info(f"Schema validation: ALL {len(SCHEMA_TABLES_37)} tables OK")
 
+    # --- 12. Tự động liên kết Lỗ Hổng Kiến Thức & LMS Assignments Toán 6 Pilot ---
+    try:
+        from scripts.seed_mock_toan6_gaps import main as seed_toan6_gaps
+        logger.info("Chạy đồng bộ seed Toán 6 (Lỗ Hổng Kiến Thức & EWS Assignments)...")
+        seed_toan6_gaps()
+    except Exception as e:
+        logger.warning(f"Không thể tự động chạy seed_mock_toan6_gaps: {e}")
+
     logger.info("=" * 60)
     logger.info(f"GOLDEN SET V4 SEED COMPLETED: {len(students)} students, 23 subjects, 2 schools")
     logger.info("=" * 60)

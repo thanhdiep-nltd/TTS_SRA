@@ -22,6 +22,8 @@ from src.ews.risk_config import load_risk_config
 from src.models import enums
 from src.models.tables import EwsPipelineJob, User
 from src.schemas.ews import (
+    EwsAssignmentDrilldownResponse,
+    EwsAssignmentQuestionItem,
     EwsClassOption,
     EwsEffectiveConfig,
     EwsGoldenSetResult,
@@ -994,6 +996,7 @@ def get_ews_raw(
     # 3. Bài tập LMS trong cửa sổ hiện diện [join_date, cutoff] + trạng thái nộp
     lms_sql = text("""
         SELECT
+            dsa.assignment_id,
             dsa.code,
             dsa.fullname,
             dsa.max_grade,
@@ -1016,6 +1019,7 @@ def get_ews_raw(
     lms_rows = db.execute(lms_sql, lms_params).fetchall()
     lms = [
         EwsRawLmsItem(
+            assignment_id=r.assignment_id,
             code=r.code,
             fullname=r.fullname,
             max_grade=r.max_grade,
@@ -1321,6 +1325,100 @@ def _calc_breakdown_item(
     return EwsRiskBreakdownItem(
         id=item_id, name=name, total_cnt=t, low_cnt=low_cnt, moderate_cnt=mod_cnt, high_cnt=high_cnt, critical_cnt=crit_cnt,
         low_pct=l_pct, moderate_pct=m_pct, high_pct=h_pct, critical_pct=c_pct, ch_pct=ch_pct
+    )
+
+
+
+@router.get("/assignments/{assignment_id}/drilldown", response_model=EwsAssignmentDrilldownResponse)
+def get_assignment_drilldown(
+    assignment_id: int,
+    student_code: str = Query(..., description="Mã học sinh"),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = None,
+) -> EwsAssignmentDrilldownResponse:
+    """Drill-down chi tiết danh sách câu hỏi của một bài tập LMS kèm kết quả làm bài của học sinh."""
+    # 1. Lấy thông tin bài tập từ dim_so_assignment
+    assign_sql = text("""
+        SELECT dsa.assignment_id, dsa.fullname, dsa.max_grade,
+               fag.final_grade, (fag.id IS NOT NULL) AS submitted, fag.submitted_at
+        FROM s360.dim_so_assignment dsa
+        LEFT JOIN s360.fact_so_assignment_grade fag
+            ON fag.assignment_id = dsa.assignment_id
+           AND fag.student_code = :student_code
+        WHERE dsa.assignment_id = :assignment_id
+    """)
+    assign_row = db.execute(assign_sql, {"assignment_id": assignment_id, "student_code": student_code}).fetchone()
+    if not assign_row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bài tập LMS này.")
+
+    # 2. Lấy danh sách câu hỏi và response
+    q_sql = text("""
+        SELECT 
+            qb.question_id,
+            qb.question_text,
+            qb.bloom_level,
+            qb.unit_id,
+            COALESCE(u.name, 'Bài học') AS lesson_name,
+            qr.is_correct,
+            qr.score_received AS score,
+            qr.max_score,
+            qr.response_time_seconds,
+            qr.attempt_number,
+            qr.integrity_flag,
+            qr.response_payload AS raw_response_json,
+            COALESCE(cu.name, 'Chương') AS chapter_name
+        FROM public.lms_question_bank qb
+        LEFT JOIN public.curriculum_units u ON qb.lesson_id = u.id OR qb.unit_id = u.id
+        LEFT JOIN public.curriculum_units cu ON u.parent_id = cu.id
+        LEFT JOIN public.lms_question_response qr
+            ON qb.question_id = qr.question_id
+           AND qb.assignment_id = qr.assignment_id
+           AND qr.student_code = :student_code
+           AND qr.is_best_attempt = true
+        WHERE qb.assignment_id = :assignment_id
+        ORDER BY qb.question_id ASC
+    """)
+    q_rows = db.execute(q_sql, {"assignment_id": assignment_id, "student_code": student_code}).fetchall()
+
+    questions = []
+    correct_count = 0
+    for r in q_rows:
+        is_corr = bool(r.is_correct) if r.is_correct is not None else None
+        if is_corr:
+            correct_count += 1
+
+        chosen_opt = None
+        if r.raw_response_json and isinstance(r.raw_response_json, dict):
+            chosen_opt = r.raw_response_json.get("chosen_option")
+
+        questions.append(
+            EwsAssignmentQuestionItem(
+                question_id=r.question_id,
+                question_text=r.question_text or f"Câu hỏi {r.question_id}",
+                bloom_level=r.bloom_level or 2,
+                unit_id=r.unit_id,
+                lesson_name=r.lesson_name,
+                is_correct=is_corr,
+                score=r.score,
+                max_score=r.max_score,
+                response_time_seconds=r.response_time_seconds,
+                attempt_number=r.attempt_number,
+                integrity_flag=r.integrity_flag,
+                chosen_option=chosen_opt,
+            )
+        )
+
+    return EwsAssignmentDrilldownResponse(
+        assignment_id=assign_row.assignment_id,
+        assignment_name=assign_row.fullname,
+        student_code=student_code,
+        total_questions=len(questions),
+        correct_count=correct_count,
+        score=assign_row.final_grade,
+        max_grade=assign_row.max_grade,
+        submitted=bool(assign_row.submitted),
+        submitted_at=assign_row.submitted_at,
+        questions=questions,
     )
 
 

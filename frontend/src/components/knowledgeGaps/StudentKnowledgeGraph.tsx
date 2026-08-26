@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState, useCallback } from "react";
-import Link from "next/link";
 import {
   ReactFlow,
   Background,
@@ -18,22 +17,11 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Award,
+  BarChart3,
   BookOpen,
-  Brain,
-  CheckCircle2,
-  FileText,
-  Filter,
+  ChevronDown,
+  ChevronUp,
   GraduationCap,
-  Info,
-  Laptop,
-  Lightbulb,
-  Maximize2,
-  ShieldAlert,
-  Sparkles,
-  Target,
-  User,
-  X,
 } from "lucide-react";
 import type { KnowledgeGapItem } from "@/lib/types";
 
@@ -166,15 +154,17 @@ function LessonNode({
     side: "left" | "right";
     nCorrect?: number;
     nItems?: number;
+    isExpanded?: boolean;
+    onToggleBloom?: (unitId: number) => void;
   };
 }) {
-  const isHigh = data.mastery >= 0.8;
   const isMed = data.mastery >= GAP_THRESHOLD && data.mastery < 0.8;
   const isLeft = data.side === "left";
+  const bloomStats = data.lesson?.bloom_breakdown ?? [];
 
   return (
     <div
-      className={`px-3.5 py-2.5 rounded-xl border-2 transition-all min-w-[190px] max-w-[230px] shadow-sm cursor-pointer hover:scale-105 group bg-white dark:bg-slate-900 ${
+      className={`p-3.5 rounded-2xl border-2 transition-all min-w-[280px] max-w-[320px] shadow-sm bg-white dark:bg-slate-900 ${
         data.isGap
           ? "border-rose-400 dark:border-rose-600 hover:border-rose-500 ring-2 ring-rose-500/10"
           : isMed
@@ -189,9 +179,9 @@ function LessonNode({
         className="w-2.5 h-2.5 bg-slate-400 border-2 border-white dark:border-slate-900"
       />
 
-      <div className="flex items-start justify-between gap-1.5">
+      <div className="flex items-start justify-between gap-1.5 pb-1.5 border-b border-slate-100 dark:border-slate-800">
         <div className="min-w-0 flex-1">
-          <span className="font-bold text-xs text-slate-800 dark:text-slate-100 line-clamp-2 leading-tight group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+          <span className="font-bold text-xs text-slate-800 dark:text-slate-100 line-clamp-2 leading-tight">
             {data.title}
           </span>
           {data.nItems ? (
@@ -212,10 +202,90 @@ function LessonNode({
           >
             {fmtPct(data.mastery)}
           </span>
-          <span className="block text-[9px] font-semibold mt-0.5 text-slate-400">
-            {data.isGap ? "🔴 Hổng" : isMed ? "🟡 Cần ôn" : "🟢 Vững"}
+          <span className="inline-flex items-center gap-1 text-[9px] font-semibold mt-0.5 text-slate-400">
+            {data.isGap ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block shrink-0" />
+                Hổng
+              </>
+            ) : isMed ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block shrink-0" />
+                Cần ôn
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
+                Vững
+              </>
+            )}
           </span>
         </div>
+      </div>
+
+      {/* NÚT ACCORDION MỞ RỘNG BLOOM TRỰC TIẾP TRONG NODE */}
+      <div className="pt-1.5">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggleBloom?.(data.lesson.unit_id);
+          }}
+          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 text-[10.5px] font-semibold transition-colors cursor-pointer"
+        >
+          <span className="flex items-center gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5 text-brand-500 shrink-0" />
+            Phân tích theo cấp độ Bloom (1-6)
+          </span>
+          {data.isExpanded ? (
+            <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          )}
+        </button>
+
+        {/* NỘI DUNG 6 BẬC BLOOM MỞ RỘNG (Y NHƯ ẢNH CHỤP) */}
+        {data.isExpanded && (
+          <div className="mt-2 p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-950/40 border border-slate-100 dark:border-slate-800 space-y-2 animate-in fade-in duration-150">
+            {bloomStats.length > 0 ? (
+              bloomStats.map((b) => {
+                const colorCls =
+                  b.total_questions === 0
+                    ? "bg-slate-200 dark:bg-slate-700"
+                    : b.accuracy_pct >= 70
+                    ? "bg-emerald-500"
+                    : b.accuracy_pct >= 40
+                    ? "bg-amber-500"
+                    : "bg-rose-500";
+
+                return (
+                  <div key={b.bloom_level} className="space-y-1">
+                    <div className="flex items-center justify-between text-[10.5px]">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        {b.bloom_name}
+                      </span>
+                      <span className="font-mono text-[9.5px] text-slate-500 dark:text-slate-400">
+                        {b.total_questions > 0
+                          ? `${b.correct_count}/${b.total_questions} câu  (${b.accuracy_pct}%)`
+                          : "0/0 câu"}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${colorCls}`}
+                        style={{
+                          width: `${b.total_questions > 0 ? Math.max(5, b.accuracy_pct) : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-[10px] text-slate-400 py-1 text-center">Chưa có câu hỏi LMS</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -241,7 +311,11 @@ export default function StudentKnowledgeGraph({
   gaps,
 }: StudentKnowledgeGraphProps) {
   const [filterMode, setFilterMode] = useState<"all" | "gaps" | "mastered">("all");
-  const [selectedLesson, setSelectedLesson] = useState<KnowledgeGapItem | null>(null);
+  const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
+
+  const toggleUnitBloom = useCallback((unitId: number) => {
+    setExpandedUnits((prev) => ({ ...prev, [unitId]: !prev[unitId] }));
+  }, []);
 
   // Tính toán Nodes & Edges theo mô hình Mindmap 2 Cánh (Bilateral Radial Tree)
   const { initialNodes, initialEdges, totalLessonsCount, gapLessonsCount } = useMemo(() => {
@@ -300,7 +374,7 @@ export default function StudentKnowledgeGraph({
     const leftChapters = chapterLayouts.slice(0, midIndex);
     const rightChapters = chapterLayouts.slice(midIndex);
 
-    // Node Root ở chính giữa (x = 0, y = 0)
+    // Node Root ở chính giữa (x = -120, y = -45)
     nodes.push({
       id: "root",
       type: "rootNode",
@@ -312,25 +386,37 @@ export default function StudentKnowledgeGraph({
       },
     });
 
-    const LESSON_HEIGHT = 64;
-    const CHAPTER_GAP = 36;
+    const BASE_LESSON_HEIGHT = 110;
+    const EXPANDED_LESSON_HEIGHT = 310;
+    const CHAPTER_GAP = 70;
+    const LESSON_MARGIN = 20;
 
     // --- CÁNH TRÁI (LEFT SIDE) ---
-    const leftTotalLessons = leftChapters.reduce((acc, ch) => acc + Math.max(1, ch.lessons.length), 0);
-    const leftTotalHeight = leftTotalLessons * LESSON_HEIGHT + (leftChapters.length - 1) * CHAPTER_GAP;
+    const leftTotalHeight =
+      leftChapters.reduce((acc, ch) => {
+        const chHeight = ch.lessons.reduce(
+          (lAcc, l) => lAcc + (expandedUnits[l.unit_id] ? EXPANDED_LESSON_HEIGHT : BASE_LESSON_HEIGHT) + LESSON_MARGIN,
+          0
+        );
+        return acc + Math.max(BASE_LESSON_HEIGHT, chHeight);
+      }, 0) + (leftChapters.length - 1) * CHAPTER_GAP;
+
     let leftCurrentY = -leftTotalHeight / 2;
 
     leftChapters.forEach((chData) => {
       const chId = `chapter-${chData.chapter.unit_id}`;
-      const lessonsCount = Math.max(1, chData.lessons.length);
-      const branchHeight = lessonsCount * LESSON_HEIGHT;
+      const branchHeight =
+        chData.lessons.reduce(
+          (lAcc, l) => lAcc + (expandedUnits[l.unit_id] ? EXPANDED_LESSON_HEIGHT : BASE_LESSON_HEIGHT) + LESSON_MARGIN,
+          0
+        ) || BASE_LESSON_HEIGHT;
       const chapterY = leftCurrentY + branchHeight / 2 - 32;
 
-      // Chapter Node bên Trái (x = -360)
+      // Chapter Node bên Trái (x = -500)
       nodes.push({
         id: chId,
         type: "chapterNode",
-        position: { x: -360, y: chapterY },
+        position: { x: -500, y: chapterY },
         data: {
           title: chData.chapter.unit_name ?? `Chương ${chData.chapter.unit_id}`,
           mastery: chData.chapterMastery,
@@ -355,17 +441,19 @@ export default function StudentKnowledgeGraph({
         },
       });
 
-      // Lesson Nodes bên Trái (x = -680)
-      chData.lessons.forEach((l, lIdx) => {
+      // Lesson Nodes bên Trái (x = -1020)
+      let currentLessonY = leftCurrentY;
+      chData.lessons.forEach((l) => {
         const lessonId = `lesson-${l.unit_id}`;
-        const lessonY = leftCurrentY + lIdx * LESSON_HEIGHT;
+        const isExp = !!expandedUnits[l.unit_id];
+        const lH = isExp ? EXPANDED_LESSON_HEIGHT : BASE_LESSON_HEIGHT;
         const lMastery = l.raw_mastery ?? l.mastery;
         const isLGap = lMastery < GAP_THRESHOLD;
 
         nodes.push({
           id: lessonId,
           type: "lessonNode",
-          position: { x: -680, y: lessonY },
+          position: { x: -1020, y: currentLessonY },
           data: {
             lesson: l,
             title: l.lesson || l.unit_name,
@@ -374,6 +462,8 @@ export default function StudentKnowledgeGraph({
             side: "left",
             nCorrect: l.n_correct,
             nItems: l.n_items,
+            isExpanded: isExp,
+            onToggleBloom: toggleUnitBloom,
           },
         });
 
@@ -390,27 +480,39 @@ export default function StudentKnowledgeGraph({
             strokeDasharray: isLGap ? "4 2" : undefined,
           },
         });
+
+        currentLessonY += lH + LESSON_MARGIN;
       });
 
       leftCurrentY += branchHeight + CHAPTER_GAP;
     });
 
     // --- CÁNH PHẢI (RIGHT SIDE) ---
-    const rightTotalLessons = rightChapters.reduce((acc, ch) => acc + Math.max(1, ch.lessons.length), 0);
-    const rightTotalHeight = rightTotalLessons * LESSON_HEIGHT + (rightChapters.length - 1) * CHAPTER_GAP;
+    const rightTotalHeight =
+      rightChapters.reduce((acc, ch) => {
+        const chHeight = ch.lessons.reduce(
+          (lAcc, l) => lAcc + (expandedUnits[l.unit_id] ? EXPANDED_LESSON_HEIGHT : BASE_LESSON_HEIGHT) + LESSON_MARGIN,
+          0
+        );
+        return acc + Math.max(BASE_LESSON_HEIGHT, chHeight);
+      }, 0) + (rightChapters.length - 1) * CHAPTER_GAP;
+
     let rightCurrentY = -rightTotalHeight / 2;
 
     rightChapters.forEach((chData) => {
       const chId = `chapter-${chData.chapter.unit_id}`;
-      const lessonsCount = Math.max(1, chData.lessons.length);
-      const branchHeight = lessonsCount * LESSON_HEIGHT;
+      const branchHeight =
+        chData.lessons.reduce(
+          (lAcc, l) => lAcc + (expandedUnits[l.unit_id] ? EXPANDED_LESSON_HEIGHT : BASE_LESSON_HEIGHT) + LESSON_MARGIN,
+          0
+        ) || BASE_LESSON_HEIGHT;
       const chapterY = rightCurrentY + branchHeight / 2 - 32;
 
-      // Chapter Node bên Phải (x = 360)
+      // Chapter Node bên Phải (x = 500)
       nodes.push({
         id: chId,
         type: "chapterNode",
-        position: { x: 360, y: chapterY },
+        position: { x: 500, y: chapterY },
         data: {
           title: chData.chapter.unit_name ?? `Chương ${chData.chapter.unit_id}`,
           mastery: chData.chapterMastery,
@@ -435,17 +537,19 @@ export default function StudentKnowledgeGraph({
         },
       });
 
-      // Lesson Nodes bên Phải (x = 680)
-      chData.lessons.forEach((l, lIdx) => {
+      // Lesson Nodes bên Phải (x = 1020)
+      let currentLessonY = rightCurrentY;
+      chData.lessons.forEach((l) => {
         const lessonId = `lesson-${l.unit_id}`;
-        const lessonY = rightCurrentY + lIdx * LESSON_HEIGHT;
+        const isExp = !!expandedUnits[l.unit_id];
+        const lH = isExp ? EXPANDED_LESSON_HEIGHT : BASE_LESSON_HEIGHT;
         const lMastery = l.raw_mastery ?? l.mastery;
         const isLGap = lMastery < GAP_THRESHOLD;
 
         nodes.push({
           id: lessonId,
           type: "lessonNode",
-          position: { x: 680, y: lessonY },
+          position: { x: 1020, y: currentLessonY },
           data: {
             lesson: l,
             title: l.lesson || l.unit_name,
@@ -454,6 +558,8 @@ export default function StudentKnowledgeGraph({
             side: "right",
             nCorrect: l.n_correct,
             nItems: l.n_items,
+            isExpanded: isExp,
+            onToggleBloom: toggleUnitBloom,
           },
         });
 
@@ -470,6 +576,8 @@ export default function StudentKnowledgeGraph({
             strokeDasharray: isLGap ? "4 2" : undefined,
           },
         });
+
+        currentLessonY += lH + LESSON_MARGIN;
       });
 
       rightCurrentY += branchHeight + CHAPTER_GAP;
@@ -481,12 +589,12 @@ export default function StudentKnowledgeGraph({
       totalLessonsCount: totalLessons,
       gapLessonsCount: gapLessons,
     };
-  }, [gaps, subjectName, studentName, studentCode, filterMode]);
+  }, [gaps, subjectName, studentName, studentCode, filterMode, expandedUnits, toggleUnitBloom]);
 
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
 
-  // Sync khi gaps hoặc filter thay đổi
+  // Sync khi initialNodes hoặc initialEdges thay đổi
   React.useEffect(() => {
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -502,14 +610,8 @@ export default function StudentKnowledgeGraph({
     []
   );
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    if (node.type === "lessonNode" && node.data?.lesson) {
-      setSelectedLesson(node.data.lesson as KnowledgeGapItem);
-    }
-  }, []);
-
   return (
-    <div className="relative w-full h-[660px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 overflow-hidden shadow-inner flex flex-col">
+    <div className="relative w-full h-[680px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950 overflow-hidden shadow-inner flex flex-col">
       {/* TOOLBAR BỘ LỌC CỦA GRAPH */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 p-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm text-xs">
         <button
@@ -552,7 +654,6 @@ export default function StudentKnowledgeGraph({
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
         fitView
         minZoom={0.2}
         maxZoom={1.5}
@@ -570,87 +671,6 @@ export default function StudentKnowledgeGraph({
           className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 shadow-md"
         />
       </ReactFlow>
-
-      {/* FLYOUT CARD CHI TIẾT KHI CLICK VÀO 1 NODE BÀI HỌC */}
-      {selectedLesson && (
-        <div className="absolute bottom-4 right-4 left-4 sm:left-auto sm:w-96 z-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-4 animate-in fade-in slide-in-from-bottom-3 duration-200 space-y-3">
-          <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold ${
-                  (selectedLesson.raw_mastery ?? selectedLesson.mastery) < GAP_THRESHOLD
-                    ? "bg-rose-100 text-rose-600 dark:bg-rose-950"
-                    : "bg-emerald-100 text-emerald-600 dark:bg-emerald-950"
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-              </div>
-              <div className="min-w-0">
-                <h5 className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                  {selectedLesson.lesson || selectedLesson.unit_name}
-                </h5>
-                <span className="text-[10px] text-slate-400 block truncate">
-                  {selectedLesson.chapter || "Chương"}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={() => setSelectedLesson(null)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Chỉ số LMS */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <Laptop className="w-3.5 h-3.5 text-sky-500" />
-                Năng lực LMS:
-              </span>
-              <span
-                className={`font-black font-mono text-sm ${
-                  (selectedLesson.raw_mastery ?? selectedLesson.mastery) < GAP_THRESHOLD
-                    ? "text-rose-600 dark:text-rose-400"
-                    : "text-emerald-600 dark:text-emerald-400"
-                }`}
-              >
-                {fmtPct(selectedLesson.raw_mastery ?? selectedLesson.mastery)}
-              </span>
-            </div>
-            {selectedLesson.n_items ? (
-              <span className="text-[11px] text-slate-400 block">
-                Kết quả: Đúng <strong>{selectedLesson.n_correct ?? 0}</strong> / {selectedLesson.n_items} câu LMS
-              </span>
-            ) : null}
-          </div>
-
-          {/* Lời khuyên sư phạm */}
-          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
-            <div className="flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200 text-[11px]">
-              <Lightbulb className="w-3 h-3 text-amber-500" />
-              Hướng can thiệp:
-            </div>
-            <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
-              {(selectedLesson.raw_mastery ?? selectedLesson.mastery) < GAP_THRESHOLD
-                ? "Cần xếp vào nhóm phụ đạo chuyên đề. Hướng dẫn ôn tập lý thuyết cơ bản trong SGK."
-                : "Học sinh nắm vững kiến thức bài này. Khuyến khích thử sức bài tập nâng cao."}
-            </p>
-          </div>
-
-          {/* Link Xem Giáo án */}
-          <div className="pt-1 flex items-center justify-between text-xs">
-            <Link
-              href={`/lesson-plans?unit_id=${selectedLesson.unit_id}`}
-              className="text-brand-600 dark:text-brand-400 font-bold hover:underline inline-flex items-center gap-1 text-[11px]"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Xem Giáo Án Bài Dạy →
-            </Link>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

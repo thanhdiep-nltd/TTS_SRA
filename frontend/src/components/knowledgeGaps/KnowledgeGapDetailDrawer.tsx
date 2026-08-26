@@ -7,6 +7,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Award,
+  BarChart3,
   BookOpen,
   Brain,
   ChevronDown,
@@ -424,16 +425,62 @@ export default function KnowledgeGapDetailDrawer({
                                     )}
                                 </div>
 
-                                {/* Khuyến nghị sư phạm */}
-                                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-xs space-y-1 mt-3">
-                                  <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
-                                    <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                    Hướng can thiệp sư phạm:
+                                {/* Phân tích theo thang nhận thức Bloom 1-6 */}
+                                {lesson.bloom_breakdown && lesson.bloom_breakdown.length > 0 && (
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-xs space-y-2 mt-3">
+                                    <div className="flex items-center justify-between font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                                      <span className="flex items-center gap-1.5">
+                                        <BarChart3 className="w-3.5 h-3.5 text-brand-500 shrink-0" />
+                                        Thang nhận thức Bloom (1–6):
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
+                                      {lesson.bloom_breakdown.map((b) => {
+                                        const dotColor =
+                                          b.total_questions === 0
+                                            ? "bg-slate-300 dark:bg-slate-600"
+                                            : b.accuracy_pct >= 70
+                                            ? "bg-emerald-500"
+                                            : b.accuracy_pct >= 40
+                                            ? "bg-amber-500"
+                                            : "bg-rose-500";
+
+                                        const valColor =
+                                          b.total_questions === 0
+                                            ? "text-slate-400"
+                                            : b.accuracy_pct >= 70
+                                            ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                                            : b.accuracy_pct >= 40
+                                            ? "text-amber-600 dark:text-amber-400 font-bold"
+                                            : "text-rose-600 dark:text-rose-400 font-bold";
+
+                                        const shortLabels: Record<number, string> = {
+                                          1: "Nhớ",
+                                          2: "Hiểu",
+                                          3: "V.Dụng",
+                                          4: "P.Tích",
+                                          5: "Đ.Giá",
+                                          6: "S.Tạo",
+                                        };
+
+                                        return (
+                                          <div
+                                            key={b.bloom_level}
+                                            className="flex items-center justify-between px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800"
+                                          >
+                                            <span className="flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                                              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                                              {shortLabels[b.bloom_level] || `B${b.bloom_level}`}:
+                                            </span>
+                                            <span className={`font-mono ${valColor}`}>
+                                              {b.total_questions > 0 ? `${b.correct_count}/${b.total_questions} (${b.accuracy_pct}%)` : "—"}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
-                                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed pl-5">
-                                    {advice.recommendation}
-                                  </p>
-                                </div>
+                                )}
 
                                 {/* Nút xem giáo án & Accordion công thức */}
                                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60 mt-3">

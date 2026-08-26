@@ -165,7 +165,7 @@ export default function UploadAnalyzeTab() {
         try {
             const detail = await api.get<ExamPaperDetail>(`/exam-papers/${paperId}`);
             setCdi(detail.content_difficulty);
-            setRawText(detail.raw_text);
+            setRawText(detail.raw_text ?? null);
 
             const aiAnalysis = detail.ai_analysis;
             const ca = aiAnalysis?.content_analysis;
@@ -419,7 +419,7 @@ export default function UploadAnalyzeTab() {
                                         examPapers.length > 0
                                             ? examPapers.map((p) => ({
                                                 value: p.id,
-                                                label: `${p.title} ${p.content_difficulty !== null ? `(CDI: ${p.content_difficulty.toFixed(2)})` : "(Chưa có CDI)"}`,
+                                                label: `${p.title} ${p.content_difficulty !== null && p.content_difficulty !== undefined ? `(CDI: ${Number(p.content_difficulty).toFixed(2)})` : "(Chưa có CDI)"}`,
                                             }))
                                             : [{ value: "", label: "Chưa có đề trong môn/kỳ này — hãy chuyển tab Tải lên" }]
                                     }

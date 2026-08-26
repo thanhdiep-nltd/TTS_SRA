@@ -309,6 +309,8 @@ export interface ExamPaper {
   file_size_bytes: number | null;
   uploaded_by: string;
   created_at: string;
+  content_difficulty?: number | null;
+  content_analyzed_at?: string | null;
 }
 
 // Đề đã map vào một cột (để preview/đổi/gỡ) — khớp ExamRef backend.
@@ -374,9 +376,11 @@ export interface SemesterOption {
 }
 
 export interface SubjectOption {
-  id: string;
+  id: string | number;
   name: string;
   code: string;
+  has_lesson_plans?: boolean;
+  grade_id?: number | null;
 }
 
 export interface AcademicDivergenceRow {
@@ -520,6 +524,12 @@ export interface ExamValidityRow {
   confidence: "HIGH" | "LOW";
 }
 
+export interface SchoolValidityOverview {
+  total_checked: number;
+  flags_count: Record<string, number>;
+  flagged_items: ExamValidityRow[];
+}
+
 // ===== Phân tích nội dung đề (5 trục — KG phẳng, ai_analysis.content_analysis v1) =====
 export interface ExamContentNodeRef {
   node_id: number;
@@ -544,6 +554,7 @@ export interface ExamAnalysisItem {
   has_figure?: boolean | null;
   question_share?: number | null;
   is_primary?: boolean | null;
+  evidence?: any;
 }
 
 export interface ExamCoverageUnit {
@@ -568,12 +579,14 @@ export interface ExamContentAnalysis {
   off_curriculum_weight: number | null;
   bloom_distribution: Record<string, number> | null;
   bloom_alignment: string | null;
+  rag_available?: boolean;
 }
 
 export interface ExamPaperDetail extends ExamPaper {
   content_difficulty: number | null;
   content_analyzed_at: string | null;
-  ai_analysis: { content_analysis?: ExamContentAnalysis;[k: string]: unknown };
+  raw_text?: string | null;
+  ai_analysis: { content_analysis?: ExamContentAnalysis; [k: string]: unknown };
 }
 
 // ===== Kiểm tra câu hỏi (tab trong trang TEVI) — test 1 câu hỏi thuộc chương/bài nào =====
@@ -1171,12 +1184,43 @@ export interface EwsRawScore {
 }
 
 export interface EwsRawLmsItem {
+  assignment_id?: number | null;
   code: string | null;
   fullname: string | null;
   max_grade: number | null;
   due_date: string | null;
   submitted: boolean;
   final_grade: number | null;
+}
+
+export interface EwsAssignmentQuestionItem {
+  question_id: number;
+  question_text: string;
+  options: string[];
+  bloom_level: number;
+  unit_id?: number | null;
+  lesson_name?: string | null;
+  is_correct?: boolean | null;
+  score?: number | null;
+  max_score?: number | null;
+  response_time_seconds?: number | null;
+  attempt_number?: number | null;
+  integrity_flag?: number | null;
+  chosen_option?: string | null;
+  explanation?: string | null;
+}
+
+export interface EwsAssignmentDrilldownResponse {
+  assignment_id: number;
+  assignment_name: string;
+  student_code: string;
+  total_questions: number;
+  correct_count: number;
+  score?: number | null;
+  max_grade?: number | null;
+  submitted: boolean;
+  submitted_at?: string | null;
+  questions: EwsAssignmentQuestionItem[];
 }
 
 export interface EwsRawAttendanceItem {
@@ -1231,6 +1275,7 @@ export interface EwsRawDetail {
   lms: EwsRawLmsItem[];
   lms_expected: number;
   lms_submitted: number;
+  lms_evidence?: any[];
   attendance: EwsRawAttendanceItem[];
   behavior: EwsRawBehaviorItem[];
   life_events: EwsRawLifeEventItem[];
@@ -1384,6 +1429,7 @@ export interface KnowledgeGapItem {
   n_correct?: number | null; // số câu đúng
   lm_weight?: number | null; // trọng số LMS trong adjusted
   exam_weight?: number | null; // trọng số điểm thi trong adjusted
+  bloom_breakdown?: BloomStatItem[]; // Phân rã 6 bậc Bloom nhận thức
   // Cây phân cấp Bài học con (nếu đây là node Chương)
   lessons?: KnowledgeGapItem[];
   gap_lessons_count?: number;
@@ -1493,14 +1539,6 @@ export interface PassFailForecastResult {
 }
 
 // ===== Lesson Plans (Kế hoạch bài dạy) =====
-export interface SubjectOption {
-  id: number;
-  code: string;
-  name: string;
-  has_lesson_plans: boolean;
-  grade_id: number | null;
-}
-
 export interface GradeOption {
   id: number;
   name: string;
@@ -1580,4 +1618,45 @@ export interface LessonPlanDetail {
   targets: LessonTargetItem[];
   related_lms_questions_count: number;
 }
+
+// ===== Knowledge Gaps: Bloom Drilldown & Error Breakdown =====
+export interface BloomStatItem {
+  bloom_level: number;
+  bloom_name: string;
+  total_questions: number;
+  correct_count: number;
+  incorrect_count: number;
+  accuracy_pct: number;
+}
+
+export interface StudentUnitQuestionItem {
+  question_id: number;
+  assignment_id: number | null;
+  assignment_name: string | null;
+  question_text: string;
+  bloom_level: number;
+  is_correct: boolean | null;
+  score_received: number;
+  max_score: number;
+  response_time_seconds: number | null;
+  attempt_number: number | null;
+  integrity_flag: number | null;
+  chosen_option: string | number | null;
+  options: string[] | null;
+  correct_option: number | null;
+  explanation: string | null;
+}
+
+export interface StudentUnitBloomDrilldownResponse {
+  student_code: string;
+  unit_id: number;
+  unit_name: string;
+  chapter_name: string;
+  total_items: number;
+  total_correct: number;
+  raw_mastery: number;
+  bloom_stats: BloomStatItem[];
+  questions: StudentUnitQuestionItem[];
+}
+
 

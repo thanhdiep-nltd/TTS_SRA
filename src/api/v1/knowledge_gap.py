@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.api.deps import CurrentUser, get_db
 from src.schemas.knowledge_gap import (
+    BloomStatItem,
     ClassKnowledgeGaps,
     ClassOption,
     ClassRosterResponse,
@@ -20,6 +21,8 @@ from src.schemas.knowledge_gap import (
     StudentKnowledgeGaps,
     StudentOption,
     StudentRosterSummary,
+    StudentUnitBloomDrilldownResponse,
+    StudentUnitQuestionItem,
 )
 from src.services.item_mastery import recalc_unit_mastery
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
@@ -29,6 +32,15 @@ router = APIRouter(prefix="/knowledge-gaps", tags=["Knowledge Gaps"])
 # student_unit_mastery.confidence là SMALLINT (1 LOW | 2 MEDIUM | 3 HIGH) theo DDL
 # — map sang chuỗi API/frontend (HIGH/MEDIUM/LOW); chuỗi (test/fake) giữ nguyên.
 _CONFIDENCE_LABELS = {1: "LOW", 2: "MEDIUM", 3: "HIGH"}
+
+BLOOM_NAMES: dict[int, str] = {
+    1: "Nhớ (Nhận biết)",
+    2: "Hiểu (Thông hiểu)",
+    3: "Vận dụng",
+    4: "Phân tích",
+    5: "Đánh giá",
+    6: "Sáng tạo",
+}
 
 
 def _confidence_label(value) -> str:
@@ -400,6 +412,56 @@ def get_student_knowledge_gaps(
     mastery_units = [r for r in sum_rows if r.adjusted_mastery is not None]
     if mastery_units:
         meta = _unit_meta(db, [r.unit_id for r in mastery_units])
+
+        # Lấy Bloom breakdown cho toàn bộ units của học sinh này
+        bloom_by_unit: dict[int, list[BloomStatItem]] = {}
+        try:
+            uids = [int(r.unit_id) for r in mastery_units]
+            bloom_rows = db.execute(
+                text("""
+                    SELECT 
+                        qu.unit_id,
+                        qb.bloom_level,
+                        COUNT(qb.question_id) AS total_q,
+                        COUNT(CASE WHEN qr.is_correct = true THEN 1 END) AS correct_q
+                    FROM public.lms_question_bank qb
+                    JOIN public.lms_question_unit qu ON qb.question_id = qu.question_id
+                    LEFT JOIN public.lms_question_response qr 
+                        ON qb.question_id = qr.question_id 
+                       AND qr.student_code = :sc 
+                       AND qr.is_best_attempt = true
+                    WHERE qu.unit_id = ANY(:uids)
+                    GROUP BY qu.unit_id, qb.bloom_level
+                    ORDER BY qu.unit_id, qb.bloom_level
+                """),
+                {"sc": student_code, "uids": uids},
+            ).fetchall()
+
+            unit_bloom_map: dict[int, dict[int, tuple[int, int]]] = {}
+            for br in bloom_rows:
+                unit_bloom_map.setdefault(int(br.unit_id), {})[int(br.bloom_level)] = (int(br.total_q), int(br.correct_q))
+
+            for uid in [r.unit_id for r in mastery_units]:
+                stats = []
+                for b in range(1, 7):
+                    tot, corr = unit_bloom_map.get(uid, {}).get(b, (0, 0))
+                    pct = round((corr / tot * 100.0), 1) if tot > 0 else 0.0
+                    stats.append(
+                        BloomStatItem(
+                            bloom_level=b,
+                            bloom_name=BLOOM_NAMES.get(b, f"Bloom {b}"),
+                            total_questions=tot,
+                            correct_count=corr,
+                            incorrect_count=tot - corr,
+                            accuracy_pct=pct,
+                        )
+                    )
+                bloom_by_unit[uid] = stats
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Failed to calculate bloom_breakdown: %s", e)
+            bloom_by_unit = {}
+
         raw_items = [
             KnowledgeGapItem(
                 unit_id=r.unit_id,
@@ -419,6 +481,7 @@ def get_student_knowledge_gaps(
                 n_correct=int(r.n_correct) if r.n_correct is not None else None,
                 lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
                 exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
+                bloom_breakdown=bloom_by_unit.get(r.unit_id, []),
             )
             for r in mastery_units
         ]
@@ -678,6 +741,55 @@ def get_class_diagnostic_roster(
     # Metadata của toàn bộ unit
     meta = _unit_meta(db, list(all_unit_ids)) if all_unit_ids else {}
 
+    # 4b. Lấy Bloom breakdown cho toàn bộ học sinh và unit trong lớp (batch aggregation)
+    student_unit_bloom_map: dict[tuple[str, int], dict[int, tuple[int, int]]] = {}
+    if student_codes and all_unit_ids:
+        try:
+            b_rows = db.execute(
+                text("""
+                    SELECT 
+                        qr.student_code,
+                        qu.unit_id,
+                        qb.bloom_level,
+                        COUNT(qb.question_id) AS total_q,
+                        COUNT(CASE WHEN qr.is_correct = true THEN 1 END) AS correct_q
+                    FROM public.lms_question_bank qb
+                    JOIN public.lms_question_unit qu ON qb.question_id = qu.question_id
+                    LEFT JOIN public.lms_question_response qr 
+                        ON qb.question_id = qr.question_id 
+                       AND qr.student_code = ANY(:codes)
+                       AND qr.is_best_attempt = true
+                    WHERE qu.unit_id = ANY(:uids)
+                    GROUP BY qr.student_code, qu.unit_id, qb.bloom_level
+                    ORDER BY qr.student_code, qu.unit_id, qb.bloom_level
+                """),
+                {"codes": student_codes, "uids": list(all_unit_ids)},
+            ).fetchall()
+            for br in b_rows:
+                if br.student_code:
+                    student_unit_bloom_map.setdefault((str(br.student_code), int(br.unit_id)), {})[int(br.bloom_level)] = (int(br.total_q), int(br.correct_q))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Failed to calculate class bloom_breakdown: %s", e)
+
+    def _get_student_bloom_stats(sc_code: str, u_id: int) -> list[BloomStatItem]:
+        bm = student_unit_bloom_map.get((sc_code, u_id), {})
+        stats = []
+        for b in range(1, 7):
+            tot, corr = bm.get(b, (0, 0))
+            pct = round((corr / tot * 100.0), 1) if tot > 0 else 0.0
+            stats.append(
+                BloomStatItem(
+                    bloom_level=b,
+                    bloom_name=BLOOM_NAMES.get(b, f"Bloom {b}"),
+                    total_questions=tot,
+                    correct_count=corr,
+                    incorrect_count=tot - corr,
+                    accuracy_pct=pct,
+                )
+            )
+        return stats
+
     # 5. Xây dựng hồ sơ chẩn đoán cho từng học sinh
     roster: list[StudentRosterSummary] = []
     for s in students_rows:
@@ -707,6 +819,7 @@ def get_class_diagnostic_roster(
                     n_correct=int(r.n_correct) if r.n_correct is not None else None,
                     lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
                     exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
+                    bloom_breakdown=_get_student_bloom_stats(sc, r.unit_id),
                 )
                 for r in s_sum_rows
             ]
@@ -842,4 +955,150 @@ def recalc_mastery_endpoint(
         semester_index=semester_index,
         message=f"Đã tính toán và cập nhật thành công {count} bản ghi năng lực học sinh",
     )
+
+
+BLOOM_NAMES: dict[int, str] = {
+    1: "Nhớ (Nhận biết)",
+    2: "Hiểu (Thông hiểu)",
+    3: "Vận dụng",
+    4: "Phân tích",
+    5: "Đánh giá",
+    6: "Sáng tạo",
+}
+
+
+@router.get("/students/{student_code}/units/{unit_id}/drilldown", response_model=StudentUnitBloomDrilldownResponse)
+def get_student_unit_bloom_drilldown(
+    student_code: str,
+    unit_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = None,
+) -> StudentUnitBloomDrilldownResponse:
+    """Drilldown chi tiết phân tích thang Bloom và danh sách câu hỏi trắc nghiệm của 1 học sinh theo bài học."""
+    # 1. Lấy thông tin bài học & chương
+    unit_sql = text("""
+        SELECT u.id, u.name AS unit_name, COALESCE(cu.name, 'Chương') AS chapter_name
+        FROM public.curriculum_units u
+        LEFT JOIN public.curriculum_units cu ON u.parent_id = cu.id
+        WHERE u.id = :unit_id
+    """)
+    unit_row = db.execute(unit_sql, {"unit_id": unit_id}).fetchone()
+    unit_name = unit_row.unit_name if unit_row else f"Bài học {unit_id}"
+    chapter_name = unit_row.chapter_name if unit_row else "Chương"
+
+    # 2. Lấy thông tin student_unit_mastery
+    mastery_sql = text("""
+        SELECT raw_mastery, n_items, n_correct
+        FROM public.student_unit_mastery
+        WHERE student_code = :student_code AND unit_id = :unit_id
+        ORDER BY semester_index DESC LIMIT 1
+    """)
+    m_row = db.execute(mastery_sql, {"student_code": student_code, "unit_id": unit_id}).fetchone()
+    raw_mastery = float(m_row.raw_mastery) if m_row and m_row.raw_mastery is not None else 0.0
+
+    # 3. Lấy toàn bộ câu hỏi trắc nghiệm của bài học này mà học sinh đã làm
+    q_sql = text("""
+        SELECT 
+            qb.question_id,
+            qb.assignment_id,
+            dsa.fullname AS assignment_name,
+            qb.question_text,
+            qb.bloom_level,
+            qr.is_correct,
+            qr.score_received,
+            qr.max_score,
+            qr.response_time_seconds,
+            qr.attempt_number,
+            qr.integrity_flag,
+            qr.response_payload
+        FROM public.lms_question_bank qb
+        JOIN public.lms_question_unit qu ON qb.question_id = qu.question_id AND qu.unit_id = :unit_id
+        LEFT JOIN s360.dim_so_assignment dsa ON qb.assignment_id = dsa.assignment_id
+        LEFT JOIN public.lms_question_response qr
+            ON qb.question_id = qr.question_id
+           AND qr.student_code = :student_code
+           AND qr.is_best_attempt = true
+        ORDER BY qb.bloom_level ASC, qb.question_id ASC
+    """)
+    rows = db.execute(q_sql, {"unit_id": unit_id, "student_code": student_code}).fetchall()
+
+    questions: list[StudentUnitQuestionItem] = []
+    bloom_counts: dict[int, dict[str, int]] = {
+        b: {"total": 0, "correct": 0, "incorrect": 0} for b in range(1, 7)
+    }
+
+    for r in rows:
+        b_level = r.bloom_level if r.bloom_level in range(1, 7) else 2
+        is_corr = bool(r.is_correct) if r.is_correct is not None else None
+        
+        bloom_counts[b_level]["total"] += 1
+        if is_corr is True:
+            bloom_counts[b_level]["correct"] += 1
+        elif is_corr is False:
+            bloom_counts[b_level]["incorrect"] += 1
+
+        chosen_opt = None
+        options = None
+        corr_opt = None
+        explanation = None
+
+        if r.response_payload and isinstance(r.response_payload, dict):
+            chosen_opt = r.response_payload.get("chosen_option")
+            options = r.response_payload.get("options")
+            corr_opt = r.response_payload.get("correct_option")
+            explanation = r.response_payload.get("explanation")
+
+        questions.append(
+            StudentUnitQuestionItem(
+                question_id=r.question_id,
+                assignment_id=r.assignment_id,
+                assignment_name=r.assignment_name,
+                question_text=r.question_text or f"Câu hỏi {r.question_id}",
+                bloom_level=b_level,
+                is_correct=is_corr,
+                score_received=float(r.score_received or 0.0),
+                max_score=float(r.max_score or 1.0),
+                response_time_seconds=r.response_time_seconds,
+                attempt_number=r.attempt_number or 1,
+                integrity_flag=r.integrity_flag or 0,
+                chosen_option=chosen_opt,
+                options=options,
+                correct_option=corr_opt,
+                explanation=explanation,
+            )
+        )
+
+    # 4. Tính toán BloomStatItem
+    bloom_stats = []
+    for b in range(1, 7):
+        bc = bloom_counts[b]
+        tot = bc["total"]
+        corr = bc["correct"]
+        pct = round((corr / tot * 100.0), 1) if tot > 0 else 0.0
+        bloom_stats.append(
+            BloomStatItem(
+                bloom_level=b,
+                bloom_name=BLOOM_NAMES.get(b, f"Bloom {b}"),
+                total_questions=tot,
+                correct_count=corr,
+                incorrect_count=bc["incorrect"],
+                accuracy_pct=pct,
+            )
+        )
+
+    total_items = len(questions)
+    total_correct = sum(1 for q in questions if q.is_correct is True)
+
+    return StudentUnitBloomDrilldownResponse(
+        student_code=student_code,
+        unit_id=unit_id,
+        unit_name=unit_name,
+        chapter_name=chapter_name,
+        total_items=total_items,
+        total_correct=total_correct,
+        raw_mastery=raw_mastery,
+        bloom_stats=bloom_stats,
+        questions=questions,
+    )
+
 
