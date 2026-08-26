@@ -168,6 +168,8 @@ def unit_db():
                     summary TEXT,
                     keywords TEXT,
                     sections TEXT,
+                    start_page INTEGER,
+                    end_page INTEGER,
                     book_id INTEGER,
                     semester_number INTEGER,
                     is_active BOOLEAN NOT NULL DEFAULT 1,

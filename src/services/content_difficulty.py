@@ -317,11 +317,14 @@ def _invoke_map(
 ) -> str:
     """Gọi LLM 1 lần với cấu trúc [SystemMessage, HumanMessage] tối ưu Prompt Caching (DeepSeek/OpenAI).
 
-    Phần SystemMessage (instructions + danh sách node + evidence) giúp DeepSeek tự động hit
-    Context Cache (giảm 90% chi phí và giảm 80% latency).
+    Phần SystemMessage (instructions + danh sách node) giữ nguyên 100% để DeepSeek tự động hit
+    Context Cache (giảm 90% chi phí và giảm 80% latency). Phần evidence động nằm ở HumanMessage.
     """
-    system_content = system_override or build_map_system_prompt(shortlist, evidence_text=evidence_text)
+    system_content = system_override or build_map_system_prompt(shortlist)
     user_content = f"Nội dung đề/câu hỏi cần phân tích:\n{text[:8000]}"
+    if evidence_text:
+        user_content = f"{evidence_text}\n\n{user_content}"
+
     messages = [
         SystemMessage(content=system_content),
         HumanMessage(content=user_content),
@@ -710,9 +713,33 @@ def classify_segmented_question(
     q: vlm.SegmentedQuestion,
     shortlist: list[CurriculumUnit],
     llm: Any = None,
+    db: Session | None = None,
+    subject_id: int | None = None,
+    grade_number: int | None = None,
 ) -> list[ResolvedCompetency]:
-    """Phân loại 1 câu hỏi đơn lẻ (Stage 2) và gán image_url/has_figure."""
-    items = map_items(q.text, shortlist, llm)
+    """Phân loại 1 câu hỏi đơn lẻ (Stage 2) kết hợp RAG Bằng chứng SGK và gán image_url/has_figure."""
+    own_db = False
+    active_db = db
+    if active_db is None and subject_id is not None and grade_number is not None:
+        try:
+            active_db = SessionLocal()
+            own_db = True
+        except Exception:
+            active_db = None
+
+    try:
+        items = map_items(
+            q.text,
+            shortlist,
+            llm=llm,
+            db=active_db,
+            subject_id=subject_id,
+            grade_number=grade_number,
+        )
+    finally:
+        if own_db and active_db is not None:
+            active_db.close()
+
     if not items:
         return [
             ResolvedCompetency(
@@ -766,7 +793,7 @@ def classify_segmented_question(
 
 
 def analyze_exam_paper(exam_paper_id: int) -> None:
-    """Phân tích nội dung 1 đề thi (2-Stage Hierarchical Pipeline: Segment -> Parallel Classify -> Aggregate)."""
+    """Phân tích nội dung 1 đề thi (2-Stage Hierarchical Pipeline: Segment -> Parallel Classify + RAG Evidence -> Aggregate)."""
     db = SessionLocal()
     t_start = time.monotonic()
     try:
@@ -795,16 +822,24 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
         if segmented_questions:
             raw_text = "\n\n".join(f"Câu {q.question_number}: {q.text}" for q in segmented_questions)
 
-            # Stage 2: Gọi song song classify_segmented_question cho từng câu hỏi
+            # Stage 2: Gọi song song classify_segmented_question cho từng câu hỏi (kèm RAG Chunks)
             t0 = time.monotonic()
             max_workers = min(len(segmented_questions), 8)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = [
-                    pool.submit(classify_segmented_question, q, shortlist)
+                    pool.submit(
+                        classify_segmented_question,
+                        q,
+                        shortlist,
+                        None,  # llm
+                        None,  # db (tự mở thread-safe SessionLocal)
+                        paper.subject_id,
+                        grade_number,
+                    )
                     for q in segmented_questions
                 ]
                 results_per_question = [f.result() for f in futures]
-            logger.info("CDI[%s] Stage 2 parallel classify: %.2fs", exam_paper_id, time.monotonic() - t0)
+            logger.info("CDI[%s] Stage 2 parallel classify + RAG: %.2fs", exam_paper_id, time.monotonic() - t0)
 
             # Stage 3: Phân bổ trọng số câu hỏi & tổng hợp
             scores = [_parse_question_score(q.score_text) for q in segmented_questions]
@@ -834,7 +869,13 @@ def analyze_exam_paper(exam_paper_id: int) -> None:
             text = extract_exam_text(file_path, paper.file_type)
             raw_text = text
             logger.info("CDI[%s] Fallback trích text: %.2fs (%d ký tự)", exam_paper_id, time.monotonic() - t0, len(text))
-            items = map_items(text, shortlist)
+            items = map_items(
+                text,
+                shortlist,
+                db=db,
+                subject_id=paper.subject_id,
+                grade_number=grade_number,
+            )
             if items:
                 items = rejudge_null_items(items, shortlist)
                 resolved = _expand_mapped(items, shortlist)
