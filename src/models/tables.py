@@ -552,6 +552,42 @@ class StudentKnowledgeGap(Base):
     detected_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
+class LmsQuestionBank(Base):
+    """Danh mục câu hỏi LMS item-level."""
+
+    __tablename__ = "lms_question_bank"
+    __table_args__ = (
+        Index("idx_lqb_subject", "subject_id", "unit_id"),
+        Index("idx_lqb_lesson", "lesson_id"),
+    )
+
+    question_id = Column(BigInteger, primary_key=True)
+    assignment_id = Column(BigInteger, nullable=False)
+    so_school_id = Column(Integer, nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="SET NULL"), nullable=True)
+    lesson_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="SET NULL"), nullable=True)
+    bloom_level = Column(SmallInteger, nullable=True)
+    question_type = Column(String(20), server_default=text("'MCQ'"))
+    question_text = Column(Text, nullable=True)
+    item_weight = Column(Numeric(5, 2), nullable=True)
+    is_active = Column(Integer, server_default=text("1"))
+    created_at = Column(DateTime(timezone=True), server_default=_NOW)
+
+
+class LmsQuestionUnit(Base):
+    """Map câu hỏi LMS ↔ nhiều bài học, có trọng số (weight)."""
+
+    __tablename__ = "lms_question_unit"
+    __table_args__ = (
+        Index("idx_lqu_unit", "unit_id"),
+    )
+
+    question_id = Column(BigInteger, ForeignKey("lms_question_bank.question_id", ondelete="CASCADE"), primary_key=True)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"), primary_key=True)
+    weight = Column(Numeric(5, 3), nullable=False, server_default=text("1.0"))
+
+
 # ============================================================
 # NGÂN HÀNG CÂU HỎI & TẠO ĐỀ (AI Exam Generation — xem docs/exam_generation_design.md)
 #   Hybrid: LLM+RAG sinh câu DRAFT -> duyệt người -> APPROVED -> ráp đề chính thức.

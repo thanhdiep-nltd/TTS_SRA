@@ -524,6 +524,10 @@ def build_assignments_and_bank(
     )
     print(f"  → Đã tạo {len(assignments)} bài tập LMS (dim_so_assignment) cho 35 tuần.")
 
+    unclassified_mode = "--unclassified" in sys.argv
+    if unclassified_mode:
+        print("  ⚡ Chế độ --unclassified: Câu hỏi được khởi tạo với bloom_level = NULL để sẵn sàng phân tích AI.")
+
     # Insert lms_question_bank
     cur.executemany(
         """
@@ -544,7 +548,7 @@ def build_assignments_and_bank(
                 SUBJECT_ID,
                 q["unit_id"],
                 q["lesson_id"],
-                q["bloom_level"],
+                None if unclassified_mode else q["bloom_level"],
                 q["question_text"],
             )
             for q in questions

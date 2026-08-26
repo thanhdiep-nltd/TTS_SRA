@@ -4,17 +4,20 @@
 fact_gradebooks để ước lượng mastery từng unit (dùng service knowledge_gap thuần).
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.api.deps import CurrentUser, get_db
 from src.schemas.knowledge_gap import (
+    AnalyzeLmsBankRequest,
+    AnalyzeLmsBankResponse,
     BloomStatItem,
     ClassKnowledgeGaps,
     ClassOption,
     ClassRosterResponse,
     KnowledgeGapItem,
+    LmsJobStatusResponse,
     LmsQuestionBankItem,
     LmsQuestionUnitRef,
     RecalcMasteryResult,
@@ -26,6 +29,7 @@ from src.schemas.knowledge_gap import (
 )
 from src.services.item_mastery import recalc_unit_mastery
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
+from src.services.lms_question_analyzer import job_manager, run_analysis_job_in_background
 
 router = APIRouter(prefix="/knowledge-gaps", tags=["Knowledge Gaps"])
 
@@ -954,6 +958,66 @@ def recalc_mastery_endpoint(
         subject_id=subject_id,
         semester_index=semester_index,
         message=f"Đã tính toán và cập nhật thành công {count} bản ghi năng lực học sinh",
+    )
+
+
+@router.post("/lms-question-bank/analyze", response_model=AnalyzeLmsBankResponse)
+def analyze_lms_question_bank_endpoint(
+    req: AnalyzeLmsBankRequest,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Khởi tạo Background Job phân tích câu hỏi LMS bằng AI và gán mức độ Bloom."""
+    job_id = job_manager.create_job(subject_id=req.subject_id, total_questions=req.limit or 0)
+    background_tasks.add_task(
+        run_analysis_job_in_background,
+        job_id=job_id,
+        subject_id=req.subject_id,
+        model_name=req.model_name,
+        re_analyze=req.re_analyze,
+        limit=req.limit,
+    )
+    return AnalyzeLmsBankResponse(
+        success=True,
+        job_id=job_id,
+        status="running",
+        processed_count=0,
+        unclassified_remaining=0,
+        bloom_distribution={},
+        items=[],
+        message=f"Đã bắt đầu tác vụ phân tích AI (Mã Job: {job_id})",
+    )
+
+
+@router.get("/lms-question-bank/analyze/status", response_model=LmsJobStatusResponse)
+def get_lms_analysis_status_endpoint(
+    subject_id: int = Query(..., description="ID môn học"),
+    job_id: str | None = Query(None, description="Mã job cụ thể (nếu có)"),
+    current_user: CurrentUser = None,
+):
+    """Lấy trạng thái và tiến độ thời gian thực của job phân tích câu hỏi LMS."""
+    if job_id:
+        job = job_manager.get_job(job_id)
+    else:
+        job = job_manager.get_latest_job(subject_id)
+
+    if not job:
+        return LmsJobStatusResponse(status="idle", message="Chưa có tác vụ nào đang chạy.")
+
+    return LmsJobStatusResponse(
+        job_id=job.job_id,
+        subject_id=job.subject_id,
+        status=job.status,
+        total_questions=job.total_questions,
+        processed_questions=job.processed_questions,
+        progress_percent=job.progress_percent,
+        bloom_distribution=job.bloom_distribution,
+        unclassified_remaining=job.unclassified_remaining,
+        error_message=job.error_message,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        message=job.message,
     )
 
 

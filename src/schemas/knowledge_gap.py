@@ -1,4 +1,4 @@
-"""src/schemas/knowledge_gap.py — DTO cho API lỗ hổng kiến thức (M2)."""
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -192,4 +192,43 @@ class StudentUnitBloomDrilldownResponse(BaseModel):
     raw_mastery: float
     bloom_stats: list[BloomStatItem]
     questions: list[StudentUnitQuestionItem]
+
+
+class AnalyzeLmsBankRequest(BaseModel):
+    """Yêu cầu phân tích độ khó (Bloom) và gán bài học cho ngân hàng câu hỏi LMS."""
+
+    subject_id: int = Field(..., description="ID môn học cần phân tích")
+    model_name: str | None = Field(default=None, description="Tên Model AI để phân tích")
+    re_analyze: bool = Field(default=False, description="Nếu True, phân tích lại toàn bộ; nếu False, chỉ phân tích câu chưa có Bloom")
+    limit: int | None = Field(default=20, description="Số lượng câu cần phân tích (None = toàn bộ)")
+
+
+class AnalyzeLmsBankResponse(BaseModel):
+    """Kết quả phân tích độ khó ngân hàng câu hỏi LMS."""
+
+    success: bool = True
+    job_id: str | None = None
+    status: str = "running"
+    processed_count: int = 0
+    unclassified_remaining: int = 0
+    bloom_distribution: dict[int, int] = Field(default_factory=dict)
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    message: str = ""
+
+
+class LmsJobStatusResponse(BaseModel):
+    """Trạng thái tiến độ thời gian thực của job phân tích câu hỏi LMS."""
+
+    job_id: str | None = None
+    subject_id: int | None = None
+    status: str = "idle"  # "idle", "pending", "running", "completed", "failed"
+    total_questions: int = 0
+    processed_questions: int = 0
+    progress_percent: int = 0
+    bloom_distribution: dict[int, int] = Field(default_factory=dict)
+    unclassified_remaining: int = 0
+    error_message: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    message: str = ""
 
