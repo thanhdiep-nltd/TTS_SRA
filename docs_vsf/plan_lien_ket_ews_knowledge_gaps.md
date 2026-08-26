@@ -2,6 +2,8 @@
 
 **Mục tiêu:** Xây dựng liên kết $1-1$ giữa bài tập tuần EWS (`dim_so_assignment`) và ngân hàng câu hỏi vi mô (`lms_question_bank`), tích hợp giáo án thật từ file docx, fix luồng add sách (curriculum ingest), và mock dữ liệu LMS cho TOÁN 6 làm pilot.
 
+**CẬP NHẬT QUAN TRỌNG:** Thay vì hardcode câu hỏi trong `QUESTION_TEMPLATES`, dùng **DeepSeek API sinh tự động** dựa trên `teaching_schedules`. Chạy 1 lần, lưu JSON cố định, seed mock từ đó.
+
 ---
 
 ## 🔍 TỔNG QUAN HIỆN TRẠNG
@@ -13,18 +15,20 @@
 | **Giáo án TOÁN 6 HK1** | 73 tiết, 4 chương (CTST) | `docs_vsf/giao_an_toan_6/KHBD Toan 6 (CTST)-Ki.docx` |
 | **Giáo án TOÁN 6 HK2** | 35+ bài, 5 chương (CTST) | `docs_vsf/giao_an_toan_6/KHBD Toan 6 (CTST)-KII.docx` |
 | **Cây tri thức TOÁN 6** | `curriculum_units` với lesson_id 392-425 | Trong DB (đã seed) |
-| **340 câu hỏi LMS mẫu** | 34 bài × 10 câu, ID giả 9001-9034 | `scripts/seed_mock_toan6_gaps.py` |
+| **340 câu hỏi LMS mẫu (hardcode)** | 34 bài × 10 câu, ID giả 9001-9034 | `scripts/seed_mock_toan6_gaps.py` |
 | **Dữ liệu giả v4** | 23 môn, 2 trường, Copula+AR(1) | `data_mock/mock_full_data/generate_full_system_mock_v4.py` |
 | **Dim so assignment** | 4 bài/HK/môn (quá ít) | Trong DB (do v4 tạo) |
+| **teaching_schedules** | 35 tuần cho TOÁN 6 (đã seed) | DB + `scripts/seed_teaching_schedules_toan6.py` |
 | **8 bảng cm_*** | Khung DB giáo án (rỗng) | `docs_vsf/plan_lesson_plan_integration.md` |
 
 ### Vấn đề hiện tại:
 
 1. **`lms_question_bank`** dùng assignment_id **giả 9001-9034** — không đồng bộ với `dim_so_assignment` (ID 1,2,3...)
-2. **v4 chỉ tạo 4 bài tập/HK/môn** — thực tế Toán 4 tiết/tuần cần 2-3 bài/tuần
-3. **Curriculum ingest (add sách)** dễ mất dữ liệu khi VLM lỗi 1-2 trang
-4. **Giáo án docx chưa được đưa vào DB** → chưa có timeline giảng dạy
-5. **Chỉ TOÁN 6 là pilot** — các môn khác giữ nguyên
+2. **v4 chỉ tạo 4 bài tập/HK/môn** — thực tế Toán 4 tiết/tuần cần 2-3 bài/tuần → **đã có `teaching_schedules` để dựa vào**
+3. **Câu hỏi hardcode** — không đa dạng, phân bố Bloom tệ, không test được pipeline classify thật
+4. **Curriculum ingest (add sách)** dễ mất dữ liệu khi VLM lỗi 1-2 trang
+5. **Giáo án docx chưa được đưa vào DB** → chưa có timeline giảng dạy
+6. **Chỉ TOÁN 6 là pilot** — các môn khác giữ nguyên
 
 ---
 
@@ -224,113 +228,179 @@ Cần đối chiếu tên bài trong docx với lesson name trong `curriculum_un
 
 **Mục tiêu:** Biết chính xác tuần nào dạy bài gì, từ đó phân bổ câu hỏi LMS.
 
-#### 3.1. Xây timeline HK1 (73 tiết ÷ 4 tiết/tuần ≈ 18 tuần)
+#### 3.1. ✅ ĐÃ XONG — teaching_schedules 35 tuần cho TOÁN 6
 
-| Tuần | Tiết | Nội dung | Số BT giao |
-|------|------|---------|-----------|
-| 1 | 1-2 | Bài 1: Tập hợp. Phần tử | 2 bài tập |
-| 2 | 3-4 | Bài 2: Ghi số tự nhiên + Bài 3: Phép tính | 2 bài |
-| 3 | 5-6 | Bài 4: Lũy thừa + Bài 5: Thứ tự TH | 2 bài |
-| 4 | 7-8 | Bài 5 (tiếp) + Bài 6: Chia hết | 2 bài |
-| 5 | 9-10 | Bài 7: Dấu hiệu 2,5 + Bài 8: Dấu hiệu 3,9 | 2 bài |
-| 6 | 11-12 | Bài 9: Ước và bội + Bài 10: Số nguyên tố | 2 bài |
-| 7 | 13-14 | Bài 10 (tiếp) + Bài 11: Thực hành | 2 bài |
-| 8 | 15-16 | Bài 12: ƯCLN + Bài 13: BCNN | 3 bài (ôn tập) |
-| 9 | 17-18 | Bài 13 (tiếp) + Bài 14: Thực hành | 2 bài |
-| 10 | 19-21 | BÀI TẬP CUỐI CHƯƠNG 1 | 3 bài (ôn tập) |
-| 11 | 22-24 | Ôn tập + Kiểm tra GK1 | 2 bài |
-| 12 | 25-27 | Chương 2: Bài 1. Số nguyên âm | 2 bài |
-| 13 | 28-30 | Bài 2. Thứ tự + Bài 3. Cộng trừ | 3 bài |
-| 14 | 31-33 | Bài 3 (tiếp) | 3 bài |
-| 15 | 34-36 | Bài 4. Nhân chia số nguyên | 3 bài |
-| 16 | 37-39 | Bài 4 (tiếp) + Bài 5: Thực hành | 2 bài |
-| 17 | 40-42 | BÀI TẬP CUỐI CHƯƠNG 2 | 2 bài |
-| 18+ | 43-73 | Chương 3, 4 (các tuần còn lại) | ... |
+Đã seed đầy đủ 35 tuần qua `scripts/seed_teaching_schedules_toan6.py`:
+- HK1: tuần 1-18 (72 tiết)
+- HK2: tuần 19-35 (68 tiết)
+- Mỗi tuần: 4 tiết, map vào `unit_id` từ `curriculum_units`
 
-**Tổng số bài tập LMS cho TOÁN 6 HK1:** ~40-50 bài (mỗi bài 10-12 câu)
+**File:** `scripts/seed_teaching_schedules_toan6.py` (246 dòng)
 
-#### 3.2. Mở rộng v4 để seed đủ số assignment
+#### 3.2. Sinh assignment từ teaching_schedules (thay vì v4 cũ)
+
+**Mục tiêu:** Mỗi tuần trong teaching_schedules → 2-3 bài tập LMS về nhà. TOÁN 6 có 35 tuần × 2.5 = ~88 assignment, không phải 4 như v4 cũ.
+
+**Phân phối cụ thể:**
+
+| Tuần | Nội dung chính | Số bài LMS |
+|:----:|:---------------|:----------:|
+| 1-8 | Chương 1: Số tự nhiên (8 tuần × 3) | ~24 bài |
+| 9 | Ôn tập + Kiểm tra GK1 | 2 bài |
+| 10-17 | Chương 2-4 (8 tuần × 2-3) | ~20 bài |
+| 18 | Ôn tập + Thi CK1 | 2 bài |
+| 19-26 | Chương 5-6: Phân số + Số thập phân | ~16 bài |
+| 27 | Kiểm tra GK2 | 2 bài |
+| 28-34 | Chương 7-9 (7 tuần × 2-3) | ~18 bài |
+| 35 | Ôn tập + Thi CK2 | 2 bài |
+| | **Tổng** | **~86 assignment** |
 
 **File sửa:** `data_mock/mock_full_data/generate_full_system_mock_v4.py`
 
-- Đổi số assignment từ `4 bài/HK` lên **40-50 bài/HK** cho TOÁN 6
+- Đọc `dim_so_assignment` thực tế (sau khi seed từ teaching_schedules)
+- TOAN_6: tạo đủ số assignment phù hợp với 35 tuần (không giới hạn 4 bài/HK như cũ)
 - Các môn khác: giữ nguyên 4 bài/HK (hoặc 8-12 tùy)
-- Đọc `teaching_schedule` để biết chính xác nội dung từng assignment
+- Mỗi assignment có `due_date` theo đúng tuần, `max_grade = 10`
 
 ---
 
-### 🔧 BƯỚC 4: TẠO MODULE SEED LMS QUESTIONS
+### 🔧 BƯỚC 4: SINH QUESTION_TEMPLATES BẰNG DEEPSEEK
 
-**Mục tiêu:** Tạo ngân hàng câu hỏi đồng bộ với assignment_id thật, dùng template từ seed_mock_toan6_gaps.py.
+**Mục tiêu:** Gọi DeepSeek API sinh câu hỏi trắc nghiệm đa dạng, đúng phân bố Bloom, dựa trên `teaching_schedules`. Chạy 1 lần, lưu JSON cố định. Seed mock đọc từ JSON này.
 
-#### File mới: `data_mock/mock_full_data/seed_lms_questions.py`
+#### ⚠️ TẠI SAO PHẢI ĐỔI?
+
+Hiện tại `QUESTION_TEMPLATES` trong `seed_mock_toan6_gaps.py` là hardcode:
+- 340 câu viết tay → không đa dạng, lặp pattern số
+- Phân bố Bloom không kiểm soát được
+- Không test được pipeline `/exam-difficulty` classify vì câu hỏi quá đơn giản
+
+**Giải pháp:** DeepSeek API sinh 1 lần → JSON cố định → seed mock đọc từ đó.
+
+#### File mới: `scripts/generate_question_templates.py`
+
+**Luồng chính:**
+
+```
+teaching_schedules (35 tuần, unit_id cụ thể)
+    ↓
+Nhóm các unit_id duy nhất cần tạo câu hỏi
+    ↓
+Với mỗi unit_id:
+    → Gọi DeepSeek với prompt:
+        "Tạo 12 câu trắc nghiệm Toán 6 cho bài [tên bài]...
+         Phân bố Bloom: 2 Nhớ + 3 Hiểu + 3 Vận dụng + 2 Phân tích + 1 Đánh giá + 1 Sáng tạo"
+    → Parse JSON response
+    ↓
+Gộp → lưu file: data/question_templates_toan6.json
+```
+
+**Cấu trúc output JSON:**
+
+```json
+{
+  "392": {
+    "unit_name": "Tập hợp",
+    "chapter_name": "SỐ TỰ NHIÊN",
+    "questions": [
+      {
+        "text": "Cho tập hợp A = {x ∈ ℕ | x < 5}. Phần tử nào sau đây thuộc A?",
+        "options": ["A) 5", "B) 4", "C) 6", "D) -1"],
+        "correct": 1,
+        "bloom_level": 1,
+        "explanation": "Các số tự nhiên nhỏ hơn 5 là 0,1,2,3,4 → 4 thuộc A"
+      },
+      // ... 11 câu nữa, trải đều Bloom 1-6
+    ]
+  },
+  "393": { ... },
+  ...
+}
+```
+
+**Prompt DeepSeek mẫu (cho 1 unit):**
 
 ```python
+prompt = f"""
+Bạn là chuyên gia khảo thí môn Toán lớp 6.
+Hãy tạo 12 câu hỏi trắc nghiệm (4 đáp án A/B/C/D) cho:
+
+📖 Chương: {chapter_name}
+📖 Bài: {unit_name}
+
+Yêu cầu phân bố Bloom:
+- Bloom 1 (Nhớ - nhận biết kiến thức): 2 câu
+- Bloom 2 (Hiểu - giải thích được): 3 câu  
+- Bloom 3 (Vận dụng - áp dụng vào tình huống quen): 3 câu
+- Bloom 4 (Phân tích - tách thành phần): 2 câu
+- Bloom 5 (Đánh giá - nhận xét đúng sai): 1 câu
+- Bloom 6 (Sáng tạo - tổng hợp, tình huống mới): 1 câu
+
+Quy tắc:
+1. Câu hỏi phải test kiến thức ĐẶC THÙ của bài này, không chung chung.
+2. Có câu tính toán số cụ thể (học sinh phải làm ra kết quả).
+3. Có câu lý thuyết (học sinh phải hiểu bản chất).
+4. Có câu thực tế (áp dụng vào tình huống đời thường).
+5. Đáp án sai (nhiễu) phải hợp lý — dựa trên lỗi sai phổ biến của học sinh.
+6. KHÔNG dùng câu "Tất cả các đáp án trên" hoặc "Không có đáp án nào".
+
+Trả về JSON array, mỗi object có: text, options (mảng 4 string), correct (0-3), bloom_level (1-6), explanation (string).
 """
-Module dùng chung: seed lms_question_bank + lms_question_response.
-- TOAN_6: dùng QUESTION_TEMPLATES thật (từ textbook Cánh Diều)
-- Các môn khác: dùng FALLBACK_TEMPLATES
-"""
 ```
 
-**Cấu trúc:**
+**Chi phí:** ~86 unit × 12 câu × ~150 token = ~155K tokens ≈ $0.02 (DeepSeek).
 
-```python
-def seed_lms_questions(
-    db, 
-    subject_id, 
-    grade_id, 
-    semester_index,
-    assignments,  # list of dicts from dim_so_assignment
-    students,  # list of student dicts
-    profiles,  # list of profile dicts (probability per unit)
-    templates,  # QUESTION_TEMPLATES hoặc FALLBACK_TEMPLATES
-):
-    """Seed lms_question_bank + lms_question_unit + lms_question_response."""
-    # Mỗi assignment → 10-12 câu hỏi
-    # 70% thuộc bài hiện tại (theo teaching_schedule)
-    # 20% ôn bài trước
-    # 10% tổng hợp
-```
+#### File lưu: `data/question_templates_toan6.json` (cố định, không đổi khi seed)
 
-#### Phân bổ câu hỏi cho 1 assignment (TOÁN 6):
+#### Phân bố câu hỏi cho 1 assignment khi seed:
 
 ```
-Mỗi assignment = 10-12 câu hỏi:
-  ├── 7-8 câu (70%): thuộc lesson tuần hiện tại (bloom_level 1-3)
-  ├── 2-3 câu (20%): ôn tập lesson tuần trước (spaced repetition)
-  └── 1-2 câu (10%): tổng hợp/chéo chương (bloom_level 4-6)
+Mỗi assignment = 10-12 câu, chọn từ template của unit tương ứng:
+  ├── 8 câu (70%): thuộc unit chính của tuần
+  │     └── lấy ngẫu nhiên từ 12 câu template, đảm bảo đủ bloom
+  ├── 2 câu (20%): ôn tập unit tuần trước (spaced repetition)
+  └── 1-2 câu (10%): tổng hợp/chéo chương (Bloom 4-6)
 ```
 
 ---
 
-### 🔧 BƯỚC 5: SỬA seed_mock_toan6_gaps.py (BỎ ID GIẢ)
+### 🔧 BƯỚC 5: SỬA seed_mock_toan6_gaps.py (ĐỌC TỪ JSON, BỎ ID GIẢ)
 
 **File sửa:** `scripts/seed_mock_toan6_gaps.py`
 
 **Sửa chính:**
 
-```python
-# THAY VÌ (hiện tại):
-assignments = []
-n = 1
-for week in range(1, 17):
-    count = 2 + (1 if week in {8, 16} else 0)
-    for k in range(count):
-        assignments.append({"assignment_id": 9000 + n, ...})
+1. **Đọc `QUESTION_TEMPLATES` từ `data/question_templates_toan6.json`** thay vì hardcode trong file
+2. **Đọc `assignment_id` thật từ `dim_so_assignment`** thay vì ID giả 9001-9034
+3. **Dùng `teaching_schedules`** để biết assignment nào thuộc unit nào, tuần nào
 
-# THÀNH:
-# Đọc assignment_id THẬT từ dim_so_assignment
+```python
+# THAY VÌ (hiện tại — hardcode):
+QUESTION_TEMPLATES = {391: {1: [...], 2: [...], ...}}
+
+# THÀNH (đọc từ JSON):
+import json
+with open("data/question_templates_toan6.json") as f:
+    QUESTION_TEMPLATES = json.load(f)
+
+# THAY VÌ ID GIẢ:
+"assignment_id": 9000 + n
+
+# THÀNH — đọc assignment thật từ DB:
 cur.execute("""
-    SELECT assignment_id, due_date 
-    FROM s360.dim_so_assignment 
-    WHERE subject_id = 106 AND grade_id = 6 AND semester_index = 1
-    ORDER BY due_date
+    SELECT a.assignment_id, ts.unit_id, ts.week_number
+    FROM s360.dim_so_assignment a
+    JOIN public.teaching_schedules ts 
+      ON a.subject_id = ts.subject_id 
+     AND a.grade_id = ts.grade_number
+     AND a.semester_index = ts.semester_number
+    WHERE a.subject_id = 106
+    ORDER BY a.assignment_id
 """)
 real_assignments = [dict(r) for r in cur.fetchall()]
 ```
 
-**Hoặc tối ưu hơn:** Bỏ hẳn `seed_mock_toan6_gaps.py`, gọi module `seed_lms_questions.py` từ v4.
+**Tổng số câu hỏi LMS:** ~86 assignment × 10-12 câu = **~880 câu** (từ DeepSeek templates)
 
 ---
 
@@ -338,11 +408,12 @@ real_assignments = [dict(r) for r in cur.fetchall()]
 
 **File sửa:** `data_mock/mock_full_data/generate_full_system_mock_v4.py`
 
-1. **Tăng số assignment** cho TOAN_6 từ 4 → 40-50 bài/HK
-2. **Gọi `seed_lms_questions`** sau khi seed `dim_so_assignment`
-3. **Gọi `seed_lms_question_response`** — dùng Copula latent variables để tính `is_correct` thay vì random
-4. **Tính `student_unit_mastery`** sau khi có responses
-5. **Thêm các bảng `teaching_schedule`** vào `clean_database()` nếu cần
+1. **Tăng số assignment** cho TOAN_6 từ 4 → ~86 bài/HK (đọc từ teaching_schedules)
+2. **Các môn khác:** giữ nguyên 4 bài/HK (hoặc 8-12 tùy)
+3. **Gọi `seed_mock_toan6_gaps.py`** (đã sửa) sau khi seed `dim_so_assignment` — thay vì viết module mới
+4. **Không cần module `seed_lms_questions.py` riêng** — logic nằm luôn trong seed_mock_toan6_gaps.py
+5. **Tính `student_unit_mastery`** sau khi có responses (giống luồng cũ)
+6. **Thêm bảng `teaching_schedules`** vào `clean_database()` nếu cần
 
 ---
 
@@ -425,12 +496,13 @@ Thêm prop `drilldownData` và state expandable rows.
 | 3 | `src/api/v1/curriculum.py` | 🛠 SỬA | Thêm progress tracking chi tiết |
 | 4 | `src/db/mini_migrations.py` | ➕ THÊM | Bảng `teaching_schedule` |
 | 5 | `docs_vsf/giao_an_toan_6/import_toan6_lesson_plans.py` | 🆕 TẠO MỚI | Parse docx → cm_* + teaching_schedule |
-| 6 | `data_mock/mock_full_data/seed_lms_questions.py` | 🆕 TẠO MỚI | Module seed LMS questions dùng chung |
-| 7 | `scripts/seed_mock_toan6_gaps.py` | 🛠 SỬA | Bỏ ID giả 9001..9034, dùng ID thật |
-| 8 | `data_mock/mock_full_data/generate_full_system_mock_v4.py` | 🛠 SỬA | Tăng số assignment, gọi seed_lms |
-| 9 | `src/api/v1/ews.py` | ➕ THÊM | Endpoint /assignments/{id}/drilldown |
-| 10 | `frontend/.../EwsDetailDrawer.tsx` | 🛠 SỬA | UI drill-down từng câu hỏi |
-| 11 | `frontend/.../LmsEvidenceBlock.tsx` | 🛠 SỬA | Expandable drill-down rows |
+| 6 | `scripts/generate_question_templates.py` | 🆕 **TẠO MỚI** | Gọi DeepSeek sinh câu hỏi → lưu JSON |
+| 7 | `data/question_templates_toan6.json` | 🆕 **TẠO MỚI** | Templates cố định, đọc bởi seed script |
+| 8 | `scripts/seed_mock_toan6_gaps.py` | 🛠 SỬA | Đọc JSON templates + assignment_id thật |
+| 9 | `data_mock/mock_full_data/generate_full_system_mock_v4.py` | 🛠 SỬA | Tăng assignment TOAN_6, gọi seed script |
+| 10 | `src/api/v1/ews.py` | ➕ THÊM | Endpoint /assignments/{id}/drilldown |
+| 11 | `frontend/.../EwsDetailDrawer.tsx` | 🛠 SỬA | UI drill-down từng câu hỏi |
+| 12 | `frontend/.../LmsEvidenceBlock.tsx` | 🛠 SỬA | Expandable drill-down rows |
 
 ---
 
@@ -439,13 +511,12 @@ Thêm prop `drilldownData` và state expandable rows.
 ```mermaid
 graph TD
     A[BƯỚC 1: Fix Curriculum Ingest] --> B[BƯỚC 2: Import Giáo Án]
-    B --> C[BƯỚC 3: Tạo teaching_schedule]
-    C --> D[BƯỚC 4: Tạo seed_lms_questions module]
-    D --> E{Đồng bộ với v4}
-    E --> F[BƯỚC 5: Sửa seed_mock_toan6_gaps - bỏ ID giả]
-    E --> G[BƯỚC 6: Sửa v4 - tăng assignment, gọi seed_lms]
-    F --> H[BƯỚC 7: API Drill-down]
-    G --> H
+    B --> C[BƯỚC 3: Tạo teaching_schedule - ĐÃ XONG]
+    C --> D[BƯỚC 4a: Sinh QUESTION_TEMPLATES bằng DeepSeek]
+    D --> E[BƯỚC 4b: Lưu data/question_templates_toan6.json]
+    E --> F[BƯỚC 5: Sửa seed_mock_toan6_gaps - đọc JSON + ID thật]
+    F --> G[BƯỚC 6: Sửa v4 - tăng assignment TOAN_6, gọi seed]
+    G --> H[BƯỚC 7: API Drill-down]
     H --> I[BƯỚC 8: Frontend Drill-down UI]
     I --> J[DONE: EWS <> Knowledge Gaps linked]
 ```
@@ -456,9 +527,11 @@ graph TD
 
 1. **TOÁN 6 là pilot** — các môn khác giữ nguyên cấu trúc v4 cũ (4 bài/HK)
 2. **lesson_id mapping** cần kiểm tra tay: tên trong docx và tên trong `curriculum_units` có thể không khớp chính xác vì khác bộ SGK (CTST vs Cánh Diều)
-3. **seed_mock_toan6_gaps.py** sẽ trở nên không cần thiết sau khi v4 đã seed đủ — có thể deprecate
-4. **2 file docx gốc** là nguồn duy nhất — không sửa file gốc, chỉ đọc
-5. **VLM ingest fix** là priority cao nhất vì ảnh hưởng trực tiếp tới UX khi add sách
+3. **`generate_question_templates.py` chạy 1 lần** — output JSON được commit vào git, không cần chạy lại mỗi lần seed
+4. **`seed_mock_toan6_gaps.py` vẫn giữ nguyên cấu trúc** — chỉ thay nguồn templates và assignment_id
+5. **2 file docx gốc** là nguồn duy nhất — không sửa file gốc, chỉ đọc
+6. **VLM ingest fix** là priority cao nhất vì ảnh hưởng trực tiếp tới UX khi add sách
+7. **Chi phí DeepSeek** ~$0.02 cho ~86 unit × 12 câu — rẻ hơn rất nhiều so với viết tay
 
 ---
 
