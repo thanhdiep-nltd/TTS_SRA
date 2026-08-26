@@ -1010,9 +1010,20 @@ function ForecastRow({
                         <span className="font-bold text-slate-800 dark:text-slate-200 block truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors text-xs">
                             {student.student_name ?? student.student_code}
                         </span>
-                        <span className="text-[10px] text-slate-400 block truncate font-mono">
-                            {student.student_code} {student.class_name ? `· ${student.class_name}` : ""}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-[10px] text-slate-400 block truncate font-mono">
+                                {student.student_code} {student.class_name ? `· ${student.class_name}` : ""}
+                            </span>
+                            {student.discrepancy_warning && (
+                                <span
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 cursor-help"
+                                    title={student.discrepancy_warning}
+                                >
+                                    <AlertTriangle className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                                    <span>Lệch điểm thi (kém chuẩn xác)</span>
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </div>
             </td>
@@ -1040,9 +1051,19 @@ function ForecastRow({
 
             {/* Cột 3: Kết quả */}
             <td className="px-2 py-2.5 whitespace-nowrap">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${verdictCls}`}>
-                    {verdictLabel}
-                </span>
+                <div className="space-y-0.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${verdictCls}`}>
+                        {verdictLabel}
+                    </span>
+                    {student.discrepancy_warning && (
+                        <span
+                            className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold block truncate max-w-[120px]"
+                            title={student.discrepancy_warning}
+                        >
+                            ⚠️ Lệch thi vs LMS
+                        </span>
+                    )}
+                </div>
             </td>
 
             {/* Cột 4: Top bài hổng trong đề */}

@@ -79,16 +79,15 @@ def _calculate_forecast(
 
     # Năng lực LMS cấp bài — 1 query batch cho toàn bộ học sinh (không N+1), kèm tenant.
     school_cond_sum = "AND sum.so_school_id = :school_id" if school_id else ""
-    sum_params: dict = {"sid": subject_id, "sem": semester_index, "ids": lesson_ids}
+    sum_params: dict = {"sid": subject_id, "sem": semester_index}
     if school_id:
         sum_params["school_id"] = school_id
     sum_rows = db.execute(
         text(
             f"""
-            SELECT sum.student_code, sum.unit_id, sum.raw_mastery
+            SELECT sum.student_code, sum.unit_id, sum.raw_mastery, sum.integrity_status, sum.evidence_detail
             FROM public.student_unit_mastery sum
             WHERE sum.subject_id = :sid AND sum.semester_index = :sem
-              AND sum.unit_id = ANY(:ids)
               AND sum.raw_mastery IS NOT NULL
               {school_cond_sum}
             """
@@ -97,8 +96,32 @@ def _calculate_forecast(
     ).fetchall()
 
     raw_by_student: dict[str, dict[int, float]] = {}
+    student_discrepancy: dict[str, dict] = {}
+    lesson_id_set = set(lesson_ids)
+
     for r in sum_rows:
-        raw_by_student.setdefault(r.student_code, {})[int(r.unit_id)] = float(r.raw_mastery)
+        sc = str(r.student_code)
+        uid = int(r.unit_id)
+        if uid in lesson_id_set:
+            raw_by_student.setdefault(sc, {})[uid] = float(r.raw_mastery)
+
+        if sc not in student_discrepancy:
+            ev = r.evidence_detail if isinstance(r.evidence_detail, dict) else {}
+            if isinstance(ev, str):
+                try:
+                    ev = json.loads(ev)
+                except Exception:
+                    ev = {}
+            exam_m = ev.get("exam_mastery") if isinstance(ev, dict) else None
+            student_discrepancy[sc] = {
+                "exam_score": round(float(exam_m) * 10, 1) if exam_m is not None else None,
+                "statuses": set(),
+                "raw_scores": [],
+            }
+        student_discrepancy[sc]["raw_scores"].append(float(r.raw_mastery) * 10)
+        if r.integrity_status:
+            student_discrepancy[sc]["statuses"].add(r.integrity_status)
+
     lms_students = set(raw_by_student)
 
     # Roster = distinct (LMS ∪ fact_gradebooks khoá); giữ HS không-LMS hiện diện → INSUFFICIENT.
@@ -180,6 +203,27 @@ def _calculate_forecast(
             if st_obj and st_obj.ability
             else {}
         )
+
+        disc_data = student_discrepancy.get(f.student_code, {})
+        ex_score = disc_data.get("exam_score")
+        raw_list = disc_data.get("raw_scores", [])
+        lms_sc = round(sum(raw_list) / len(raw_list), 1) if raw_list else None
+        statuses = disc_data.get("statuses", set())
+
+        integ_status = "OK"
+        disc_warn = None
+
+        if ex_score is not None and lms_sc is not None:
+            diff = lms_sc - ex_score
+            if diff <= -3.0:
+                integ_status = "LOW_ENGAGEMENT"
+                disc_warn = f"Chênh lệch cao: Điểm thi {ex_score}đ vs LMS {lms_sc}đ (Ít luyện tập LMS). Dự báo có thể thấp hơn phong độ thi thật."
+            elif diff >= 3.0:
+                integ_status = "LMS_EXCEEDS_EXAM"
+                disc_warn = f"Chênh lệch cao: Điểm LMS {lms_sc}đ vs Điểm thi {ex_score}đ (LMS vượt trội). Dự báo có thể cao hơn phong độ thi thật."
+        elif ex_score is None:
+            integ_status = "LMS_ONLY"
+
         student_rows.append(
             StudentForecastRow(
                 student_code=f.student_code,
@@ -193,6 +237,10 @@ def _calculate_forecast(
                     unit_names,
                 ),
                 unit_abilities=ab_dict,
+                integrity_status=integ_status,
+                exam_score=ex_score,
+                lms_score=lms_sc,
+                discrepancy_warning=disc_warn,
             )
         )
 

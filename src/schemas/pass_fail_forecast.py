@@ -21,6 +21,10 @@ class StudentForecastRow(BaseModel):
     verdict: str  # 'PASS' | 'FAIL' | 'BORDERLINE' | 'INSUFFICIENT'
     weak_units: list[WeakUnitInfo] = Field(default_factory=list)  # top 2 bài gây mất điểm nhất
     unit_abilities: dict[int, float | None] = Field(default_factory=dict)  # Bảng năng lực tất cả các bài trong đề
+    integrity_status: str | None = None  # 'OK' | 'LOW_ENGAGEMENT' | 'LMS_EXCEEDS_EXAM' | 'LMS_ONLY'
+    exam_score: float | None = None  # Điểm thi thực tế gần nhất (thang 10)
+    lms_score: float | None = None  # Điểm TB năng lực LMS (thang 10)
+    discrepancy_warning: str | None = None  # Cảnh báo chênh lệch LMS vs Thi
 
 
 class PassFailForecastResult(BaseModel):

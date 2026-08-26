@@ -215,27 +215,40 @@ def build_shortlist(db, subject_id: int, grade_number: int | None, semester_numb
 
 
 def build_node_listing(shortlist: list[CurriculumUnit]) -> str:
-    """Danh sách node dạng "id: tên (khối, HK) — Từ khóa: ... — Tóm tắt: ..." cho prompt.
+    """Danh sách node đầy đủ cho prompt: Tên bài, Mục con (sections), Từ khóa (keywords), Tóm tắt (summary).
 
-    Node có nội dung làm giàu (keywords/summary khi nạp sách) sẽ kèm thêm — giúp LLM map
-    đề chọn đúng node theo nội dung, không chỉ tên. Giới hạn độ dài để không phình prompt.
+    Tận dụng Prompt Caching (DeepSeek / Gemini / OpenAI) vì danh sách node này cố định theo môn/khối.
     """
     lines: list[str] = []
     for unit in shortlist:
-        line = (
+        header = (
             f"- {unit.id}: {unit.name} (khối {unit.grade_number}"
             + (f", HK{unit.semester_number}" if unit.semester_number else "")
             + ")"
         )
+        sub_lines = [header]
+
+        # 1. Mục con trong bài (Sections)
+        if unit.sections:
+            sec_names = []
+            for s in unit.sections:
+                if isinstance(s, dict) and s.get("name"):
+                    sec_names.append(s["name"])
+                elif isinstance(s, str):
+                    sec_names.append(s)
+            if sec_names:
+                sub_lines.append(f"  + Mục con: {'; '.join(sec_names)}")
+
+        # 2. Toàn bộ từ khóa (Keywords)
         if unit.keywords:
-            line += " — Từ khóa: " + ", ".join(unit.keywords[:5])
+            sub_lines.append(f"  + Từ khóa: {', '.join(unit.keywords)}")
+
+        # 3. Tóm tắt đầy đủ kiến thức (Full Summary)
         if unit.summary:
-            summary = unit.summary.strip()
-            if len(summary) > 120:
-                summary = summary[:117].rstrip() + "..."
-            line += " — " + summary
-        lines.append(line)
-    return "\n".join(lines)
+            sub_lines.append(f"  + Tóm tắt nội dung: {unit.summary.strip()}")
+
+        lines.append("\n".join(sub_lines))
+    return "\n\n".join(lines)
 
 
 _MAP_HEADER_LINES = [
@@ -517,7 +530,7 @@ def roll_chapter_to_lessons(
     merged: dict[int, tuple[int, float]],
     catalog_by_id: dict[int, Any],
 ) -> dict[int, tuple[int, float]]:
-    """Khi ma trận đề map vào CHƯƠNG, tách xuống các bài con (chia đều weight).
+    """Khi ma trận đề map vào CHƯƠNG, tách xuống các bài con (chia đều weight) và cộng dồn.
 
     `merged`: {unit_id: (bloom, weight)} từ merge_by_unit.
     `catalog_by_id`: {unit_id: CurriculumUnit} của shortlist (gồm cả chương + bài).
@@ -529,20 +542,33 @@ def roll_chapter_to_lessons(
             lesson_ids_by_chapter.setdefault(unit.parent_id, []).append(uid)
 
     out: dict[int, tuple[int, float]] = {}
+
+    def _add_to_out(target_id: int, b_lvl: int, w: float):
+        if target_id in out:
+            old_b, old_w = out[target_id]
+            new_w = round(old_w + w, 3)
+            if new_w > 0:
+                new_b = int(round((old_b * old_w + b_lvl * w) / new_w))
+            else:
+                new_b = max(old_b, b_lvl)
+            out[target_id] = (new_b, new_w)
+        else:
+            out[target_id] = (b_lvl, round(w, 3))
+
     for unit_id, (bloom_level, weight) in merged.items():
         unit = catalog_by_id.get(unit_id)
         is_chapter = unit is not None and unit.parent_id is None
         if not is_chapter:
-            out[unit_id] = (bloom_level, weight)
+            _add_to_out(unit_id, bloom_level, weight)
             continue
         children = lesson_ids_by_chapter.get(unit_id, [])
         if not children:
             logger.warning("Chương %s không có bài con trong catalog — giữ nguyên weight.", unit_id)
-            out[unit_id] = (bloom_level, weight)
+            _add_to_out(unit_id, bloom_level, weight)
             continue
         parts = _split_even_preserving_total(weight, len(children))
         for lesson_id, part in zip(children, parts, strict=False):
-            out[lesson_id] = (bloom_level, part)
+            _add_to_out(lesson_id, bloom_level, part)
     return out
 
 

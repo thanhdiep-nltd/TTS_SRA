@@ -1,26 +1,28 @@
 """src/services/item_mastery.py — Độ thành thạo theo chương từ LMS Item-Level + đối soát chống gian lận.
 
 Mục tiêu: từ dữ liệu item-response (mỗi câu hỏi trắc nghiệm LMS) của 1 học sinh, ước lượng
-mức độ thành thạo (mastery) cho TỪNG chương (curriculum_units), sau đó đối soát với điểm thi
-trên lớp (giám thị) để hạ nhiệt gian lận và xuất confidence/integrity.
-
-Khác `src/services/knowledge_gap.py` (chỉ dùng điểm tổng → ill-posed): module này dùng
-Item-Response Matrix để giải bài toán dưới xác định bằng nhiều phép đo trên cùng chương.
-
-Module này là hàm THUẦN (không DB, không LLM) → dễ unit test.
+mức độ thành thạo (mastery) cho TỪNG chương/bài (curriculum_units) với:
+1. Độ tin cậy đa chiều (C_total = C_volume × C_bloom) — xử lý triệt để nghịch lý Bloom 1.
+2. Đánh giá theo Bank thực tế (bank_bloom_set) — không phạt oan học sinh.
+3. Suy luận thứ bậc nhận thức Guttman (Cognitive Hierarchy Imputation).
+4. Đối soát bất cân xứng với điểm thi trên lớp.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
-# Tái dùng bảng hệ số khó Bloom của knowledge_gap (không import để tránh phụ thuộc vòng tròn).
+from sqlalchemy import text
+
+# Tái dùng bảng hệ số khó Bloom (chuẩn hóa độ sâu nhận thức)
 _BLOOM_DIFFICULTY = {1: 0.5, 2: 0.7, 3: 1.0, 4: 1.3, 5: 1.6, 6: 2.0}
+_TOTAL_BLOOM_WEIGHT_6 = sum(_BLOOM_DIFFICULTY.values())  # 7.1
 
-# Ngưỡng: số câu tối thiểu trên 1 chương để coi là có đủ dữ liệu.
+# Ngưỡng: số câu tối thiểu trên 1 chương để coi là có đủ dữ liệu thống kê.
 MIN_ITEMS = 5
-COVERAGE_MIN = 0.6  # dưới mức này → INSUFFICIENT / confidence LOW
+COVERAGE_MIN = 0.6
 GAP_MASTERY_THRESHOLD = 0.6  # đồng nhất với knowledge_gap
 
 # Ngưỡng đối soát Δ = raw − exam.
@@ -34,10 +36,8 @@ Confidence = Literal["HIGH", "MEDIUM", "LOW", "INSUFFICIENT"]
 class ItemResult:
     """1 câu response hợp lệ (đã lọc nhiễu) dùng để tính mastery.
 
-    unit_id: chương được tính (với câu multi-chapter, mỗi chương có 1 ItemResult riêng).
+    unit_id: chương/bài được tính.
     unit_weight: trọng số của câu này đóng góp vào chương (mặc định 1.0 = câu 1 chương).
-        Với câu map nhiều chương (lms_question_unit), weight phân bổ theo trọng số
-        (vd câu 60% chương A + 40% chương B) và tổng các weight của 1 câu = 1.0.
     """
 
     unit_id: int
@@ -70,37 +70,138 @@ def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
-def raw_unit_mastery(items: list[ItemResult]) -> UnitMastery:
-    """Tính mastery thô Bloom-weighted + coverage cho 1 chương từ các item đã lọc.
+def raw_unit_mastery(
+    items: list[ItemResult],
+    bank_bloom_set: set[int] | None = None,
+) -> UnitMastery:
+    """Tính mastery thô có suy luận Guttman và độ tin cậy phân tách (Volume × Bloom).
 
-    items: các câu response của học sinh thuộc 1 unit (đã chọn is_best, bỏ nhiễu);
-    với câu multi-chapter, mỗi chương có ItemResult riêng với unit_weight theo lms_question_unit.
-    raw_u = Σ(score_received × bloom_factor × unit_weight) / Σ(max_score × bloom_factor × unit_weight).
+    1. Gom câu hỏi theo từng bậc Bloom k để tính p_k (xác suất làm đúng thực tế).
+    2. Xác định phạm vi đánh giá eval_blooms = bank_bloom_set (hoặc các bậc có trong items).
+    3. Suy luận Guttman: Bậc k thiếu dữ liệu sẽ kế thừa xác suất p_k = p_higher từ bậc cao hơn gần nhất.
+    4. Tính M_scope: Bloom-weighted mastery trên phạm vi eval_blooms.
+    5. Tính C_total = C_volume * C_bloom:
+       - C_volume = min(1.0, n_items / MIN_ITEMS)
+       - depth_ratio = sum(beta_k for k in eval_blooms) / 7.1
+       - breadth_ratio = len(direct_blooms & eval_blooms) / len(eval_blooms)
+       - C_bloom = (depth_ratio ** 0.6) * (breadth_ratio ** 0.4)
     """
     n = len(items)
     if n == 0:
         return UnitMastery(unit_id=0)
-    total_max = sum(
-        i.max_score * _BLOOM_DIFFICULTY.get(i.bloom_level, 1.0) * i.unit_weight for i in items
-    )
-    if total_max <= 0:
+
+    # 1. Tính p_k cho từng bậc Bloom có dữ liệu trực tiếp
+    bloom_earned: dict[int, float] = {}
+    bloom_max: dict[int, float] = {}
+    for i in items:
+        b = i.bloom_level if i.bloom_level in _BLOOM_DIFFICULTY else 3
+        w = i.unit_weight
+        bloom_earned[b] = bloom_earned.get(b, 0.0) + (i.score_received * w)
+        bloom_max[b] = bloom_max.get(b, 0.0) + (i.max_score * w)
+
+    direct_blooms = {b for b, m in bloom_max.items() if m > 0}
+    p_direct: dict[int, float] = {}
+    for b in direct_blooms:
+        p_direct[b] = _clamp01(bloom_earned[b] / bloom_max[b]) if bloom_max[b] > 0 else 0.0
+
+    if not direct_blooms:
         return UnitMastery(unit_id=items[0].unit_id, n_items=n)
-    total_earned = sum(
-        i.score_received * _BLOOM_DIFFICULTY.get(i.bloom_level, 1.0) * i.unit_weight for i in items
-    )
+
+    # 2. Xác định phạm vi eval_blooms
+    if bank_bloom_set:
+        eval_blooms = {b for b in bank_bloom_set if b in _BLOOM_DIFFICULTY}
+    else:
+        eval_blooms = set(direct_blooms)
+    if not eval_blooms:
+        eval_blooms = set(direct_blooms)
+
+    # 3. Suy luận Guttman cho các bậc trong eval_blooms chưa có câu hỏi
+    # "Làm được bậc cao thì mặc nhiên nắm vững các bậc thấp hơn"
+    sorted_direct = sorted(direct_blooms)
+    p_final: dict[int, float] = {}
+    bloom_detail: dict[int, dict[str, Any]] = {}
+
+    for b in sorted(eval_blooms):
+        if b in direct_blooms:
+            p_final[b] = p_direct[b]
+            bloom_detail[b] = {
+                "p": round(p_direct[b], 4),
+                "imputed": False,
+                "source_bloom": b,
+                "n_items": sum(1 for i in items if i.bloom_level == b),
+            }
+        else:
+            # Tìm bậc higher > b gần nhất có dữ liệu
+            higher_levels = [h for h in sorted_direct if h > b]
+            if higher_levels:
+                h_nearest = higher_levels[0]
+                p_val = p_direct[h_nearest]
+                p_final[b] = p_val
+                bloom_detail[b] = {
+                    "p": round(p_val, 4),
+                    "imputed": True,
+                    "source_bloom": h_nearest,
+                    "n_items": 0,
+                }
+            else:
+                p_final[b] = 0.0
+                bloom_detail[b] = {
+                    "p": 0.0,
+                    "imputed": False,
+                    "missing": True,
+                    "n_items": 0,
+                }
+
+    # 4. Tính M_scope (Mastery trong phạm vi eval_blooms)
+    sum_weight = sum(_BLOOM_DIFFICULTY[b] for b in eval_blooms)
+    if sum_weight > 0:
+        sum_earned = sum(p_final[b] * _BLOOM_DIFFICULTY[b] for b in eval_blooms)
+        m_scope = _clamp01(sum_earned / sum_weight)
+    else:
+        m_scope = 0.0
+
+    # 5. Tính Độ tin cậy C_total = C_volume * C_bloom
+    c_volume = min(1.0, n / float(MIN_ITEMS))
+    depth_ratio = min(1.0, sum(_BLOOM_DIFFICULTY[b] for b in eval_blooms) / _TOTAL_BLOOM_WEIGHT_6)
+
+    # breadth: tỉ lệ các bậc trong eval_blooms có dữ liệu trực tiếp
+    direct_in_eval = direct_blooms & eval_blooms
+    breadth_ratio = (len(direct_in_eval) / len(eval_blooms)) if eval_blooms else 1.0
+    breadth_ratio = min(1.0, max(0.0, breadth_ratio))
+
+    c_bloom = (depth_ratio ** 0.6) * (breadth_ratio ** 0.4)
+    c_total = round(c_volume * c_bloom, 4)
+
+    # Phân loại nhãn confidence: LOW (<0.45), MEDIUM (0.45 - 0.75), HIGH (>=0.75)
+    if c_total >= 0.75:
+        confidence = "HIGH"
+    elif c_total >= 0.45:
+        confidence = "MEDIUM"
+    else:
+        confidence = "LOW"
+
     n_correct = sum(1 for i in items if i.score_received > 0)
-    coverage = min(1.0, n / MIN_ITEMS)
-    raw = _clamp01(total_earned / total_max)
-    confidence: str = "HIGH" if coverage >= COVERAGE_MIN else "MEDIUM"
+    coverage = round(c_volume, 3)
+
     return UnitMastery(
         unit_id=items[0].unit_id,
-        raw_mastery=round(raw, 4),
+        raw_mastery=round(m_scope, 4),
         n_items=n,
         n_correct=n_correct,
-        coverage=round(coverage, 3),
+        coverage=coverage,
         confidence=confidence,
         integrity_status="OK",
-        evidence_detail={"n_items": n, "coverage": round(coverage, 3)},
+        evidence_detail={
+            "n_items": n,
+            "coverage": coverage,
+            "c_total": c_total,
+            "c_volume": round(c_volume, 4),
+            "c_bloom": round(c_bloom, 4),
+            "depth_ratio": round(depth_ratio, 4),
+            "breadth_ratio": round(breadth_ratio, 4),
+            "eval_blooms": sorted(list(eval_blooms)),
+            "bloom_detail": bloom_detail,
+        },
     )
 
 
@@ -151,13 +252,13 @@ def merge_onclass_adjustment(
     return raw
 
 
-def finalize_mastery(items: list[ItemResult], exam_mastery: float | None) -> UnitMastery:
-    """Pipeline đầy đủ: raw → đối soát → trả UnitMastery hoàn chỉnh cho 1 chương.
-
-    items: item-response đã lọc của 1 unit (best attempt, không nhiễu).
-    exam_mastery: mastery từ điểm thi trên lớp (None nếu không có).
-    """
-    raw = raw_unit_mastery(items)
+def finalize_mastery(
+    items: list[ItemResult],
+    exam_mastery: float | None = None,
+    bank_bloom_set: set[int] | None = None,
+) -> UnitMastery:
+    """Pipeline đầy đủ: raw (có suy luận + Bloom scope) → đối soát → trả UnitMastery hoàn chỉnh."""
+    raw = raw_unit_mastery(items, bank_bloom_set=bank_bloom_set)
     if raw.raw_mastery is not None:
         raw = merge_onclass_adjustment(raw, exam_mastery)
     return raw
@@ -188,20 +289,38 @@ def recalc_unit_mastery(
     """Tính lại và ghi student_unit_mastery từ lms_question_response + lms_question_unit.
 
     1. Map câu hỏi sang unit_id qua lms_question_unit (weight).
+    1b. Đọc bank_bloom_map: phạm vi Bloom thực tế có trong ngân hàng câu hỏi của từng unit.
     2. Đọc responses sạch (is_best_attempt = TRUE, integrity_flag = 0).
     3. Nhóm theo (student_code, unit_id) -> list[ItemResult].
-    4. Tính finalize_mastery cho từng unit của từng học sinh.
+    4. Tính finalize_mastery (có bank_bloom_set + suy luận Guttman) cho từng unit của từng học sinh.
     5. UPSERT vào public.student_unit_mastery.
     6. Trả về tổng số bản ghi đã tính toán và cập nhật.
     """
-    import json
-    from sqlalchemy import text
-
     # 1. Map câu → [(unit_id, weight)]
     unit_rows = db.execute(text("SELECT question_id, unit_id, weight FROM public.lms_question_unit")).fetchall()
     unit_map: dict[int, list[tuple[int, float]]] = {}
     for r in unit_rows:
         unit_map.setdefault(int(r.question_id), []).append((int(r.unit_id), float(r.weight)))
+
+    # 1b. Đọc bank_bloom_map: danh sách Bloom thực tế có trong ngân hàng cho từng unit
+    bank_bloom_map: dict[int, set[int]] = {}
+    try:
+        bank_bloom_rows = db.execute(
+            text("""
+                SELECT lqu.unit_id, lqb.bloom_level
+                FROM public.lms_question_unit lqu
+                JOIN public.lms_question_bank lqb ON lqu.question_id = lqb.question_id
+                WHERE lqb.subject_id = :sid AND lqb.bloom_level IS NOT NULL
+            """),
+            {"sid": subject_id},
+        ).fetchall()
+        for r in (bank_bloom_rows or []):
+            uid = getattr(r, "unit_id", None)
+            bl = getattr(r, "bloom_level", None)
+            if uid is not None and bl is not None:
+                bank_bloom_map.setdefault(int(uid), set()).add(int(bl))
+    except Exception:
+        bank_bloom_map = {}
 
     # 2. Đọc responses sạch của môn (kèm tenant nếu có) qua JOIN lms_question_bank
     school_cond = "AND lqr.so_school_id = :school_id" if school_id else ""
@@ -254,7 +373,6 @@ def recalc_unit_mastery(
         return 0
 
     # 3.1 Đọc điểm thi gần nhất từ sổ điểm (fact_gradebooks & fact_gradebooks_moet)
-    # để tính exam_mastery (0..1) phục vụ đối soát chéo LMS ↔ Thi.
     exam_mastery_by_student: dict[str, float] = {}
     try:
         grade_cond = "AND fg.so_school_id = :school_id" if school_id else ""
@@ -290,7 +408,6 @@ def recalc_unit_mastery(
                 mg = float(gr.max_grade) if gr.max_grade and float(gr.max_grade) > 0 else 10.0
                 exam_mastery_by_student[sc] = max(0.0, min(1.0, round(fg / mg, 4)))
     except Exception:
-        # Nếu lỗi query sổ điểm, rollback transaction để không làm bẩn session và fallback
         try:
             db.rollback()
         except Exception:
@@ -327,7 +444,7 @@ def recalc_unit_mastery(
     count = 0
     for (st_code, st_school, uid), items in by_student_unit.items():
         exam_m = exam_mastery_by_student.get(st_code)
-        m = finalize_mastery(items, exam_mastery=exam_m)
+        m = finalize_mastery(items, exam_mastery=exam_m, bank_bloom_set=bank_bloom_map.get(uid))
         if m.raw_mastery is None:
             continue
 

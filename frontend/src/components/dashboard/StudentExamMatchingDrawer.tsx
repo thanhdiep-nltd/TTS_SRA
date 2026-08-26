@@ -214,6 +214,27 @@ export default function StudentExamMatchingDrawer({ student, examPaper, onClose 
                     </button>
                 </div>
 
+                {/* THÔNG BÁO CẢNH BÁO ĐỘ LỆCH THI vs LMS NẾU CÓ */}
+                {student.discrepancy_warning && (
+                    <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-3 shadow-2xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-slate-900 dark:text-white">Lưu ý độ tin cậy dự báo:</span>
+                                <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-amber-200/70 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+                                    {student.integrity_status === "LOW_ENGAGEMENT" ? "Ít luyện tập LMS" : student.integrity_status === "LMS_EXCEEDS_EXAM" ? "LMS vượt trội" : "Chênh lệch điểm"}
+                                </span>
+                            </div>
+                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                                {student.discrepancy_warning}
+                            </p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                                💡 Lưu ý: Hệ thống dự báo dựa trên năng lực làm bài LMS. Do học sinh có điểm thi trên lớp khác biệt so với kết quả làm bài tập, kết quả dự báo này có thể kém chuẩn xác hơn so với phong độ thi thực tế.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* THẺ TỔNG QUAN CHẨN ĐOÁN & BỘ LỌC CÂU HỎI */}
                 <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3 shrink-0">
                     <div className="grid grid-cols-3 gap-2.5">

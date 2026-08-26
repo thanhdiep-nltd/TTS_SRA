@@ -1524,6 +1524,10 @@ export interface StudentForecastRow {
   verdict: "PASS" | "FAIL" | "BORDERLINE" | "INSUFFICIENT";
   weak_units: WeakUnitInfo[];     // top 2 bài yếu nhất gây mất điểm
   unit_abilities?: Record<number, number | null>;
+  integrity_status?: string | null;
+  exam_score?: number | null;
+  lms_score?: number | null;
+  discrepancy_warning?: string | null;
 }
 
 export interface PassFailForecastResult {
