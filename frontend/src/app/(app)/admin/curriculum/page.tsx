@@ -1341,16 +1341,6 @@ export default function AdminCurriculumPage() {
       {/* TAB 1: THƯ VIỆN SÁCH & CÂY MỤC LỤC */}
       {mainTab === "catalog" && (
         <div className="space-y-6">
-          {/* Banner: KHÔNG RAG */}
-          <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>
-              <strong>Không dùng RAG:</strong> dữ liệu ghi thẳng vào bảng{" "}
-              <code className="text-xs">curriculum_units</code>, không đi qua Qdrant/Airflow. RAG chỉ phục vụ
-              chat hỏi đáp SGK (trang &quot;Kho tri thức &amp; SGK&quot;).
-            </span>
-          </div>
-
           {/* Bộ lọc (chỉ hiển thị ở view danh sách sách; khi xem node của 1 cuốn thì ẩn) */}
           {view === "books" && (
             <section className="bg-white dark:bg-slate-900 border rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-sm">

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
     AlertCircle,
     AlertTriangle,
+    ArrowRight,
     Award,
     BarChart3,
     BookOpen,
@@ -97,7 +98,6 @@ export default function PassFailForecastPage() {
     const [result, setResult] = useState<PassFailForecastResult | null>(null);
     const [filterKey, setFilterKey] = useState<FilterKey>("all");
     const [searchText, setSearchText] = useState("");
-    const [expandedCode, setExpandedCode] = useState<string | null>(null);
     const [toastMsg, setToastMsg] = useState<string | null>(null);
 
     // ——— Upload state ———
@@ -123,7 +123,15 @@ export default function PassFailForecastPage() {
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisData, setAnalysisData] = useState<{
         cdi: number | null;
-        items: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
+        items: {
+            topic: string;
+            bloom_level: number;
+            weight: number;
+            unit_name: string | null;
+            excerpt?: string | null;
+            image_url?: string | null;
+            has_figure?: boolean | null;
+        }[];
         coverage: { catalog_total: number; matched: number; ratio: number | null };
         concentration: { top_unit_name: string | null; top_share: number | null; is_concentrated: boolean };
         bloom_distribution: Record<string, number> | null;
@@ -665,8 +673,6 @@ export default function PassFailForecastPage() {
                         {filteredStudents.length > 0 ? (
                             <ForecastTable
                                 students={filteredStudents}
-                                expandedCode={expandedCode}
-                                onToggleExpand={(code) => setExpandedCode(code === expandedCode ? null : code)}
                                 onOpenDrawer={(s) => setSelectedStudentForDrawer(s)}
                             />
                         ) : (
@@ -712,7 +718,15 @@ function ExamIntelligencePanel({
 }: {
     analysisData: {
         cdi: number | null;
-        items: { topic: string; bloom_level: number; weight: number; unit_name: string | null; excerpt?: string | null }[];
+        items: {
+            topic: string;
+            bloom_level: number;
+            weight: number;
+            unit_name: string | null;
+            excerpt?: string | null;
+            image_url?: string | null;
+            has_figure?: boolean | null;
+        }[];
         coverage: { catalog_total: number; matched: number; ratio: number | null };
         concentration: { top_unit_name: string | null; top_share: number | null; is_concentrated: boolean };
         bloom_distribution: Record<string, number> | null;
@@ -927,38 +941,32 @@ function FilterChip({
 
 // ——— Forecast Table (PANEL PHẢI) ———
 function ForecastTable({
-    students, expandedCode, onToggleExpand, onOpenDrawer,
+    students,
+    onOpenDrawer,
 }: {
     students: StudentForecastRow[];
-    expandedCode: string | null;
-    onToggleExpand: (code: string) => void;
     onOpenDrawer: (student: StudentForecastRow) => void;
 }) {
     return (
         <div className="max-h-[580px] overflow-auto">
-            <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-xs z-10">
+            <table className="w-full text-xs table-fixed">
+                <thead className="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-xs z-10">
                     <tr className="text-left text-[11px] font-bold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                        <th className="px-3 py-2.5 w-6"></th>
-                        <th className="px-0 py-2.5">Học sinh</th>
-                        <th className="px-3 py-2.5">Điểm dự kiến</th>
-                        <th className="px-2 py-2.5">Kết quả</th>
-                        <th className="px-3 py-2.5">Top bài hổng trong đề</th>
+                        <th className="px-4 py-2.5 w-[32%]">Học sinh</th>
+                        <th className="px-3 py-2.5 w-[20%]">Điểm dự kiến</th>
+                        <th className="px-2 py-2.5 w-[16%]">Kết quả</th>
+                        <th className="px-3 py-2.5 w-[22%]">Top bài hổng trong đề</th>
+                        <th className="px-3 py-2.5 w-[10%] text-right">Chi tiết</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {students.map((s) => {
-                        const isExpanded = expandedCode === s.student_code;
-                        return (
-                            <ForecastRow
-                                key={s.student_code}
-                                student={s}
-                                isExpanded={isExpanded}
-                                onToggle={() => onToggleExpand(s.student_code)}
-                                onOpenDrawer={onOpenDrawer}
-                            />
-                        );
-                    })}
+                    {students.map((s) => (
+                        <ForecastRow
+                            key={s.student_code}
+                            student={s}
+                            onOpenDrawer={onOpenDrawer}
+                        />
+                    ))}
                 </tbody>
             </table>
         </div>
@@ -966,11 +974,10 @@ function ForecastTable({
 }
 
 function ForecastRow({
-    student, isExpanded, onToggle, onOpenDrawer,
+    student,
+    onOpenDrawer,
 }: {
     student: StudentForecastRow;
-    isExpanded: boolean;
-    onToggle: () => void;
     onOpenDrawer: (student: StudentForecastRow) => void;
 }) {
     const isInsufficient = student.verdict === "INSUFFICIENT" || student.predicted_score === null;
@@ -988,144 +995,92 @@ function ForecastRow({
     const scorePct = student.predicted_score !== null ? Math.min(1, student.predicted_score / 10) : 0;
 
     return (
-        <>
-            <tr
-                className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 cursor-pointer transition-colors group"
-                onClick={onToggle}
-            >
-                <td className="px-3 py-2.5 text-slate-400">
-                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-brand-600" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </td>
-                <td className="px-0 py-2.5">
-                    <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {(student.student_name ?? student.student_code).charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                            <span className="font-bold text-slate-800 dark:text-slate-200 block truncate leading-tight">
-                                {student.student_name ?? student.student_code}
-                            </span>
-                            <span className="text-[10px] text-slate-400 block truncate">
-                                {student.student_code} {student.class_name ? `· ${student.class_name}` : ""}
-                            </span>
-                        </div>
+        <tr
+            className="hover:bg-brand-50/40 dark:hover:bg-slate-800/60 cursor-pointer transition-colors group h-[56px]"
+            onClick={() => onOpenDrawer(student)}
+            title="Nhấp để xem đối sánh chi tiết từng câu hỏi trong đề"
+        >
+            {/* Cột 1: Học sinh */}
+            <td className="px-4 py-2.5">
+                <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200/60 dark:border-slate-700">
+                        {(student.student_name ?? student.student_code).charAt(0).toUpperCase()}
                     </div>
-                </td>
-                <td className="px-3 py-2.5 whitespace-nowrap">
-                    {student.predicted_score !== null ? (
-                        <div className="flex items-center gap-2">
-                            <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden shrink-0">
-                                <div
-                                    className={`h-full rounded-full ${scorePct >= 0.6 ? "bg-emerald-500" : scorePct >= 0.5 ? "bg-amber-500" : "bg-rose-500"}`}
-                                    style={{ width: `${scorePct * 100}%` }}
-                                />
-                            </div>
-                            <span className="text-slate-700 dark:text-slate-300 font-mono text-xs font-bold">
+                    <div className="min-w-0">
+                        <span className="font-bold text-slate-800 dark:text-slate-200 block truncate group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors text-xs">
+                            {student.student_name ?? student.student_code}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block truncate font-mono">
+                            {student.student_code} {student.class_name ? `· ${student.class_name}` : ""}
+                        </span>
+                    </div>
+                </div>
+            </td>
+
+            {/* Cột 2: Điểm dự kiến */}
+            <td className="px-3 py-2.5 whitespace-nowrap">
+                {student.predicted_score !== null ? (
+                    <div className="space-y-1 max-w-[90px]">
+                        <div className="flex items-center justify-between">
+                            <span className="text-slate-800 dark:text-slate-200 font-mono text-xs font-black">
                                 {student.predicted_score.toFixed(2)}
                             </span>
                         </div>
-                    ) : (
-                        <span className="text-slate-400">—</span>
-                    )}
-                </td>
-                <td className="px-2 py-2.5 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${verdictCls}`}>
-                        {verdictLabel}
-                    </span>
-                </td>
-                <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                        {student.weak_units.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                                {student.weak_units.map((wu, i) => (
-                                    <span
-                                        key={i}
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-100 dark:border-rose-900/40"
-                                        title={`${wu.unit_name} — Điểm LMS: ${wu.ability !== null ? wu.ability.toFixed(1) : "—"}/10 · Chiếm ${(wu.exam_weight * 100).toFixed(0)}% điểm đề`}
-                                    >
-                                        <AlertTriangle className="w-2.5 h-2.5 text-rose-500 shrink-0" />
-                                        <span className="max-w-[110px] truncate">{wu.unit_name}</span>
-                                        <span className="font-bold opacity-85">({(wu.exam_weight * 100).toFixed(0)}%)</span>
-                                    </span>
-                                ))}
-                            </div>
-                        ) : (
-                            <span className="text-slate-400">—</span>
-                        )}
-
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenDrawer(student);
-                            }}
-                            className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 text-[10px] font-semibold transition-all cursor-pointer shrink-0"
-                            title="Mở Side Panel đối sánh từng câu hỏi với năng lực LMS"
-                        >
-                            <Target className="w-3 h-3" />
-                            <span>Đối sánh cả đề</span>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-            {/* Expanded row Drill-down */}
-            {isExpanded && !isInsufficient && (
-                <tr>
-                    <td colSpan={5} className="bg-slate-50/80 dark:bg-slate-800/40 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-                        <div className="text-xs space-y-2.5">
-                            <p className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                                <span>Top bài học sinh bị hổng nặng nhất trong đề thi (Cần phụ đạo gấp):</span>
-                            </p>
-                            {student.weak_units.length > 0 ? (
-                                <div className="space-y-1.5">
-                                    {student.weak_units.map((wu, i) => (
-                                        <div key={i} className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
-                                            <span className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[220px]">
-                                                {wu.unit_name}
-                                            </span>
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-slate-400 text-[11px]">Năng lực LMS:</span>
-                                                    <span className="font-black text-rose-600 dark:text-rose-400 font-mono">
-                                                        {wu.ability !== null ? wu.ability.toFixed(1) : "—"}/10
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="text-slate-400 text-[11px]">Trọng số đề:</span>
-                                                    <span className="font-bold text-slate-800 dark:text-slate-200">
-                                                        {(wu.exam_weight * 100).toFixed(0)}% điểm
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-slate-400 text-xs">Học sinh không có bài yếu trọng yếu nào trong đề thi này.</p>
-                            )}
-
-                            <div className="pt-2 flex items-center justify-between gap-3 flex-wrap border-t border-slate-200/60 dark:border-slate-700/60">
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic flex items-center gap-1.5">
-                                    <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                    <span>Lời khuyên sư phạm: Cần củng cố sớm các bài trên trước ngày thi để kéo điểm dự báo lên mức ĐẬU an toàn.</span>
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onOpenDrawer(student);
-                                    }}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 text-xs font-semibold transition-all cursor-pointer shadow-2xs shrink-0"
-                                >
-                                    <Target className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
-                                    <span>Đối sánh chi tiết cả đề (Side Panel)</span>
-                                </button>
-                            </div>
+                        <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all ${scorePct >= 0.6 ? "bg-emerald-500" : scorePct >= 0.5 ? "bg-amber-500" : "bg-rose-500"}`}
+                                style={{ width: `${scorePct * 100}%` }}
+                            />
                         </div>
-                    </td>
-                </tr>
-            )}
-        </>
+                    </div>
+                ) : (
+                    <span className="text-slate-400 italic text-[11px]">Chưa đủ LMS</span>
+                )}
+            </td>
+
+            {/* Cột 3: Kết quả */}
+            <td className="px-2 py-2.5 whitespace-nowrap">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${verdictCls}`}>
+                    {verdictLabel}
+                </span>
+            </td>
+
+            {/* Cột 4: Top bài hổng trong đề */}
+            <td className="px-3 py-2.5">
+                {student.weak_units.length > 0 ? (
+                    <div className="flex items-center gap-1 flex-wrap">
+                        {student.weak_units.slice(0, 2).map((wu, i) => (
+                            <span
+                                key={i}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-100 dark:border-rose-900/40 truncate max-w-[130px]"
+                                title={`${wu.unit_name} — Điểm LMS: ${wu.ability !== null ? wu.ability.toFixed(1) : "—"}/10 · Chiếm ${(wu.exam_weight * 100).toFixed(0)}% điểm đề`}
+                            >
+                                <span className="truncate">{wu.unit_name}</span>
+                                <span className="font-bold opacity-85 shrink-0 bg-white dark:bg-rose-900/60 px-1 py-0.2 rounded text-[9px]">
+                                    {(wu.exam_weight * 100).toFixed(0)}%
+                                </span>
+                            </span>
+                        ))}
+                        {student.weak_units.length > 2 && (
+                            <span className="text-[10px] text-slate-400 font-semibold px-1">
+                                +{student.weak_units.length - 2}
+                            </span>
+                        )}
+                    </div>
+                ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        Vững ma trận đề
+                    </span>
+                )}
+            </td>
+
+            {/* Cột 5: Nút chi tiết */}
+            <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                <span className="text-brand-600 dark:text-brand-400 text-xs font-bold inline-flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                    Chi tiết <ArrowRight className="w-3 h-3" />
+                </span>
+            </td>
+        </tr>
     );
 }

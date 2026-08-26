@@ -1,9 +1,8 @@
-"""Nạp catalog chuẩn chương trình (bảng phẳng curriculum_units) — KHÔNG RAG.
+"""Nạp catalog chuẩn chương trình (bảng phẳng curriculum_units).
 
 Dùng cho API admin (src/api/v1/curriculum.py) và service ingest sách
 (src/services/curriculum_ingest.py). M0/M5 trong docs_vsf/plan_cdi_kg_anchored.md:
-bảng phẳng = bộ xương chương trình (chương/bài) — LLM map câu hỏi đề thi vào đây;
-KHÔNG đi qua Qdrant/Airflow (RAG chỉ dành cho chat hỏi đáp SGK).
+bảng phẳng = bộ xương chương trình (chương/bài) — LLM map câu hỏi đề thi vào đây.
 """
 
 from __future__ import annotations

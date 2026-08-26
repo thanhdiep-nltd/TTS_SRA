@@ -1,8 +1,7 @@
-"""API admin quản lý catalog chuẩn chương trình (bảng phẳng curriculum_units) — KHÔNG RAG.
+"""API admin quản lý catalog chuẩn chương trình (bảng phẳng curriculum_units).
 
-M5 bổ sung: xem cây chương/bài, upload mục lục (JSON/markdown) ghi thẳng vào
+M5 bổ sung: xem cây chương/bài, upload mục lục (JSON/markdown) ghi vào
 curriculum_units, bật/tắt node (ẩn khỏi shortlist của LLM map). Chỉ ADMIN.
-Dữ liệu này KHÔNG đi qua Qdrant/Airflow — RAG chỉ dành cho chat hỏi đáp SGK.
 
 Hàng đợi nạp sách giáo khoa: DB-backed (bảng curriculum_ingest_jobs, giống ews_pipeline_jobs),
 worker src/services/curriculum_job_worker.py chạy 1 job/lúc theo FIFO. POST /ingest-book tạo
