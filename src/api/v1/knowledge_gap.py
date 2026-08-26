@@ -927,12 +927,21 @@ def get_class_diagnostic_roster(
             gap_c = sum(1 for g in all_leaf_units if (g.raw_mastery if g.raw_mastery is not None else g.mastery) < 0.60)
             mastered_c = sum(1 for g in all_leaf_units if (g.raw_mastery if g.raw_mastery is not None else g.mastery) >= 0.60)
 
-            # Xác định trạng thái đối soát tổng thể theo Quy tắc Đa số (Majority Rule)
+            # 1. Xác định evidence_source tổng thể bằng Majority Vote
+            sources = [g.evidence_source for g in raw_items if g.evidence_source]
+            ev_src = max(set(sources), key=sources.count) if sources else "HYBRID"
+
+            total_items = sum(g.n_items or 0 for g in raw_items)
+            avg_cov = (sum(g.coverage or 0.0 for g in raw_items) / len(raw_items)) if raw_items else 0.0
+
+            # 2. Xác định trạng thái đối soát tổng thể theo Quy tắc Đa số (Majority Rule)
             n_low = sum(1 for g in raw_items if g.integrity_status == "LOW_ENGAGEMENT")
             n_exceed = sum(1 for g in raw_items if g.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING"))
             n_ok = sum(1 for g in raw_items if g.integrity_status == "OK")
 
-            if n_exceed > 0 and n_exceed >= n_ok:
+            if total_items == 0 or all(g.integrity_status in ("EXAM_ONLY", "FALLBACK_EXAM") for g in raw_items):
+                overall_integ = "EXAM_ONLY"
+            elif n_exceed > 0 and n_exceed >= n_ok:
                 overall_integ = "LMS_EXCEEDS_EXAM"
             elif n_low > 0 and n_low >= n_ok:
                 overall_integ = "LOW_ENGAGEMENT"
@@ -942,11 +951,6 @@ def get_class_diagnostic_roster(
                 overall_integ = "LMS_ONLY"
             else:
                 overall_integ = "OK"
-
-            ev_src = raw_items[0].evidence_source if raw_items else "HYBRID"
-
-            total_items = sum(g.n_items or 0 for g in raw_items)
-            avg_cov = (sum(g.coverage or 0.0 for g in raw_items) / len(raw_items)) if raw_items else 0.0
 
             # Tính độ tin cậy trung bình thực tế từ các bài học của học sinh
             conf_scores = [g.confidence_score for g in raw_items if g.confidence_score is not None]

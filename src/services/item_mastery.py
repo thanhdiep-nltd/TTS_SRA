@@ -207,16 +207,25 @@ def raw_unit_mastery(
         m_scope = 0.0
 
     # 5. Tính Độ tin cậy C_total = C_volume * C_bloom
-    c_volume = min(1.0, n / float(MIN_ITEMS))
-    depth_ratio = min(1.0, sum(_BLOOM_DIFFICULTY[b] for b in eval_blooms) / _TOTAL_BLOOM_WEIGHT_6)
+    # C_volume: n >= 15 là đạt 100% volume, n >= 5 là đạt 80% volume, n < 5 giảm nhanh
+    if n >= 15:
+        c_volume = 1.0
+    elif n >= MIN_ITEMS:
+        c_volume = 0.80 + 0.20 * ((n - MIN_ITEMS) / (15.0 - MIN_ITEMS))
+    else:
+        c_volume = (n / float(MIN_ITEMS)) * 0.70
 
-    # breadth: tỉ lệ các bậc trong eval_blooms có dữ liệu trực tiếp
+    # breadth_ratio: tỉ lệ các bậc trong eval_blooms có dữ liệu trực tiếp
     direct_in_eval = direct_blooms & eval_blooms
     breadth_ratio = (len(direct_in_eval) / len(eval_blooms)) if eval_blooms else 1.0
     breadth_ratio = min(1.0, max(0.0, breadth_ratio))
 
-    c_bloom = (depth_ratio ** 0.6) * (breadth_ratio ** 0.4)
-    c_total = round(c_volume * c_bloom, 4)
+    # depth_factor: thưởng nếu học sinh làm được bậc nhận thức cao hơn
+    max_bloom = max(direct_blooms) if direct_blooms else 1
+    depth_factor = 0.80 + 0.20 * min(1.0, max_bloom / 4.0)
+
+    c_bloom = (breadth_ratio ** 0.5) * depth_factor
+    c_total = round(min(1.0, c_volume * c_bloom), 4)
 
     # Phân loại nhãn confidence: LOW (<0.45), MEDIUM (0.45 - 0.75), HIGH (>=0.75)
     if c_total >= 0.75:
@@ -254,7 +263,7 @@ def raw_unit_mastery(
             "c_total": c_total,
             "c_volume": round(c_volume, 4),
             "c_bloom": round(c_bloom, 4),
-            "depth_ratio": round(depth_ratio, 4),
+            "depth_ratio": round(depth_factor, 4),
             "breadth_ratio": round(breadth_ratio, 4),
             "eval_blooms": sorted(list(eval_blooms)),
             "bloom_detail": bloom_detail,
@@ -302,26 +311,27 @@ def merge_onclass_adjustment(
 
     if abs(delta) <= delta_match:
         lm, ex, conf, status = 0.8, 0.2, "HIGH", "OK"
-        conf_score = min(1.0, (raw.confidence_score or 0.8) * 1.05)
+        conf_score = min(1.0, (raw.confidence_score or 0.85) * 1.05)
     elif abs(delta) <= delta_warn:
         lm, ex, conf, status = 0.6, 0.4, "MEDIUM", "OK"
-        conf_score = max(0.45, min(0.74, (raw.confidence_score or 0.6)))
+        conf_score = max(0.45, min(0.85, (raw.confidence_score or 0.70)))
     elif delta > delta_warn:
         # LMS ≫ thi → LMS vượt trội so với bài thi chung: kết hợp cân bằng, ghi nhận nỗ lực bài tập.
         lm, ex, conf, status = 0.5, 0.5, "MEDIUM", "LMS_EXCEEDS_EXAM"
-        conf_score = 0.45
+        conf_score = max(0.40, min(0.70, (raw.confidence_score or 0.60) * 0.75))
     else:  # delta < -delta_warn: LMS ≪ thi
         # Nếu học sinh đã làm đủ số câu (>= MIN_ITEMS) thì đây là lỗ hổng kiến thức cụ thể ở bài học này (không quy kết lười làm bài)
         if raw.n_items >= MIN_ITEMS:
             lm, ex, conf, status = 0.5, 0.5, "MEDIUM", "OK"
-            conf_score = max(0.45, min(0.70, (raw.confidence_score or 0.6)))
+            conf_score = max(0.45, min(0.80, (raw.confidence_score or 0.70) * 0.85))
         else:
             lm, ex, conf, status = 0.4, 0.6, "MEDIUM", "LOW_ENGAGEMENT"
-            conf_score = 0.40
+            conf_score = 0.35
 
     raw.lm_weight, raw.exam_weight = lm, ex
     raw.confidence = conf
     raw.confidence_score = round(conf_score, 3)
+    raw.evidence_detail["c_total"] = raw.confidence_score
     raw.integrity_status = status
     raw.evidence_source = "HYBRID"
     raw.confidence_reason = generate_confidence_reason(

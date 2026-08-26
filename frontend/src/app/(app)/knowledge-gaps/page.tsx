@@ -51,6 +51,7 @@ const INTEGRITY_META: Record<string, { label: string; cls: string; icon: React.R
     SUSPECTED_CHEATING: { label: "LMS vượt trội", cls: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/20", icon: <TrendingUp className="w-3 h-3 text-sky-500" /> },
     LOW_ENGAGEMENT: { label: "Ít luyện tập LMS", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20", icon: <Laptop className="w-3 h-3 text-amber-500" /> },
     LMS_ONLY: { label: "Chỉ từ LMS", cls: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700", icon: <Laptop className="w-3 h-3 text-slate-500" /> },
+    EXAM_ONLY: { label: "Chỉ từ Bài thi", cls: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/20", icon: <GraduationCap className="w-3 h-3 text-purple-500" /> },
     FLAGGED: { label: "Cần kiểm chứng", cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20", icon: <AlertTriangle className="w-3 h-3 text-amber-500" /> },
 };
 
