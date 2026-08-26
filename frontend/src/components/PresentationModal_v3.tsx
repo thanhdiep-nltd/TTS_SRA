@@ -548,13 +548,6 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
             <h1 className={`text-2xl md:text-3xl font-extrabold tracking-tight leading-tight ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
               VSF Student Risk Alert
             </h1>
-            <p className={`text-xs md:text-base max-w-2xl mx-auto leading-relaxed font-bold ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>
-              Hệ Thống Trợ Lý AI Phân Tích Kết Quả Học Tập &<br />
-              Quản Trị Chất Lượng Giáo Dục Toàn Trường
-            </p>
-            <p className={`text-[11px] md:text-xs max-w-xl mx-auto leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-              Báo cáo kiến trúc 6 trục công nghệ: Multi-Agent Chat, EWS CatBoost ML, VLM Curriculum Ingest, Pass/Fail Forecast, TEVI Validity & Chẩn đoán Lỗ hổng Kiến thức.
-            </p>
           </div>
           <div className="pt-2 text-[11px] text-slate-400 flex items-center gap-2">
             <span>Dùng phím</span>
@@ -828,80 +821,116 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 4: EWS — CÔNG THỨC & MÔ HÌNH (BÁO CÁO 02B)
+    // SLIDE 5: EWS — TRỌNG SỐ ĐỘNG SOFTMAX & MÔ HÌNH (BÁO CÁO 02B)
     // =========================================================================
     {
-      title: "Báo Cáo 02B: EWS Pipeline — Công Thức Risk Score & Mô Hình",
-      subtitle: "Công thức Risk Score động, Ensemble 5-Fold averaging, SHAP giải trình & Phân loại rủi ro",
+      title: "Báo Cáo 02B: EWS Pipeline — Trọng Số Động Softmax & Cơ Chế Cảnh Báo",
+      subtitle: "Trọng số động Softmax — ví dụ minh họa cách hệ thống phóng đại rủi ro để phát hiện sớm học sinh nguy cơ",
       type: "report_02b",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-          {/* CÔNG THỨC RISK SCORE */}
-          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5">
-                <BarChart2 className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
-                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Công Thức Risk Score (Trọng Số Động Softmax)</h3>
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start w-full">
+            {/* CỘT TRÁI: KHÁI NIỆM & CÔNG THỨC */}
+            <div className="lg:col-span-5 space-y-2.5">
+              <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788] border-[#2d6a4f]/40" : "bg-[#f0f4f0] text-[#2d6a4f] border-[#cbdcd0]"} border`}>
+                <ShieldAlert className="w-3 h-3 text-[#2d6a4f] dark:text-[#52b788]" /> Cảnh báo sớm rủi ro
               </div>
-              <span className={`text-[8.5px] font-mono px-2 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>CatBoost output → Risk Aggregation</span>
-            </div>
-            <div className={`p-2 rounded-lg border font-mono text-[10px] mb-1.5 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
-              <strong className="text-[11px]">Risk Score = (1 − β) × Σ(w<sub>k</sub> × S<sub>k</sub>) + β × max(S)</strong>
-              <div className="text-[9px] text-slate-400 mt-0.5 font-normal leading-relaxed">
-                • w<sub>k</sub> = base<sub>k</sub>·e<sup>α<sub>k</sub>·S<sub>k</sub></sup> / Σ base<sub>j</sub>·e<sup>α<sub>j</sub>·S<sub>j</sub></sup> (trọng số động Softmax) · S<sub>k</sub>: điểm rủi ro CatBoost · β: worst bias (0.0)
-              </div>
-            </div>
-            <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-              <strong className="text-rose-500">Ý nghĩa:</strong> Yếu tố nguy hiểm tự động tăng trọng số (ví dụ HS nghỉ nhiều → tỷ trọng chuyên cần nâng từ 0.15 lên 0.42).
-            </p>
-          </div>
-
-          {/* ENSEMBLE + SHAP */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10.5px] font-bold mb-1 flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <Layers className="w-3.5 h-3.5 text-purple-500" /> Ensemble 5-Fold Averaging
-              </h4>
-              <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-purple-400" : "bg-[#faf8f5] border-[#ebdcb0] text-purple-700"}`}>
-                risk_score = (p<sub>1</sub> + p<sub>2</sub> + ... + p<sub>5</sub>) / 5
-              </div>
-              <p className={`text-[9.5px] ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                Huấn luyện 5 CatBoost folds trên 5 tập phân chia dữ liệu khác nhau, lấy trung bình xác suất nhằm triệt tiêu phương sai.
+              <h2 className={`text-xl md:text-2xl font-extrabold tracking-tight leading-tight ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                Trọng Số Động Softmax
+              </h2>
+              <p className={`leading-relaxed text-[10.5px] ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                Thay vì dùng trọng số cố định cho mọi học sinh, hệ thống tự điều chỉnh trọng số theo từng học sinh: yếu tố nào đang rủi ro cao sẽ được "phóng đại" để ảnh hưởng mạnh hơn đến điểm rủi ro cuối cùng.
               </p>
-            </div>
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10.5px] font-bold mb-1 flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <Activity className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" /> SHAP Local Drivers
-              </h4>
-              <p className={`text-[9.5px] mb-1 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                <code>compute_shap_drivers()</code> bóc tách Top các căn nguyên trực tiếp làm tăng hoặc giảm điểm rủi ro của từng em.
-              </p>
-              <div className="flex flex-wrap gap-1">
-                <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded-full bg-rose-950/20 border border-rose-800/40 text-rose-400">score_slope: -0.32</span>
-                <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded-full bg-rose-950/20 border border-rose-800/40 text-rose-400">absent_rate: +0.28</span>
-                <span className="text-[8.5px] font-mono px-1.5 py-0.2 rounded-full bg-amber-950/20 border border-amber-800/40 text-amber-400">lms_drop: -0.15</span>
-              </div>
-            </div>
-          </div>
 
-          {/* PHÂN LOẠI 4 MỨC RỦI RO */}
-          <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className={`p-1.5 rounded-lg border text-center ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
-                <div className={`text-xs font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>LOW</div>
-                <div className="text-[10px] font-bold text-slate-400">{'<'} 0.3 · An toàn</div>
+              {/* Box 1: Softmax */}
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <strong className={`text-[11px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Công thức Softmax động</strong>
+                </div>
+                <p className={`text-[10px] leading-relaxed font-mono ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>
+                  w<sub>k</sub> = base<sub>k</sub>·e<sup>α<sub>k</sub>·S<sub>k</sub></sup> / Σ base<sub>j</sub>·e<sup>α<sub>j</sub>·S<sub>j</sub></sup>
+                </p>
+                <p className={`text-[8.5px] leading-relaxed mt-1 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  S<sub>k</sub>: điểm rủi ro yếu tố k · α<sub>k</sub>: độ nhạy riêng từng yếu tố · base<sub>k</sub>: trọng số gốc
+                </p>
               </div>
-              <div className={`p-1.5 rounded-lg border text-center ${isDark ? "bg-sky-950/20 border-sky-800/40" : "bg-sky-50 border-sky-200"}`}>
-                <div className="text-xs font-black text-sky-500">MODERATE</div>
-                <div className="text-[10px] font-bold text-slate-400">0.3 – 0.5 · Theo dõi</div>
+
+              {/* Box 2: Final Risk Score */}
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#8c763e]/5 border-[#8c763e]/15" : "bg-[#faf6e8] border-[#ebdcb0]/80 shadow-xs"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <strong className={`text-[11px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Điểm rủi ro cuối</strong>
+                </div>
+                <p className={`text-[10px] leading-relaxed font-mono ${isDark ? "text-slate-300" : "text-[#0f1e36]"}`}>
+                  final = (1−β)·Σ(w·S) + β·max(S)
+                </p>
+                <p className={`text-[8.5px] leading-relaxed mt-1 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  β = worst_factor_beta (mặc định 0 → chỉ dùng trung bình có trọng số động).
+                </p>
               </div>
-              <div className={`p-1.5 rounded-lg border text-center ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
-                <div className="text-xs font-black text-amber-500">HIGH</div>
-                <div className="text-[10px] font-bold text-slate-400">0.5 – 0.7 · Cảnh báo</div>
+            </div>
+
+            {/* CỘT PHẢI: BẢNG VÍ DỤ MINH HỌA & SO SÁNH */}
+            <div className="lg:col-span-7 space-y-2.5">
+              {/* Card Bảng */}
+              <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <strong className={`text-xs font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Ví dụ: học sinh nghỉ học nhiều</strong>
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isDark ? "bg-rose-950/30 border border-rose-800/40 text-rose-400" : "bg-[#fdf2f2] text-red-700"}`}>Kết quả: HIGH</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[10px]">
+                    <thead>
+                      <tr className={`border-b ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
+                        <th className="py-1 pr-2 font-semibold">Yếu tố</th>
+                        <th className="py-1 pr-2 font-semibold">Rủi ro S</th>
+                        <th className="py-1 pr-2 font-semibold">Trọng số gốc</th>
+                        <th className="py-1 pr-2 font-semibold">Trọng số động</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
+                        <td className="py-1 pr-2">Điểm</td>
+                        <td className="py-1 pr-2">30</td>
+                        <td className="py-1 pr-2">0.55</td>
+                        <td className="py-1 pr-2">0.29</td>
+                      </tr>
+                      <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
+                        <td className="py-1 pr-2">Học tập (LMS)</td>
+                        <td className="py-1 pr-2">70</td>
+                        <td className="py-1 pr-2">0.15</td>
+                        <td className="py-1 pr-2">0.21</td>
+                      </tr>
+                      <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
+                        <td className="py-1 pr-2">Chuyên cần</td>
+                        <td className="py-1 pr-2 font-bold text-rose-500">90</td>
+                        <td className="py-1 pr-2">0.15</td>
+                        <td className="py-1 pr-2 font-bold text-rose-500">0.42</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1 pr-2">Hạnh kiểm</td>
+                        <td className="py-1 pr-2">20</td>
+                        <td className="py-1 pr-2">0.15</td>
+                        <td className="py-1 pr-2">0.08</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className={`mt-2 pt-2 border-t text-[10px] leading-relaxed ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
+                  <strong className={isDark ? "text-slate-200" : "text-[#0f1e36]"}>Điểm cuối = 62.7 → HIGH.</strong> Yếu tố "Chuyên cần" rủi ro cao (90) được nâng từ 0.15 lên 0.42, giúp hệ thống bắt đúng học sinh nguy cơ thực sự.
+                </div>
               </div>
-              <div className={`p-1.5 rounded-lg border text-center ${isDark ? "bg-rose-950/20 border-rose-800/40" : "bg-rose-50 border-rose-200"}`}>
-                <div className="text-xs font-black text-rose-500">CRITICAL</div>
-                <div className="text-[10px] font-bold text-slate-400">≥ 0.7 · Can thiệp gấp</div>
+
+              {/* Card So Sánh */}
+              <div className={`p-2.5 rounded-2xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                  <strong className={`text-[11px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>So sánh: tắt trọng số động</strong>
+                </div>
+                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  Cùng học sinh, nếu dùng trọng số tĩnh: <span className="font-mono">0.55×30 + 0.15×70 + 0.15×90 + 0.15×20 = 43.5 → MODERATE</span>. Trọng số động giúp phát hiện sớm hơn một bậc rủi ro.
+                </p>
               </div>
             </div>
           </div>
