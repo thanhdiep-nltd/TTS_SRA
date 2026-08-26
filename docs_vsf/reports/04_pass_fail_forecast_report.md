@@ -159,7 +159,7 @@ Verdict:
 |----------|-----------|----------|
 | resolve_abilities | Hoạt động | Chuỗi fallback 4 cấp (bài→chương→môn→None) |
 | forecast_exam | Hoạt động | Dự đoán điểm từng HS |
-| classifiy_verdict | Hoạt động | PASS/FAIL/BORDERLINE/INSUFFICIENT |
+| classify_verdict | Hoạt động | PASS/FAIL/BORDERLINE/INSUFFICIENT |
 | summarize | Hoạt động | Tổng hợp tỷ lệ pass/fail |
 | compute_weak_units | Hoạt động | Top 2 bài yếu nhất cho mỗi HS |
 | CDI adjustment | Hoạt động | Điều chỉnh điểm theo độ khó nội dung |

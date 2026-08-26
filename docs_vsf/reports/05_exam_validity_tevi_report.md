@@ -140,7 +140,7 @@ divergence = CDI - EDI
 | v_exam_validity view | Hoạt động | Materialized view, tự tính EDI/CDI/divergence/flag |
 | compute_validity | Hoạt động | Lọc theo môn, khối, kỳ, flagged_only |
 | school_overview | Hoạt động | Đếm flag, top đề rà soát |
-| content_adjusted_ranking | Hoạt động | Xếp hạng lớp neo-CD I |
+| content_adjusted_ranking | Hoạt động | Xếp hạng lớp neo-CDI |
 | Student Fairness: FAVORITISM | Hoạt động | Phát hiện ưu ái TX |
 | Student Fairness: SUPPRESSION | Hoạt động | Phát hiện chèn ép TX |
 | RBAC chặt chẽ | Hoạt động | Student Fairness chỉ ADMIN/PRINCIPAL |
