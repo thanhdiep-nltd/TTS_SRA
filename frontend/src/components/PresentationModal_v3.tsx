@@ -6,7 +6,7 @@ import {
   Database, FileText, Clock, AlertTriangle, MessageSquare, Video, ArrowRight,
   Maximize2, Minimize2, Play, Pause, ArrowDown, Mic, Target, Tag, Settings, CheckCircle2,
   GraduationCap, Shield, Star, Rocket, Layout, Calendar, Layers, Network, Lock,
-  RefreshCw, BarChart3, Search, Activity, GitBranch, Terminal, Zap, TrendingUp, Laptop, Brain
+  RefreshCw, BarChart3, Search, Activity, GitBranch, Terminal, Zap, TrendingUp, Laptop, Brain, ExternalLink
 } from "lucide-react";
 
 interface PresentationModalProps {
@@ -32,16 +32,11 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
     {
       id: 0,
       title: "1. Multi-Agent Chatbot (LangGraph)",
-      desc: "Người dùng hỏi tự nhiên qua Chatbot. Supervisor Orchestrator tiếp nhận, phân tích intent và điều phối 4 Sub-Agents chuyên biệt (Data & SQL, Stat, Knowledge RAG, Report) truy xuất CSDL PostgreSQL và Qdrant để trả về câu trả lời streaming SSE kèm kiểm định LLM Judge.",
+      desc: "Người dùng hỏi tự nhiên qua Chatbot. Supervisor Orchestrator tiếp nhận, phân tích intent và điều phối 4 Sub-Agents chuyên biệt (Data & SQL, Stat, Knowledge RAG, Report) truy xuất CSDL PostgreSQL và Qdrant để trả về câu trả lời chính xác kèm trích dẫn dữ liệu.",
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
       activeNodes: ["input_chat", "super", "data_agent", "stat_agent", "knowledge_agent", "report_agent", "school_db", "qdrant_db", "chat_response"],
-      activeLines: ["chat-super", "super-data", "super-stat", "stat-know", "super-report", "data-db", "know-qdrant", "db-chat"],
-      labels: [
-        { text: "1. Hỏi Chatbot", x: 195, y: 70 },
-        { text: "2. Điều phối 4 Agents", x: 340, y: 130 },
-        { text: "3. Streaming SSE", x: 535, y: 70 }
-      ]
+      activeLines: ["chat-super", "super-data", "super-stat", "stat-know", "super-report", "data-db", "know-qdrant", "db-chat"]
     },
     {
       id: 1,
@@ -50,12 +45,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
       activeNodes: ["input_ews", "ews_engine", "dwh_db", "school_db", "ews_output"],
-      activeLines: ["ews-engine", "dwh-engine", "engine-db", "engine-ews-out"],
-      labels: [
-        { text: "1. Kích hoạt EWS Job", x: 195, y: 130 },
-        { text: "2. 22 Features DWH", x: 340, y: 220 },
-        { text: "3. Cảnh báo & SHAP", x: 535, y: 130 }
-      ]
+      activeLines: ["ews-engine", "dwh-engine", "engine-db", "engine-ews-out"]
     },
     {
       id: 2,
@@ -64,12 +54,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
       activeNodes: ["input_pdf_curriculum", "vlm_pipeline", "qdrant_db", "school_db", "curriculum_output"],
-      activeLines: ["curriculum-vlm", "vlm-qdrant", "vlm-db", "qdrant-curriculum-out"],
-      labels: [
-        { text: "1. Tải PDF SGK", x: 195, y: 190 },
-        { text: "2. VLM 2 Lượt Quét", x: 340, y: 260 },
-        { text: "3. Vector Chunks", x: 535, y: 190 }
-      ]
+      activeLines: ["curriculum-vlm", "vlm-qdrant", "vlm-db", "qdrant-curriculum-out"]
     },
     {
       id: 3,
@@ -78,12 +63,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
       activeNodes: ["input_exam_forecast", "forecast_engine", "school_db", "forecast_output"],
-      activeLines: ["forecast-in-engine", "db-forecast-engine", "engine-forecast-out"],
-      labels: [
-        { text: "1. Đề thi & LMS", x: 195, y: 250 },
-        { text: "2. CDI Adjustment", x: 340, y: 300 },
-        { text: "3. Điểm thi PASS/FAIL", x: 535, y: 250 }
-      ]
+      activeLines: ["forecast-in-engine", "db-forecast-engine", "engine-forecast-out"]
     },
     {
       id: 4,
@@ -92,12 +72,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
       activeNodes: ["input_exam_validity", "tevi_engine", "school_db", "tevi_output"],
-      activeLines: ["tevi-in-engine", "db-tevi-engine", "engine-tevi-out"],
-      labels: [
-        { text: "1. Sổ điểm & Đề thi", x: 195, y: 310 },
-        { text: "2. EDI vs CDI", x: 340, y: 345 },
-        { text: "3. Cảnh báo BGH", x: 535, y: 310 }
-      ]
+      activeLines: ["tevi-in-engine", "db-tevi-engine", "engine-tevi-out"]
     },
     {
       id: 5,
@@ -106,12 +81,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
       activeNodes: ["input_knowledge_gaps", "gap_engine", "school_db", "gap_output"],
-      activeLines: ["gap-in-engine", "db-gap-engine", "engine-gap-out"],
-      labels: [
-        { text: "1. LMS Items & Thi", x: 195, y: 370 },
-        { text: "2. Bloom & Cross-Val", x: 340, y: 390 },
-        { text: "3. Roster Lỗ Hổng", x: 535, y: 370 }
-      ]
+      activeLines: ["gap-in-engine", "db-gap-engine", "engine-gap-out"]
     }
   ];
 
@@ -211,34 +181,6 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               }
               return null;
             })}
-
-            {/* Labels on SVG */}
-            {current.labels.map((lbl, idx) => (
-              <g key={idx} className="transition-all duration-300">
-                <rect
-                  x={lbl.x - 32}
-                  y={lbl.y - 10}
-                  width="85"
-                  height="16"
-                  rx="4"
-                  fill={isDark ? "#070e1a" : "#ffffff"}
-                  stroke={current.stroke}
-                  strokeWidth="1"
-                  className="shadow-sm"
-                />
-                <text
-                  x={lbl.x + 10}
-                  y={lbl.y + 1}
-                  fill={isDark ? "#faf9f6" : "#0f1e36"}
-                  fontSize="6.5"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                >
-                  {lbl.text}
-                </text>
-              </g>
-            ))}
 
             {/* LEFT NODES (6 Real Technical Inputs) */}
             {/* Input 1: Chatbot Input */}
@@ -454,7 +396,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
                 <MessageSquare className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
                   <div className="text-[8.5px] font-bold truncate">Câu Trả Lời & Báo Cáo</div>
-                  <div className="text-[7px] font-mono text-slate-500 truncate">SSE Streaming & LLM Judge</div>
+                  <div className="text-[7px] font-mono text-slate-500 truncate">Trích dẫn nguồn & Dữ liệu chuẩn</div>
                 </div>
               </div>
             </foreignObject>
@@ -625,7 +567,179 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 2: MULTI-AGENT CHAT & SƠ ĐỒ TOÀN CẢNH (BÁO CÁO 01)
+    // SLIDE 2: TÀI LIỆU BÁO CÁO KIẾN TRÚC HỆ THỐNG (FULL REPORTS)
+    // =========================================================================
+    {
+      title: "Hồ Sơ Kiến Trúc & Tài Liệu Báo Cáo Kỹ Thuật Chi Tiết",
+      subtitle: "Tổng hợp 5 bộ tài liệu đặc tả kiến trúc, công thức toán học và thực nghiệm dành cho Hội đồng / Mentor",
+      type: "reports_index",
+      content: (
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
+          {/* Banner Top */}
+          <div className={`p-2.5 rounded-xl border flex items-center justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+              <div>
+                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Kho Tài Liệu Báo Cáo Chuyên Sâu Của Dự Án</h3>
+                <p className="text-[10px] text-slate-400">Nhấp vào từng báo cáo bên dưới để mở toàn văn tài liệu trên Google Drive</p>
+              </div>
+            </div>
+            <span className={`text-[9px] font-mono px-2.5 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>
+              5 Báo Cáo Kỹ Thuật
+            </span>
+          </div>
+
+          {/* HÀNG 1: 3 BÁO CÁO (01, 02, 03) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Report 1 */}
+            <a
+              href="https://drive.google.com/file/d/1OsMIFQXG3SH_UJzvI40TEzFCpRata2fv/view?usp=sharing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all duration-200 group hover:scale-[1.01] hover:shadow-md ${isDark ? "bg-[#070e1a]/80 border-[#263750] hover:border-[#52b788]" : "bg-white border-[#dcd7cc] hover:border-[#2d6a4f]"}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
+                    <span className="text-[9.5px] font-bold text-slate-400 font-mono">01_multi_agent_chat</span>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-[#52b788] transition" />
+                </div>
+                <h4 className={`text-[11px] font-bold mb-1 leading-snug ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                  Multi-Agent Chatbot & Điều Phối LangGraph
+                </h4>
+                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  Supervisor Router, 4 Sub-Agents (SQL, Stat, RAG, Report), Truy xuất CSDL & Trích dẫn chuẩn.
+                </p>
+              </div>
+              <div className="mt-2 pt-1 border-t border-slate-200 dark:border-slate-800/60 flex items-center justify-between text-[9px] font-bold text-[#2d6a4f] dark:text-[#52b788]">
+                <span>Xem tài liệu đầy đủ</span>
+                <span>↗</span>
+              </div>
+            </a>
+
+            {/* Report 2 */}
+            <a
+              href="https://drive.google.com/file/d/1NVlBB15pJyc2IyHE5XbYCJWeQAIDzBNp/view?usp=drive_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all duration-200 group hover:scale-[1.01] hover:shadow-md ${isDark ? "bg-[#070e1a]/80 border-[#263750] hover:border-[#52b788]" : "bg-white border-[#dcd7cc] hover:border-[#2d6a4f]"}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+                    <span className="text-[9.5px] font-bold text-slate-400 font-mono">02_ews_pipeline</span>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-[#52b788] transition" />
+                </div>
+                <h4 className={`text-[11px] font-bold mb-1 leading-snug ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                  Hệ Thống Cảnh Báo Sớm EWS & SHAP
+                </h4>
+                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  22 Features DWH, 5-Fold CatBoost Ensemble, Softmax Dynamic Risk Score & SHAP Drivers.
+                </p>
+              </div>
+              <div className="mt-2 pt-1 border-t border-slate-200 dark:border-slate-800/60 flex items-center justify-between text-[9px] font-bold text-[#2d6a4f] dark:text-[#52b788]">
+                <span>Xem tài liệu đầy đủ</span>
+                <span>↗</span>
+              </div>
+            </a>
+
+            {/* Report 3 */}
+            <a
+              href="https://drive.google.com/file/d/1bnP6lF0ooftsJY1M_NOslz70YqDFpnGE/view?usp=drive_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all duration-200 group hover:scale-[1.01] hover:shadow-md ${isDark ? "bg-[#070e1a]/80 border-[#263750] hover:border-[#52b788]" : "bg-white border-[#dcd7cc] hover:border-[#2d6a4f]"}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-[9.5px] font-bold text-slate-400 font-mono">03_curriculum_rag</span>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-[#52b788] transition" />
+                </div>
+                <h4 className={`text-[11px] font-bold mb-1 leading-snug ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                  Curriculum Ingestion & RAG SGK
+                </h4>
+                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  VLM 2 lượt quét TOC/NEO chống bịa, Node phẳng, Qdrant Vector Chunking & Semantic Lookup.
+                </p>
+              </div>
+              <div className="mt-2 pt-1 border-t border-slate-200 dark:border-slate-800/60 flex items-center justify-between text-[9px] font-bold text-[#2d6a4f] dark:text-[#52b788]">
+                <span>Xem tài liệu đầy đủ</span>
+                <span>↗</span>
+              </div>
+            </a>
+          </div>
+
+          {/* HÀNG 2: 2 BÁO CÁO (04, 05) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Report 4 */}
+            <a
+              href="https://drive.google.com/file/d/11t-9IEdfNNmp7xjBkdlchjoCHHvoBLev/view?usp=drive_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all duration-200 group hover:scale-[1.01] hover:shadow-md ${isDark ? "bg-[#070e1a]/80 border-[#263750] hover:border-[#52b788]" : "bg-white border-[#dcd7cc] hover:border-[#2d6a4f]"}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
+                    <span className="text-[9.5px] font-bold text-slate-400 font-mono">04_pass_fail_forecast</span>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-[#52b788] transition" />
+                </div>
+                <h4 className={`text-[11px] font-bold mb-1 leading-snug ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                  Dự Báo Pass/Fail & Phân Tích Đề Thi Cuối Kỳ
+                </h4>
+                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  Test Blueprint Domain Sampling, CDI Adjustment Heuristic (Cold-Start), 4 Tầng Fallback & Weak Units.
+                </p>
+              </div>
+              <div className="mt-2 pt-1 border-t border-slate-200 dark:border-slate-800/60 flex items-center justify-between text-[9px] font-bold text-[#2d6a4f] dark:text-[#52b788]">
+                <span>Xem tài liệu đầy đủ</span>
+                <span>↗</span>
+              </div>
+            </a>
+
+            {/* Report 5 */}
+            <a
+              href="https://drive.google.com/file/d/1CrIF1EBG4EWYHKFT416O-OPvClfzZ5Cx/view?usp=drive_link"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all duration-200 group hover:scale-[1.01] hover:shadow-md ${isDark ? "bg-[#070e1a]/80 border-[#263750] hover:border-[#52b788]" : "bg-white border-[#dcd7cc] hover:border-[#2d6a4f]"}`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-purple-500" />
+                    <span className="text-[9.5px] font-bold text-slate-400 font-mono">05_knowledge_gaps</span>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-[#52b788] transition" />
+                </div>
+                <h4 className={`text-[11px] font-bold mb-1 leading-snug ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                  Chẩn Đoán Lỗ Hổng Kiến Thức & Item Mastery
+                </h4>
+                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  Item Mastery × Bloom Factor, Cross-Validation (Δ = LMS − Exam), Majority Rule & Báo cáo Roster.
+                </p>
+              </div>
+              <div className="mt-2 pt-1 border-t border-slate-200 dark:border-slate-800/60 flex items-center justify-between text-[9px] font-bold text-[#2d6a4f] dark:text-[#52b788]">
+                <span>Xem tài liệu đầy đủ</span>
+                <span>↗</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      )
+    },
+
+    // =========================================================================
+    // SLIDE 3: MULTI-AGENT CHAT & SƠ ĐỒ TOÀN CẢNH (BÁO CÁO 01)
     // =========================================================================
     {
       title: "Báo Cáo 01: Multi-Agent Chat & Sơ Đồ Toàn Cảnh Hệ Thống",
@@ -926,31 +1040,51 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
             <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
               <div className="flex items-center gap-1.5 mb-1">
                 <GitBranch className="w-3.5 h-3.5 text-amber-500" />
-                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B3: Map & Trọng Số</h4>
+                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B3: Map & Tính CDI Đề</h4>
               </div>
               <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                Phân rã chương xuống bài con, bảo toàn tổng trọng số toàn đề <code>Σ weight = 100%</code>.
+                Phân rã bài con (Σw = 100%). Tính <strong>CDI = Σ(Bloom<sub>i</sub> × w<sub>i</sub>) / (6 × Σw<sub>i</sub>)</strong>.
               </p>
             </div>
           </div>
 
-          {/* SO SÁNH LLM THUẦN VS SEMANTIC LOOKUP */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-rose-950/15 border-rose-800/30" : "bg-[#fdf2f2] border-rose-200"}`}>
-              <h4 className={`text-[10.5px] font-bold flex items-center gap-1 mb-1 ${isDark ? "text-rose-400" : "text-rose-600"}`}>
-                <AlertTriangle className="w-3.5 h-3.5" /> LLM thuần (Dễ ảo giác)
-              </h4>
-              <p className={`text-[9.5px] ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                Hỏi LLM không kèm ràng buộc dễ bịa tên bài không có trong chương trình, không kiểm chứng được.
-              </p>
+          {/* CÔNG THỨC CDI & SO SÁNH PHƯƠNG PHÁP */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+            {/* BOX CÔNG THỨC CDI */}
+            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
+                    <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Cách Tính Chỉ Số Độ Khó Đề (CDI)</h4>
+                  </div>
+                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>Bloom Scale 1..6</span>
+                </div>
+                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+                  <strong>CDI = Σ(Bloom<sub>i</sub> × w<sub>i</sub>) / (6 × Σw<sub>i</sub>) ∈ [0.0, 1.0]</strong>
+                </div>
+                <p className={`text-[8.5px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                  • <strong>Bloom<sub>i</sub> (1..6):</strong> Bậc nhận thức câu <em>i</em> (1: Biết, 2: Hiểu, 3: Vận dụng, 4–6: Vận dụng cao).<br />
+                  • <strong>w<sub>i</sub>:</strong> Điểm số câu <em>i</em> · <strong>Σw<sub>i</sub>:</strong> Tổng điểm toàn bài (dùng tính TB gia quyền theo điểm câu).<br />
+                  • <strong>Số 6:</strong> Bậc Bloom tối đa để chuẩn hóa CDI về thang [0, 1]. (CDI=0.50: Đề chuẩn Bộ GD&ĐT).
+                </p>
+              </div>
             </div>
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
-              <h4 className={`text-[10.5px] font-bold flex items-center gap-1 mb-1 ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>
-                <CheckCircle2 className="w-3.5 h-3.5" /> Semantic Lookup (Chuẩn xác 100%)
-              </h4>
-              <p className={`text-[9.5px] ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                So khớp vector trực tiếp với văn bản SGK chuẩn → Định vị chính xác mã bài học trong cơ sở dữ liệu.
-              </p>
+
+            {/* SO SÁNH LLM VS SEMANTIC LOOKUP */}
+            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
+                  <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Định Vị Bằng Semantic Lookup</h4>
+                </div>
+                <p className={`text-[9px] leading-relaxed mb-1 ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                  <strong>Tại sao không hỏi LLM trực tiếp?</strong> LLM dễ ảo giác tự bịa tên bài không có trong SGK.
+                </p>
+                <p className={`text-[8.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  👉 Vector hóa câu hỏi → So khớp top-1 chunk SGK chuẩn trong pgvector/Qdrant → Đảm bảo 100% mã <code>unit_id</code> thuộc SGK thực tế.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -966,38 +1100,48 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
       type: "report_04b",
       content: (
         <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-          {/* HÀNG 1: MỤC ĐÍCH + CÔNG THỨC */}
+          {/* HÀNG 1: CÔNG THỨC & CƠ SỞ KHẢO THÍ HỌC */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-            <div className={`md:col-span-4 p-2.5 rounded-xl border flex flex-col justify-center ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <TrendingUp className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788] shrink-0" />
-                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Dự Báo</h3>
+            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
+                    <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>1. Weighted Ability (Test Blueprint)</h3>
+                  </div>
+                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${isDark ? "bg-emerald-950/30 text-[#52b788]" : "bg-emerald-50 text-emerald-700"}`}>Domain Sampling</span>
+                </div>
+                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+                  <strong>Weighted Ability = Σ(w<sub>u</sub> × Ability<sub>u</sub>) / Σ(w<sub>u</sub>)</strong>
+                </div>
+                <p className={`text-[9px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                  <strong>Cơ sở Khảo thí:</strong> Mô hình <em>Composite Score</em> chuẩn dựa trên lý thuyết <em>Test Blueprint</em> (Ma trận đặc tả) & <em>Domain Sampling</em>: khi đề thi tập trung vào mục tiêu nào thì năng lực tổng hợp phải được ánh xạ theo tỷ trọng của mục tiêu đó.
+                </p>
               </div>
-              <p className={`text-[10px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
-                Dự đoán điểm thi cuối kỳ dựa trên năng lực LMS từng bài học và ma trận đề thi, kết hợp hệ số lệch độ khó CDI.
-              </p>
             </div>
 
-            <div className={`md:col-span-8 p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <BarChart2 className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
-                  <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Công Thức Dự Báo (Thuần Toán Học)</h3>
+            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <BarChart2 className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
+                    <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>2. CDI Adjustment (Empirical Heuristic)</h3>
+                  </div>
+                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${isDark ? "bg-amber-950/30 text-[#c2ae78]" : "bg-amber-50 text-amber-700"}`}>Cold-Start Forecast</span>
                 </div>
-                <span className={`text-[8px] font-mono px-2 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>Deterministic Math</span>
-              </div>
-              <div className={`p-1.5 rounded-lg border font-mono text-[10px] ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
-                <strong>Predicted Score = Weighted Ability Avg × CDI Adjustment</strong>
-                <div className="text-[8.5px] text-slate-400 mt-0.5 font-normal">
-                  • Weighted Ability = Σ(w<sub>u</sub> × ability<sub>u</sub>) / Σ(w<sub>u</sub>) · CDI Adj = 1.0 + (0.5 − CDI) × 0.5 (CDI=0 → 1.25, CDI=1 → 0.75)
+                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+                  <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span className="text-[8.5px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
                 </div>
+                <p className={`text-[9px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                  <strong>Tại sao dùng Heuristic thay IRT?</strong> IRT cần $\ge 200$ HS làm bài trước để calibrate tham số. Đề thi cuối kỳ là đề mới bảo mật, chưa có tương tác học sinh $\implies$ Dùng độ khó Bloom tiên nghiệm để dự báo sớm trước 2-3 tuần.
+                </p>
               </div>
             </div>
           </div>
 
           {/* HÀNG 2: 4 TẦNG FALLBACK NĂNG LỰC */}
           <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <h3 className={`text-[10.5px] font-bold mb-1.5 ${isDark ? "text-white" : "text-[#0f1e36]"}`}>4 Tầng Fallback Xác Định Năng Lực Học Sinh</h3>
+            <h3 className={`text-[10px] font-bold mb-1 ${isDark ? "text-white" : "text-[#0f1e36]"}`}>4 Tầng Fallback Xác Định Năng Lực Học Sinh (Ability<sub>u</sub>)</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
                 <span className={`text-[9px] font-bold ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>Tầng 1: Có LMS</span>
@@ -1021,7 +1165,7 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
           {/* HÀNG 3: PHÂN LOẠI VERDICT + WEAK UNITS */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
             <div className={`md:col-span-7 p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10px] font-bold mb-1 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Phân Loại Kết Luận (Verdict)</h4>
+              <h4 className={`text-[10px] font-bold mb-1 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Phân Loại Kết Luận (Predicted = Weighted Ability × CDI Adj)</h4>
               <div className="grid grid-cols-4 gap-1.5">
                 <div className={`text-center p-1 rounded-lg border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
                   <span className={`text-xs font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>PASS</span>
@@ -1046,7 +1190,7 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
               <h4 className={`text-[10px] font-bold mb-0.5 flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
                 <AlertTriangle className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" /> Weak Units
               </h4>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-[9px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 <code>compute_weak_units()</code> bóc tách Top 2 bài yếu nhất gây mất điểm trong đề để GV lên kế hoạch phụ đạo mục tiêu.
               </p>
             </div>
