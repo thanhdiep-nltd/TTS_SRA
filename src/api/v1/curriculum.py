@@ -72,6 +72,7 @@ def _job_to_read(db: Session, job: CurriculumIngestJob) -> BookIngestJobRead:
         subject_code=job.subject_code,
         grade_number=job.grade_number,
         semester_number=job.semester_number,
+        volume=getattr(job, "volume", None),
         filename=job.filename,
         book_title=job.book_title,
         vlm_model=getattr(job, "vlm_model", None),
@@ -193,6 +194,7 @@ def ingest_book(
     subject_code: Annotated[str, Form()],
     grade: Annotated[int, Form()],
     semester: Annotated[int | None, Form()] = None,
+    volume: Annotated[str | None, Form()] = None,
     book_title: Annotated[str | None, Form()] = None,
     vlm_model: Annotated[str | None, Form()] = None,
     include_lessons: Annotated[bool, Form()] = True,
@@ -220,6 +222,7 @@ def ingest_book(
         subject_code=subject_code.upper(),
         grade_number=grade,
         semester_number=semester,
+        volume=volume,
         include_lessons=include_lessons,
         enrich=enrich,
         dry_run=dry_run,
@@ -288,6 +291,7 @@ def commit_book_catalog(
             job.book_title or "",
             filename=job.filename,
             created_by=job.requested_by,
+            volume=getattr(job, "volume", None),
         )
     except ValueError as exc:
         # Vd môn chưa có trong s360.dim_subject (chưa seed) hoặc subject_code lạ — trả 422 rõ ràng, không 500.
@@ -378,6 +382,7 @@ def list_books(
             subject_id=b.subject_id,
             grade_number=b.grade_number,
             semester_number=b.semester_number,
+            volume=b.volume,
             school_year_id=b.school_year_id,
             school_year_name=years.get(b.school_year_id) if b.school_year_id else (years.get(2025) or "Năm học 2025-2026"),
             is_locked=bool(b.is_locked),

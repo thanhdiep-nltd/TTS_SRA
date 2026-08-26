@@ -91,6 +91,7 @@ class BookIngestJobRead(BaseModel):
     subject_code: str
     grade_number: int
     semester_number: int | None = None
+    volume: str | None = None
     filename: str | None = None
     book_title: str | None = None
     vlm_model: str | None = None
@@ -108,6 +109,7 @@ class CurriculumBookRead(BaseModel):
     subject_id: int
     grade_number: int
     semester_number: int | None = None
+    volume: str | None = None
     school_year_id: int | None = None
     school_year_name: str | None = None
     is_locked: bool = False

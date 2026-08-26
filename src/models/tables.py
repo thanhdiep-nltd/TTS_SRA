@@ -384,6 +384,7 @@ class CurriculumBook(Base):
     subject_id = Column(Integer, nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
     semester_number = Column(SmallInteger)
+    volume = Column(String(50), nullable=True)  # Tập sách (vd "Tập 1", "Tập 2", "Cả năm")
     school_year_id = Column(Integer, nullable=True)  # Năm học áp dụng cuốn sách (s360.dim_school_year.id)
     is_locked = Column(Boolean, nullable=False, server_default=text("false"))
     filename = Column(String(255))
@@ -472,6 +473,7 @@ class CurriculumIngestJob(Base):
     subject_code = Column(String(10), nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
     semester_number = Column(SmallInteger)
+    volume = Column(String(50), nullable=True)  # Tập sách (vd "Tập 1", "Tập 2", "Cả năm")
     include_lessons = Column(Boolean, nullable=False, server_default=text("false"))
     # Làm giàu nội dung (tóm tắt + từ khóa + mục con) khi nạp — mặc định bật; tắt để preview nhanh.
     enrich = Column(Boolean, nullable=False, server_default=text("true"))

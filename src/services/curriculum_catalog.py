@@ -178,8 +178,9 @@ def get_or_create_book(
     source: str | None = None,
     created_by: int | None = None,
     school_year_id: int | None = None,
+    volume: str | None = None,
 ) -> int:
-    """Get cuốn SGK theo (subject_id, grade, semester, title) — nếu chưa có thì tạo; trả book_id.
+    """Get cuốn SGK theo (subject_id, grade, semester, title, volume) — nếu chưa có thì tạo; trả book_id.
 
     Dùng khi commit nạp sách: mỗi node chương/bài gắn book_id vào cuốn này.
     title rỗng → fallback tên file (để luôn có cuốn theo dõi nguồn gốc).
@@ -189,14 +190,15 @@ def get_or_create_book(
     if subject_id is None:
         raise ValueError(f"Không có s360.dim_subject cho {subject_code.upper()}_{grade} — nạp môn trước.")
     book_title = (title or "").strip() or (filename or "SGK".title())
-    book = db.execute(
-        select(CurriculumBook).where(
-            CurriculumBook.subject_id == subject_id,
-            CurriculumBook.grade_number == grade,
-            CurriculumBook.semester_number == semester,
-            CurriculumBook.title == book_title,
-        )
-    ).scalars().first()
+    stmt = select(CurriculumBook).where(
+        CurriculumBook.subject_id == subject_id,
+        CurriculumBook.grade_number == grade,
+        CurriculumBook.semester_number == semester,
+        CurriculumBook.title == book_title,
+    )
+    if volume:
+        stmt = stmt.where(CurriculumBook.volume == volume)
+    book = db.execute(stmt).scalars().first()
     if book is None:
         book = CurriculumBook(
             title=book_title,
@@ -204,6 +206,7 @@ def get_or_create_book(
             subject_id=subject_id,
             grade_number=grade,
             semester_number=semester,
+            volume=volume,
             school_year_id=school_year_id,
             filename=filename,
             source=source,
@@ -211,8 +214,11 @@ def get_or_create_book(
         )
         db.add(book)
         db.flush()
-    elif school_year_id is not None and book.school_year_id is None:
-        book.school_year_id = school_year_id
+    else:
+        if school_year_id is not None and book.school_year_id is None:
+            book.school_year_id = school_year_id
+        if volume is not None and book.volume is None:
+            book.volume = volume
         db.flush()
     return book.id
 

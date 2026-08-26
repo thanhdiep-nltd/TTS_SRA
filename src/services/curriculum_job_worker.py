@@ -97,6 +97,7 @@ def process_next_curriculum_ingest_job() -> None:
                 db.commit()
 
             book_id = None
+            job_vol = getattr(next_job, "volume", None)
             if not next_job.dry_run:
                 book_id = get_or_create_book(
                     db,
@@ -106,6 +107,7 @@ def process_next_curriculum_ingest_job() -> None:
                     next_job.book_title or "",
                     filename=next_job.filename,
                     created_by=next_job.requested_by,
+                    volume=job_vol,
                 )
 
             result = curriculum_ingest.ingest_book(
@@ -121,6 +123,7 @@ def process_next_curriculum_ingest_job() -> None:
                 enrich=next_job.enrich,
                 progress_cb=_progress,
                 vlm_model=getattr(next_job, "vlm_model", None),
+                volume=job_vol,
             )
             next_job.result_json = json.dumps(result, ensure_ascii=False)
             next_job.status = "completed"

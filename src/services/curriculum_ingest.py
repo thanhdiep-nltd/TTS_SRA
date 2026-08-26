@@ -734,9 +734,11 @@ def build_unit_specs_from_chapters(
     grade: int,
     semester: int | None,
     include_lessons: bool,
+    volume: str | None = None,
 ) -> list[dict[str, Any]]:
     """Chuyển chapters → spec curriculum_units: chương C1.., bài con {chương}_B{n} (parent_code).
 
+    Hỗ trợ phân lập mã theo volume (Tập 1 -> _T1_, Tập 2 -> _T2_).
     Truyền cả nội dung làm giàu (summary/keywords/sections) vào spec để lưu cùng node.
     """
     specs: list[dict[str, Any]] = []
@@ -745,7 +747,21 @@ def build_unit_specs_from_chapters(
     base = subject_code.upper().strip()
     if base.endswith(f"_{grade}"):
         base = base[: -len(f"_{grade}")]
-    prefix = f"{base}{grade}"
+
+    # Xác định tag phân lập theo tập sách (volume)
+    vol_tag = ""
+    if volume:
+        v_clean = volume.strip().lower()
+        if "2" in v_clean or "t2" in v_clean:
+            vol_tag = "_T2"
+        elif "1" in v_clean or "t1" in v_clean:
+            vol_tag = "_T1"
+    elif semester == 2:
+        vol_tag = "_T2"
+    elif semester == 1:
+        vol_tag = "_T1"
+
+    prefix = f"{base}{grade}{vol_tag}"
     for idx, ch in enumerate(chapters, start=1):
         code = f"{prefix}_C{idx}"
         specs.append(
@@ -945,6 +961,7 @@ def ingest_book(
     progress_cb: ProgressCb | None = None,
     vlm_model: str | None = None,
     settings: Settings | None = None,
+    volume: str | None = None,
 ) -> dict[str, Any]:
     """Nạp sách → (PDF: quét toàn cuốn 1 lần + làm giàu | TXT/DOCX: như cũ) → preview/lưu. KHÔNG RAG."""
     s = _get_runtime_settings(settings, vlm_model)
@@ -967,7 +984,7 @@ def ingest_book(
         finally:
             if pdf_path is not None:
                 pdf_path.unlink(missing_ok=True)
-        source = "pdf-vlm"
+            source = "pdf-vlm"
     else:
         chapters, source = _extract_non_pdf(content, filename)
         warnings = []
@@ -980,7 +997,7 @@ def ingest_book(
     if semester is None:
         semester = detect_semester_from_filename(filename)
     warnings += _sanity_check(chapters)
-    specs = build_unit_specs_from_chapters(chapters, subject_code, grade, semester, include_lessons)
+    specs = build_unit_specs_from_chapters(chapters, subject_code, grade, semester, include_lessons, volume=volume)
     preview_chapters = [
         {
             "code": spec["code"],

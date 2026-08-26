@@ -57,6 +57,7 @@ interface CurriculumBookRow {
   subject_id: number;
   grade_number: number;
   semester_number: number | null;
+  volume?: string | null;
   school_year_id: number | null;
   school_year_name?: string | null;
   is_locked?: boolean;
@@ -303,6 +304,11 @@ function BookCard({
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                 {book.school_year_name || "Năm 2024-2025"}
               </span>
+              {book.volume && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  {book.volume}
+                </span>
+              )}
             </div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug">
               {book.title}
@@ -364,7 +370,8 @@ export default function AdminCurriculumPage() {
 
   const [bookFile, setBookFile] = useState<File | null>(null);
   const [bookGrade, setBookGrade] = useState("6");
-  const [bookSemester, setBookSemester] = useState(""); // "" = tự đoán từ tên file
+  const [bookVolume, setBookVolume] = useState("Tập 1");
+  const [bookSemester, setBookSemester] = useState("1"); // Tự động đồng bộ theo Tập sách
   const [bookTitle, setBookTitle] = useState(""); // Tên cuốn / Chương - Tập - Mô tả
   const [includeLessons, setIncludeLessons] = useState(true);
   // Làm giàu nội dung khi nạp PDF: quét toàn cuốn + VLM tạo tóm tắt/từ khóa/mục con cho từng bài.
@@ -722,6 +729,7 @@ export default function AdminCurriculumPage() {
     formData.append("file", bookFile);
     formData.append("subject_code", subjectCode);
     formData.append("grade", bookGrade);
+    if (bookVolume) formData.append("volume", bookVolume);
     if (bookSemester) formData.append("semester", bookSemester);
     if (bookSchoolYearId) formData.append("school_year_id", bookSchoolYearId);
     if (bookTitle.trim()) formData.append("book_title", bookTitle.trim());
@@ -1025,6 +1033,24 @@ export default function AdminCurriculumPage() {
                   value={bookGrade}
                   onChange={setBookGrade}
                   className="min-w-[180px]"
+                />
+              </div>
+              <div className="min-w-[160px]">
+                <label className="text-xs font-semibold text-slate-500 mb-1 block">Tập sách</label>
+                <SearchableSelect
+                  options={[
+                    { value: "Tập 1", label: "Tập 1 (HK1)" },
+                    { value: "Tập 2", label: "Tập 2 (HK2)" },
+                    { value: "Cả năm", label: "Cả năm (Trọn bộ)" },
+                  ]}
+                  value={bookVolume}
+                  onChange={(v) => {
+                    setBookVolume(v);
+                    if (v === "Tập 1") setBookSemester("1");
+                    else if (v === "Tập 2") setBookSemester("2");
+                    else if (v === "Cả năm") setBookSemester("");
+                  }}
+                  className="min-w-[160px]"
                 />
               </div>
               <div className="min-w-[160px]">
