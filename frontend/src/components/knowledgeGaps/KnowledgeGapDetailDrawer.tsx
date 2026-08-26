@@ -33,6 +33,10 @@ interface Props {
   studentName: string | null;
   className: string | null;
   subjectName: string;
+  confidence?: string | null;
+  confidenceScore?: number | null;
+  confidenceReason?: string | null;
+  evidenceSource?: string | null;
   gaps: KnowledgeGapItem[];
   onClose: () => void;
 }
@@ -93,6 +97,10 @@ export default function KnowledgeGapDetailDrawer({
   studentName,
   className,
   subjectName,
+  confidence,
+  confidenceScore,
+  confidenceReason,
+  evidenceSource,
   gaps,
   onClose,
 }: Props) {
@@ -202,6 +210,42 @@ export default function KnowledgeGapDetailDrawer({
 
         {/* BODY */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 flex flex-col">
+          {/* BANNER GIẢI TRÌNH ĐỘ TIN CẬY & NGUỒN DỮ LIỆU */}
+          {confidenceReason && (
+            <div className="p-4 rounded-2xl border bg-slate-50/80 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-700/80 flex items-start gap-3.5 shrink-0 shadow-xs">
+              <div className={`mt-0.5 p-2 rounded-xl shrink-0 ${
+                (confidenceScore ?? 0) >= 0.75 
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  : (confidenceScore ?? 0) >= 0.45
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                  : "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+              }`}>
+                <Info className="w-4 h-4" />
+              </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                    Cơ sở đánh giá & Độ tin cậy:
+                  </span>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    (confidenceScore ?? 0) >= 0.75 
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                      : (confidenceScore ?? 0) >= 0.45
+                      ? "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                      : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+                  }`}>
+                    {confidenceScore !== null && confidenceScore !== undefined 
+                      ? `${Math.round(confidenceScore * 100)}% (${confidence || "TIN CẬY"})`
+                      : (confidence || "LOW")}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {confidenceReason}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* TOOLBAR CHUYỂN ĐỔI VIEW: GRAPH VS LIST */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
             <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-xs font-semibold">

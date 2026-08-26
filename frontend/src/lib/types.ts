@@ -1419,6 +1419,8 @@ export interface KnowledgeGapItem {
   gap_score: number; // 0..1, cao = hổng nặng
   mastery: number; // 0..1
   confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
+  confidence_score?: number | null; // 0..1, % tin cậy cụ thể (vd 0.885 = 88.5%)
+  confidence_reason?: string | null; // Lời giải trình sư phạm chi tiết
   coverage?: number | null; // 0..1, độ phủ câu hỏi LMS cho chương
   integrity_status?: string | null; // OK | LMS_EXCEEDS_EXAM | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
   evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR | INSUFFICIENT
@@ -1490,6 +1492,8 @@ export interface StudentRosterSummary {
   weak_units: string[];
   integrity_status?: string | null; // OK | LMS_EXCEEDS_EXAM | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
   confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
+  confidence_score?: number | null; // 0..1, % tin cậy cụ thể
+  confidence_reason?: string | null; // Lời giải trình sư phạm chi tiết
   evidence_source: string; // HYBRID | LMS | EXAM | INSUFFICIENT
   gaps: KnowledgeGapItem[];
 }

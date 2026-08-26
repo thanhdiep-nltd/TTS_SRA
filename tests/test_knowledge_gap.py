@@ -68,3 +68,28 @@ def test_aggregate_class_gaps():
     # unit 1 gap trung bình = (0.7 + 0.5)/2 = 0.6
     assert agg[1] == 0.6
     assert agg[2] == 0.6
+
+
+def test_generate_confidence_reason():
+    from src.services.item_mastery import generate_confidence_reason
+
+    # Case 1: EXAM fallback
+    r_exam = generate_confidence_reason("LOW", 0.30, 0, 0.0, "EXAM", exam_score=7.0)
+    assert "Ước lượng gián tiếp" in r_exam
+    assert "7.0 điểm" in r_exam
+
+    # Case 2: Low items
+    r_low = generate_confidence_reason("LOW", 0.35, 2, 0.4, "LMS")
+    assert "dưới ngưỡng tối thiểu 5 câu" in r_low
+
+    # Case 3: Cheating / Exceed
+    r_cheat = generate_confidence_reason("MEDIUM", 0.45, 10, 1.0, "HYBRID", "LMS_EXCEEDS_EXAM", delta=0.55)
+    assert "Cần kiểm chứng" in r_cheat
+    assert "55%" in r_cheat
+
+    # Case 4: High confidence with cross-validation
+    r_high = generate_confidence_reason("HIGH", 0.88, 36, 1.0, "HYBRID", "OK", delta=0.04, bloom_count=4)
+    assert "Cao" in r_high
+    assert "36 câu hỏi LMS" in r_high
+    assert "chênh lệch 4%" in r_high
+

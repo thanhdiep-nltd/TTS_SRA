@@ -29,6 +29,8 @@ class KnowledgeGapItem(BaseModel):
     gap_score: float = Field(..., description="0..1, cao = hổng nặng")
     mastery: float = Field(..., description="0..1, mức thành thạo (adjusted)")
     confidence: str | None = None  # 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT'
+    confidence_score: float | None = None  # 0..1, con số % độ tin cậy cụ thể (vd 0.885 = 88.5%)
+    confidence_reason: str | None = None  # Giải trình lý do tin cậy chi tiết
     coverage: float | None = None  # 0..1, độ phủ câu hỏi LMS cho chương này
     integrity_status: str | None = None  # 'OK' | 'LMS_EXCEEDS_EXAM' | 'LOW_ENGAGEMENT' | 'LMS_ONLY' | 'FLAGGED'
     evidence_source: str | None = None  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR' | 'INSUFFICIENT'
@@ -129,6 +131,8 @@ class StudentRosterSummary(BaseModel):
     weak_units: list[str] = Field(default_factory=list, description="Danh sách tên các chương cần củng cố")
     integrity_status: str | None = "OK"  # 'OK' | 'LMS_EXCEEDS_EXAM' | 'LOW_ENGAGEMENT' | 'LMS_ONLY'
     confidence: str | None = "HIGH"
+    confidence_score: float | None = None  # 0..1, con số % độ tin cậy cụ thể (vd 0.885 = 88.5%)
+    confidence_reason: str | None = None  # Giải trình lý do tin cậy chi tiết cho học sinh
     evidence_source: str = "HYBRID"
     gaps: list[KnowledgeGapItem] = Field(default_factory=list, description="Chi tiết từng chương để mở Drawer")
 

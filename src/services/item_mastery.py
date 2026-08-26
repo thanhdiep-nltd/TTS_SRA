@@ -60,6 +60,8 @@ class UnitMastery:
     exam_weight: float = 0.0
     adjusted_mastery: float | None = None
     confidence: str = "INSUFFICIENT"
+    confidence_score: float | None = None  # 0..1, % tin cậy cụ thể
+    confidence_reason: str | None = None  # Lời giải trình sư phạm chi tiết
     evidence_source: str = "LMS"
     integrity_status: str = "INSUFFICIENT"
     is_gap: bool = False
@@ -68,6 +70,50 @@ class UnitMastery:
 
 def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, x))
+
+
+def generate_confidence_reason(
+    confidence: str,
+    confidence_score: float | None = None,
+    n_items: int = 0,
+    coverage: float | None = None,
+    evidence_source: str = "LMS",
+    integrity_status: str | None = "OK",
+    delta: float | None = None,
+    exam_score: float | None = None,
+    bloom_count: int | None = None,
+) -> str:
+    """Tạo câu giải trình sư phạm chi tiết cho mức độ tin cậy của học sinh."""
+    score_str = f"Độ tin cậy {int(round(confidence_score * 100))}%" if confidence_score is not None else "Độ tin cậy"
+
+    if evidence_source == "EXAM" or (n_items == 0 and evidence_source != "LMS"):
+        exam_txt = f" ({exam_score:.1f} điểm)" if exam_score is not None else ""
+        return f"{score_str} (Ước lượng gián tiếp): Ước lượng từ điểm thi trên lớp{exam_txt} do học sinh chưa hoàn thành các bài tập luyện tập trên LMS."
+
+    if n_items < MIN_ITEMS:
+        return f"{score_str} (Thấp): Học sinh mới chỉ làm {n_items} câu hỏi trên LMS (dưới ngưỡng tối thiểu {MIN_ITEMS} câu), chưa đủ mẫu thống kê để đánh giá toàn diện."
+
+    if integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING"):
+        delta_pct = f"{abs(delta)*100:.0f}%" if delta is not None else "lớn"
+        return f"{score_str} (Cần kiểm chứng): Điểm bài tập LMS cao hơn đáng kể so với bài thi trên lớp (chênh lệch {delta_pct}). Đề xuất giáo viên kiểm tra năng lực thực tế."
+
+    if integrity_status == "LOW_ENGAGEMENT":
+        if n_items >= 20:
+            return f"{score_str} (Trung bình): Dựa trên {n_items} câu hỏi LMS (độ phủ {int(round((coverage or 1.0) * 100))}%), một số bài học có sự chênh lệch so với điểm thi trên lớp."
+        return f"{score_str} (TB): Học sinh ít luyện tập trên LMS ({n_items} câu), kết quả chủ yếu dựa trên điểm thi và cần bổ sung thêm bài làm để tăng độ chính xác."
+
+    bloom_txt = f", bao phủ {bloom_count} bậc nhận thức Bloom" if bloom_count and bloom_count > 1 else ""
+    cov_txt = f" (độ phủ {int(round(coverage * 100))}%)" if coverage is not None else ""
+
+    if confidence == "HIGH" or (confidence_score and confidence_score >= 0.75):
+        if delta is not None:
+            return f"{score_str} (Cao): Dựa trên {n_items} câu hỏi LMS{cov_txt}{bloom_txt}; đối soát khớp chặt với điểm thi trên lớp (chênh lệch {abs(delta)*100:.0f}%)."
+        return f"{score_str} (Cao): Dựa trên {n_items} câu hỏi LMS{cov_txt}{bloom_txt} đã hoàn thành đầy đủ và đạt chuẩn thống kê."
+
+    if confidence == "MEDIUM" or (confidence_score and confidence_score >= 0.45):
+        return f"{score_str} (Trung bình): Dựa trên {n_items} câu hỏi LMS{cov_txt}{bloom_txt}; độ bao phủ mức độ câu hỏi ở mức khá."
+
+    return f"{score_str} (Thấp): Dữ liệu câu hỏi LMS và độ phủ nhận thức chưa đủ dày để kết luận độ thành thạo."
 
 
 def raw_unit_mastery(
@@ -182,6 +228,15 @@ def raw_unit_mastery(
 
     n_correct = sum(1 for i in items if i.score_received > 0)
     coverage = round(c_volume, 3)
+    reason = generate_confidence_reason(
+        confidence=confidence,
+        confidence_score=c_total,
+        n_items=n,
+        coverage=coverage,
+        evidence_source="LMS",
+        integrity_status="OK",
+        bloom_count=len(direct_blooms),
+    )
 
     return UnitMastery(
         unit_id=items[0].unit_id,
@@ -190,6 +245,8 @@ def raw_unit_mastery(
         n_correct=n_correct,
         coverage=coverage,
         confidence=confidence,
+        confidence_score=c_total,
+        confidence_reason=reason,
         integrity_status="OK",
         evidence_detail={
             "n_items": n,
@@ -219,6 +276,8 @@ def merge_onclass_adjustment(
     if raw.raw_mastery is None:
         raw.integrity_status = "INSUFFICIENT"
         raw.confidence = "INSUFFICIENT"
+        raw.confidence_score = 0.0
+        raw.confidence_reason = "Chưa có dữ liệu bài tập hoặc bài thi."
         return raw
 
     if exam_mastery is None:
@@ -227,6 +286,14 @@ def merge_onclass_adjustment(
         raw.confidence = raw.confidence if raw.confidence == "HIGH" else "LOW"
         raw.evidence_source = "LMS"
         raw.integrity_status = "LMS_ONLY"
+        raw.confidence_reason = generate_confidence_reason(
+            confidence=raw.confidence,
+            confidence_score=raw.confidence_score,
+            n_items=raw.n_items,
+            coverage=raw.coverage,
+            evidence_source="LMS",
+            integrity_status="LMS_ONLY",
+        )
         return raw
 
     delta = raw.raw_mastery - exam_mastery
@@ -235,18 +302,38 @@ def merge_onclass_adjustment(
 
     if abs(delta) <= delta_match:
         lm, ex, conf, status = 0.8, 0.2, "HIGH", "OK"
+        conf_score = min(1.0, (raw.confidence_score or 0.8) * 1.05)
     elif abs(delta) <= delta_warn:
         lm, ex, conf, status = 0.6, 0.4, "MEDIUM", "OK"
+        conf_score = max(0.45, min(0.74, (raw.confidence_score or 0.6)))
     elif delta > delta_warn:
         # LMS ≫ thi → LMS vượt trội so với bài thi chung: kết hợp cân bằng, ghi nhận nỗ lực bài tập.
         lm, ex, conf, status = 0.5, 0.5, "MEDIUM", "LMS_EXCEEDS_EXAM"
-    else:  # delta < -delta_warn: LMS ≪ thi → ít luyện tập trên LMS, ưu tiên điểm thi thực tế.
-        lm, ex, conf, status = 0.4, 0.6, "MEDIUM", "LOW_ENGAGEMENT"
+        conf_score = 0.45
+    else:  # delta < -delta_warn: LMS ≪ thi
+        # Nếu học sinh đã làm đủ số câu (>= MIN_ITEMS) thì đây là lỗ hổng kiến thức cụ thể ở bài học này (không quy kết lười làm bài)
+        if raw.n_items >= MIN_ITEMS:
+            lm, ex, conf, status = 0.5, 0.5, "MEDIUM", "OK"
+            conf_score = max(0.45, min(0.70, (raw.confidence_score or 0.6)))
+        else:
+            lm, ex, conf, status = 0.4, 0.6, "MEDIUM", "LOW_ENGAGEMENT"
+            conf_score = 0.40
 
     raw.lm_weight, raw.exam_weight = lm, ex
     raw.confidence = conf
+    raw.confidence_score = round(conf_score, 3)
     raw.integrity_status = status
     raw.evidence_source = "HYBRID"
+    raw.confidence_reason = generate_confidence_reason(
+        confidence=conf,
+        confidence_score=raw.confidence_score,
+        n_items=raw.n_items,
+        coverage=raw.coverage,
+        evidence_source="HYBRID",
+        integrity_status=status,
+        delta=delta,
+        exam_score=exam_mastery * 10.0,
+    )
     raw.adjusted_mastery = round(_clamp01(lm * raw.raw_mastery + ex * exam_mastery), 4)
     raw.is_gap = bool(raw.adjusted_mastery < GAP_MASTERY_THRESHOLD)
     return raw

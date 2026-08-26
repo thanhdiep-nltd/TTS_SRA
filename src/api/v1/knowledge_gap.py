@@ -27,7 +27,7 @@ from src.schemas.knowledge_gap import (
     StudentUnitBloomDrilldownResponse,
     StudentUnitQuestionItem,
 )
-from src.services.item_mastery import recalc_unit_mastery
+from src.services.item_mastery import generate_confidence_reason, recalc_unit_mastery
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
 from src.services.lms_question_analyzer import job_manager, run_analysis_job_in_background
 
@@ -317,6 +317,44 @@ def _unit_meta(
     }
 
 
+def _enrich_gap_item_confidence(item: KnowledgeGapItem, total_score: float | None = None) -> KnowledgeGapItem:
+    """Bổ sung confidence_score (%) và confidence_reason cho 1 KnowledgeGapItem."""
+    if item.evidence_detail and "c_total" in item.evidence_detail:
+        c_score = float(item.evidence_detail["c_total"])
+    elif item.confidence == "HIGH":
+        c_score = 0.85
+    elif item.confidence == "MEDIUM":
+        c_score = 0.60
+    elif item.confidence == "LOW":
+        c_score = 0.35 if (item.n_items and item.n_items > 0) else 0.30
+    else:
+        c_score = 0.0
+
+    delta = None
+    exam_score = None
+    if item.evidence_detail:
+        if "delta" in item.evidence_detail:
+            delta = float(item.evidence_detail["delta"])
+        if "exam_mastery" in item.evidence_detail:
+            exam_score = float(item.evidence_detail["exam_mastery"]) * 10.0
+    if exam_score is None and total_score is not None:
+        exam_score = total_score
+
+    item.confidence_score = round(c_score, 3)
+    item.confidence_reason = generate_confidence_reason(
+        confidence=item.confidence or "LOW",
+        confidence_score=item.confidence_score,
+        n_items=item.n_items or 0,
+        coverage=item.coverage,
+        evidence_source=item.evidence_source or "LMS",
+        integrity_status=item.integrity_status or "OK",
+        delta=delta,
+        exam_score=exam_score,
+        bloom_count=len(item.bloom_breakdown) if item.bloom_breakdown else None,
+    )
+    return item
+
+
 def _build_mastery_tree(items: list[KnowledgeGapItem]) -> list[KnowledgeGapItem]:
     """Tổ chức danh sách các unit thành Cây Thành thạo (Chương -> Bài học con)."""
     if not items:
@@ -365,6 +403,8 @@ def _build_mastery_tree(items: list[KnowledgeGapItem]) -> list[KnowledgeGapItem]
                 mastery=avg_m,
                 raw_mastery=avg_raw_m,
                 confidence=ch_lessons[0].confidence,
+                confidence_score=ch_lessons[0].confidence_score,
+                confidence_reason=ch_lessons[0].confidence_reason,
                 coverage=1.0,
                 integrity_status=ch_lessons[0].integrity_status,
                 evidence_source=ch_lessons[0].evidence_source,
@@ -467,25 +507,27 @@ def get_student_knowledge_gaps(
             bloom_by_unit = {}
 
         raw_items = [
-            KnowledgeGapItem(
-                unit_id=r.unit_id,
-                parent_id=meta.get(r.unit_id, (None, None, None, None, None, None))[5],
-                unit_name=meta.get(r.unit_id, (None, None, None, None, None, None))[0],
-                chapter=meta.get(r.unit_id, (None, None, None, None, None, None))[1],
-                lesson=meta.get(r.unit_id, (None, None, None, None, None, None))[2],
-                gap_score=round(1.0 - float(r.adjusted_mastery), 3),
-                mastery=round(float(r.adjusted_mastery), 3),
-                confidence=_confidence_label(r.confidence),
-                coverage=float(r.coverage) if r.coverage is not None else None,
-                integrity_status=r.integrity_status,
-                evidence_source=(r.evidence_source or "LMS"),
-                evidence_detail=dict(r.evidence_detail) if r.evidence_detail else None,
-                raw_mastery=float(r.raw_mastery) if r.raw_mastery is not None else None,
-                n_items=int(r.n_items) if r.n_items is not None else None,
-                n_correct=int(r.n_correct) if r.n_correct is not None else None,
-                lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
-                exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
-                bloom_breakdown=bloom_by_unit.get(r.unit_id, []),
+            _enrich_gap_item_confidence(
+                KnowledgeGapItem(
+                    unit_id=r.unit_id,
+                    parent_id=meta.get(r.unit_id, (None, None, None, None, None, None))[5],
+                    unit_name=meta.get(r.unit_id, (None, None, None, None, None, None))[0],
+                    chapter=meta.get(r.unit_id, (None, None, None, None, None, None))[1],
+                    lesson=meta.get(r.unit_id, (None, None, None, None, None, None))[2],
+                    gap_score=round(1.0 - float(r.adjusted_mastery), 3),
+                    mastery=round(float(r.adjusted_mastery), 3),
+                    confidence=_confidence_label(r.confidence),
+                    coverage=float(r.coverage) if r.coverage is not None else None,
+                    integrity_status=r.integrity_status,
+                    evidence_source=(r.evidence_source or "LMS"),
+                    evidence_detail=dict(r.evidence_detail) if r.evidence_detail else None,
+                    raw_mastery=float(r.raw_mastery) if r.raw_mastery is not None else None,
+                    n_items=int(r.n_items) if r.n_items is not None else None,
+                    n_correct=int(r.n_correct) if r.n_correct is not None else None,
+                    lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
+                    exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
+                    bloom_breakdown=bloom_by_unit.get(r.unit_id, []),
+                )
             )
             for r in mastery_units
         ]
@@ -515,18 +557,21 @@ def get_student_knowledge_gaps(
     mastery_list = compute_unit_mastery(total_score, max_score, units)
     meta = _unit_meta(db, [m.unit_id for m in mastery_list])
     raw_items = [
-        KnowledgeGapItem(
-            unit_id=m.unit_id,
-            parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
-            unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
-            chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
-            lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
-            summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
-            keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
-            gap_score=m.gap_score,
-            mastery=m.mastery,
-            confidence="LOW",
-            evidence_source="EXAM",
+        _enrich_gap_item_confidence(
+            KnowledgeGapItem(
+                unit_id=m.unit_id,
+                parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
+                unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
+                chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
+                lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
+                summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
+                keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
+                gap_score=m.gap_score,
+                mastery=m.mastery,
+                confidence="LOW",
+                evidence_source="EXAM",
+            ),
+            total_score=total_score,
         )
         for m in mastery_list
     ]
@@ -805,25 +850,27 @@ def get_class_diagnostic_roster(
         if s_sum_rows:
             # Nguồn 1: student_unit_mastery
             raw_items = [
-                KnowledgeGapItem(
-                    unit_id=r.unit_id,
-                    parent_id=meta.get(r.unit_id, (None, None, None, None, None, None))[5],
-                    unit_name=meta.get(r.unit_id, (None, None, None, None, None, None))[0],
-                    chapter=meta.get(r.unit_id, (None, None, None, None, None, None))[1],
-                    lesson=meta.get(r.unit_id, (None, None, None, None, None, None))[2],
-                    gap_score=round(1.0 - float(r.adjusted_mastery), 3),
-                    mastery=round(float(r.adjusted_mastery), 3),
-                    confidence=_confidence_label(r.confidence),
-                    coverage=float(r.coverage) if r.coverage is not None else None,
-                    integrity_status=r.integrity_status,
-                    evidence_source=(r.evidence_source or "LMS"),
-                    evidence_detail=dict(r.evidence_detail) if r.evidence_detail else None,
-                    raw_mastery=float(r.raw_mastery) if r.raw_mastery is not None else None,
-                    n_items=int(r.n_items) if r.n_items is not None else None,
-                    n_correct=int(r.n_correct) if r.n_correct is not None else None,
-                    lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
-                    exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
-                    bloom_breakdown=_get_student_bloom_stats(sc, r.unit_id),
+                _enrich_gap_item_confidence(
+                    KnowledgeGapItem(
+                        unit_id=r.unit_id,
+                        parent_id=meta.get(r.unit_id, (None, None, None, None, None, None))[5],
+                        unit_name=meta.get(r.unit_id, (None, None, None, None, None, None))[0],
+                        chapter=meta.get(r.unit_id, (None, None, None, None, None, None))[1],
+                        lesson=meta.get(r.unit_id, (None, None, None, None, None, None))[2],
+                        gap_score=round(1.0 - float(r.adjusted_mastery), 3),
+                        mastery=round(float(r.adjusted_mastery), 3),
+                        confidence=_confidence_label(r.confidence),
+                        coverage=float(r.coverage) if r.coverage is not None else None,
+                        integrity_status=r.integrity_status,
+                        evidence_source=(r.evidence_source or "LMS"),
+                        evidence_detail=dict(r.evidence_detail) if r.evidence_detail else None,
+                        raw_mastery=float(r.raw_mastery) if r.raw_mastery is not None else None,
+                        n_items=int(r.n_items) if r.n_items is not None else None,
+                        n_correct=int(r.n_correct) if r.n_correct is not None else None,
+                        lm_weight=float(r.lm_weight) if r.lm_weight is not None else None,
+                        exam_weight=float(r.exam_weight) if r.exam_weight is not None else None,
+                        bloom_breakdown=_get_student_bloom_stats(sc, r.unit_id),
+                    )
                 )
                 for r in s_sum_rows
             ]
@@ -835,18 +882,21 @@ def get_class_diagnostic_roster(
                 max_score = float(score_row.max_grade) if score_row.max_grade else 10.0
                 mastery_list = compute_unit_mastery(total_score, max_score, exam_units)
                 raw_items = [
-                    KnowledgeGapItem(
-                        unit_id=m.unit_id,
-                        parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
-                        unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
-                        chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
-                        lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
-                        summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
-                        keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
-                        gap_score=m.gap_score,
-                        mastery=m.mastery,
-                        confidence="LOW",
-                        evidence_source="EXAM",
+                    _enrich_gap_item_confidence(
+                        KnowledgeGapItem(
+                            unit_id=m.unit_id,
+                            parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
+                            unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
+                            chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
+                            lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
+                            summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
+                            keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
+                            gap_score=m.gap_score,
+                            mastery=m.mastery,
+                            confidence="LOW",
+                            evidence_source="EXAM",
+                        ),
+                        total_score=total_score,
                     )
                     for m in mastery_list
                 ]
@@ -877,29 +927,54 @@ def get_class_diagnostic_roster(
             gap_c = sum(1 for g in all_leaf_units if (g.raw_mastery if g.raw_mastery is not None else g.mastery) < 0.60)
             mastered_c = sum(1 for g in all_leaf_units if (g.raw_mastery if g.raw_mastery is not None else g.mastery) >= 0.60)
 
-            # Xác định trạng thái đối soát tổng thể theo ĐA SỐ (Majority)
+            # Xác định trạng thái đối soát tổng thể theo Quy tắc Đa số (Majority Rule)
             n_low = sum(1 for g in raw_items if g.integrity_status == "LOW_ENGAGEMENT")
             n_exceed = sum(1 for g in raw_items if g.integrity_status in ("LMS_EXCEEDS_EXAM", "SUSPECTED_CHEATING"))
-            if n_low > n_exceed:
-                overall_integ = "LOW_ENGAGEMENT"
-            elif n_exceed > 0:
+            n_ok = sum(1 for g in raw_items if g.integrity_status == "OK")
+
+            if n_exceed > 0 and n_exceed >= n_ok:
                 overall_integ = "LMS_EXCEEDS_EXAM"
+            elif n_low > 0 and n_low >= n_ok:
+                overall_integ = "LOW_ENGAGEMENT"
             elif any(g.integrity_status == "FLAGGED" for g in raw_items):
                 overall_integ = "FLAGGED"
-            elif any(g.integrity_status == "LMS_ONLY" for g in raw_items):
+            elif any(g.integrity_status == "LMS_ONLY" for g in raw_items) and n_ok == 0:
                 overall_integ = "LMS_ONLY"
             else:
                 overall_integ = "OK"
 
-            # Xác định độ tin cậy chung
-            if any(g.confidence == "LOW" for g in raw_items):
-                overall_conf = "LOW"
-            elif any(g.confidence == "MEDIUM" for g in raw_items):
-                overall_conf = "MEDIUM"
-            else:
-                overall_conf = "HIGH"
-
             ev_src = raw_items[0].evidence_source if raw_items else "HYBRID"
+
+            total_items = sum(g.n_items or 0 for g in raw_items)
+            avg_cov = (sum(g.coverage or 0.0 for g in raw_items) / len(raw_items)) if raw_items else 0.0
+
+            # Tính độ tin cậy trung bình thực tế từ các bài học của học sinh
+            conf_scores = [g.confidence_score for g in raw_items if g.confidence_score is not None]
+            if conf_scores:
+                summary_conf_score = round(sum(conf_scores) / len(conf_scores), 3)
+            elif ev_src == "EXAM":
+                summary_conf_score = 0.30
+            else:
+                summary_conf_score = 0.50
+
+            # Phân loại nhãn theo % tin cậy thực tế (>= 75% HIGH, 45-74% MEDIUM, < 45% LOW)
+            if summary_conf_score >= 0.75:
+                overall_conf = "HIGH"
+            elif summary_conf_score >= 0.45:
+                overall_conf = "MEDIUM"
+            elif summary_conf_score > 0.0:
+                overall_conf = "LOW"
+            else:
+                overall_conf = "INSUFFICIENT"
+
+            summary_conf_reason = generate_confidence_reason(
+                confidence=overall_conf,
+                confidence_score=summary_conf_score,
+                n_items=total_items,
+                coverage=avg_cov,
+                evidence_source=ev_src,
+                integrity_status=overall_integ,
+            )
         else:
             avg_m = 0.0
             gap_c = 0
@@ -908,6 +983,8 @@ def get_class_diagnostic_roster(
             weak_u = []
             overall_integ = "INSUFFICIENT"
             overall_conf = "INSUFFICIENT"
+            summary_conf_score = 0.0
+            summary_conf_reason = "Chưa có dữ liệu bài tập hoặc bài thi."
             ev_src = "INSUFFICIENT"
 
         roster.append(
@@ -921,6 +998,8 @@ def get_class_diagnostic_roster(
                 weak_units=weak_u,
                 integrity_status=overall_integ,
                 confidence=overall_conf,
+                confidence_score=summary_conf_score,
+                confidence_reason=summary_conf_reason,
                 evidence_source=ev_src,
                 gaps=tree_gaps,
             )

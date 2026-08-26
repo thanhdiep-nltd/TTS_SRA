@@ -413,9 +413,9 @@ export default function KnowledgeGapsPage() {
                                     <thead>
                                         <tr className="text-left text-xs font-bold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40">
                                             <th className="px-5 py-3 w-[22%]">Học sinh</th>
-                                            <th className="px-5 py-3 w-[22%]">Mức độ Thành thạo</th>
-                                            <th className="px-5 py-3 w-[36%]">Trọng tâm Cần củng cố</th>
-                                            <th className="px-5 py-3 w-[12%]">Đối soát LMS</th>
+                                            <th className="px-5 py-3 w-[20%]">Mức độ Thành thạo</th>
+                                            <th className="px-5 py-3 w-[34%]">Trọng tâm Cần củng cố</th>
+                                            <th className="px-5 py-3 w-[16%]">Đối soát & Độ tin cậy</th>
                                             <th className="px-5 py-3 w-[8%] text-right">Chi tiết</th>
                                         </tr>
                                     </thead>
@@ -524,12 +524,27 @@ export default function KnowledgeGapsPage() {
                                                         )}
                                                     </td>
 
-                                                    {/* Cột 4: Đối soát LMS (Tinh gọn 1 chip) */}
+                                                    {/* Cột 4: Đối soát & Độ tin cậy (Kèm % và Tooltip giải trình chi tiết) */}
                                                     <td className="px-5 py-3">
-                                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700" title={`${integ.label} • ${conf.label}`}>
+                                                        <div
+                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 transition-colors"
+                                                            title={s.confidence_reason || `${conf.label} • ${integ.label}`}
+                                                        >
                                                             {integ.icon}
-                                                            <span className="text-[11px] text-slate-700 dark:text-slate-300">{integ.label}</span>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${conf.dotCls} shrink-0`} />
+                                                            <span className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold">{integ.label}</span>
+                                                            <span className="text-slate-300 dark:text-slate-600">•</span>
+                                                            <span className={`inline-flex items-center gap-1 font-semibold text-[11px] ${
+                                                                (s.confidence_score ?? 0) >= 0.75
+                                                                    ? "text-emerald-600 dark:text-emerald-400"
+                                                                    : (s.confidence_score ?? 0) >= 0.45
+                                                                    ? "text-amber-600 dark:text-amber-400"
+                                                                    : "text-rose-600 dark:text-rose-400"
+                                                            }`}>
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${conf.dotCls} shrink-0`} />
+                                                                {s.confidence_score !== null && s.confidence_score !== undefined
+                                                                    ? `${Math.round(s.confidence_score * 100)}%`
+                                                                    : conf.label}
+                                                            </span>
                                                         </div>
                                                     </td>
 
@@ -562,6 +577,10 @@ export default function KnowledgeGapsPage() {
                     studentName={selectedStudent.student_name}
                     className={rosterData?.class_name ?? `Lớp ${classId}`}
                     subjectName={rosterData?.subject_name ?? `Môn ${subjectId}`}
+                    confidence={selectedStudent.confidence}
+                    confidenceScore={selectedStudent.confidence_score}
+                    confidenceReason={selectedStudent.confidence_reason}
+                    evidenceSource={selectedStudent.evidence_source}
                     gaps={selectedStudent.gaps}
                     onClose={() => setSelectedStudent(null)}
                 />
