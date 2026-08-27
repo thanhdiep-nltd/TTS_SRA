@@ -1,86 +1,103 @@
-# Python
+# ==============================================================================
+# 1. Environment Variables & Secrets (Bảo mật tuyệt đối)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+accounts_info.md
+
+# ==============================================================================
+# 2. Python Virtual Environments & Cache
+# ==============================================================================
+.venv/
+venv/
+env/
+ENV/
 __pycache__/
 *.py[cod]
+*$py.class
 *.so
-*.egg-info/
-dist/
 build/
+dist/
+*.egg-info/
 .eggs/
 
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Environment variables
-.env
-.env.local
-.env.production
-.env.airflow
-
-# Airflow pipeline runtime
-pipelines/airflow/logs/
-
-# Dữ liệu SGK PDF (nặng ~GB) — không commit; nguồn cho pipeline RAG
-data_mock/book/
-data_mock/scripts/
-
-# IDE
+# ==============================================================================
+# 3. IDEs, OS & Local Configs
+# ==============================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Data (never commit large data)
-data/
-*.db
-*.sqlite3
-accounts_info.md
-temp/
-catboost_info/
+# ==============================================================================
+# 4. AI Assistants, MCP & Local Agent Tool Caches (Dọn rác IDE AI)
+# ==============================================================================
+.gemini/
+.roo/
+.clinerules/
+.code-review-graph/
 .playwright-mcp/
+.mcp.json
+scratch/
+plans/
+
+# ==============================================================================
+# 5. Testing, Linting & Coverage
+# ==============================================================================
+.pytest_cache/
 .ruff_cache/
-
-# Eval
-eval/eval_text_to_sql/results/
-
-# Logs
-logs/
-*.log
-
-# Test coverage
+.mypy_cache/
 htmlcov/
 .coverage
 coverage.xml
 tests/fixtures/
 
-# Docker
-docker-compose.override.yml
-
-# Node (frontend)
-node_modules/
-.next/
-out/
-.nuxt/
-
-# Build
-*.pyc
-*.pyo
-
-#private documents folder (contains sensitive information, not to be committed)
-private_docs/
-# Uploaded files (đề thi)
+# ==============================================================================
+# 6. Heavy Data, Binary Models, Uploads & Temporary Files (Chống phình repo)
+# ==============================================================================
+data/
+data_mock/book/
+data_mock/scripts/
 uploads/
-# Added by code-review-graph
-.code-review-graph/
-# code-review-graph MCP config (local, chứa đường dẫn tuyệt đối — không commit)
-.mcp.json
-.roo/
-.gemini/
+temp/
+catboost_info/
+models/*.onnx
+*.onnx
 *.cbm
-plans/
+*.bin
+*.db
+*.sqlite3
+
+# ==============================================================================
+# 7. Frontend (Node.js / Next.js builds)
+# ==============================================================================
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+.nuxt/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==============================================================================
+# 8. Logs & Pipeline Runtimes
+# ==============================================================================
+logs/
+*.log
+pipelines/airflow/logs/
+eval/eval_text_to_sql/results/
+
+# ==============================================================================
+# 9. Docker Overrides & Private Docs
+# ==============================================================================
+docker-compose.override.yml
+private_docs/
