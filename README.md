@@ -309,6 +309,7 @@ Khi kết nối với cơ sở dữ liệu thật của Sở GD&ĐT / Nhà trư�
 2.  **Ngừng chạy các script Seed Data Mock**: Không chạy các file `scripts/seed_mock_*.py` lên môi trường Production để tránh làm ô nhiễm dữ liệu thật.
 3.  **Thay đổi JWT Secret Key**: Thiết lập biến môi trường `JWT_SECRET_KEY` bằng một chuỗi ngẫu nhiên bảo mật cao (tối thiểu 32 bytes) trong `.env`.
 4.  **Chuyển đổi nguồn dữ liệu**: Cập nhật `DATABASE_URL` sang hệ thống PostgreSQL chính thức và kết nối API đồng bộ với cổng LMS/Sổ điểm điện tử của trường.
+5.  **Rà soát & chuẩn hóa ma trận phân quyền (RBAC Matrix)**: Trong phiên bản phát triển hiện tại, do giới hạn thời gian demo và để phục vụ kiểm thử nhanh (testing/demo), một số quyền hạn đang được điều chỉnh linh hoạt giữa các role (ví dụ: tài khoản *Hiệu trưởng* được cấp tạm một số quyền quản trị của *Admin*). Khi triển khai chính thức lên Production, cần rà soát và siết chặt lại ma trận RBAC theo đúng quy định chuẩn của nhà trường.
 
 ### 3. Lý Do Thiết Kế Kiến Trúc (Architecture Design Rationales)
 *   **Tại sao dùng Multi-Agent StateGraph thay vì Single LLM?**
@@ -326,17 +327,3 @@ Khi kết nối với cơ sở dữ liệu thật của Sở GD&ĐT / Nhà trư�
 *   **Tại sao Knowledge Gap (Flow 5) cần Động Cơ Đối Soát Đa Nguồn (Cross-Validation)?**
     *   Học sinh làm bài tập trực tuyến trên LMS có nguy cơ tra Google/hỏi bạn (điểm online cao bất thường). Nếu chỉ tin LMS sẽ chẩn đoán sai.
     *   Hệ thống bắt buộc đối soát chéo với điểm thi tập trung có giám thị trên lớp để phát hiện độ lệch $\Delta$, phân loại chính xác giữa học sinh giỏi thực chất, học sinh gian lận online (`LMS_EXCEEDS_EXAM`) hay học sinh lười làm bài (`LOW_ENGAGEMENT`).
-
----
-
-## 📸 9. Giao Diện Hệ Thống (Screenshots)
-
-> *(Khu vực hình ảnh giao diện thực tế của ứng dụng)*
-
-| 📊 Executive Dashboard & Cảnh Báo EWS | 🤖 Trợ Lý Multi-Agent Chat AI |
-| :---: | :---: |
-| *(Dán ảnh Dashboard tại đây)* | *(Dán ảnh Chat AI tại đây)* |
-
-| 📖 Sổ Điểm Điện Tử & Phân Quyền RBAC | 🔍 Chẩn Đoán Lỗ Hổng Kiến Thức & Bloom |
-| :---: | :---: |
-| *(Dán ảnh Sổ điểm tại đây)* | *(Dán ảnh Knowledge Gaps Drawer tại đây)* |
