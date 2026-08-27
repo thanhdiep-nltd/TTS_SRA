@@ -97,7 +97,8 @@ pipelines/airflow/logs/
 eval/eval_text_to_sql/results/
 
 # ==============================================================================
-# 9. Docker Overrides & Private Docs
+# 9. Docker Overrides, Docs & Private Docs
 # ==============================================================================
 docker-compose.override.yml
 private_docs/
+docs/
