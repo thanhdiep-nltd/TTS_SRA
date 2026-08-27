@@ -1166,15 +1166,15 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <BarChart2 className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
-                    <h3 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>2. CDI Adjustment (Empirical Heuristic)</h3>
+                    <h3 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>2. Hiệu Chỉnh Theo Độ Khó Đề Thi (CDI Adj)</h3>
                   </div>
-                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold ${isDark ? "bg-amber-950/30 text-[#c2ae78]" : "bg-amber-50 text-amber-700"}`}>Cold-Start Forecast</span>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold ${isDark ? "bg-amber-950/30 text-[#c2ae78]" : "bg-amber-50 text-amber-700"}`}>Biên độ ±25%</span>
                 </div>
                 <div className={`p-2 rounded-xl border font-mono text-xs md:text-[13px] mb-1.5 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
-                  <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span className="text-[10px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
+                  <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong>
                 </div>
                 <p className={`text-[10.5px] md:text-[11.5px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
-                  <strong>Tại sao dùng Heuristic thay IRT?</strong> IRT cần $\ge 200$ HS làm bài trước để calibrate tham số. Đề thi cuối kỳ là đề mới bảo mật, chưa có tương tác học sinh $\implies$ Dùng độ khó Bloom tiên nghiệm để dự báo sớm trước 2-3 tuần.
+                  Tự động điều chỉnh điểm dự báo theo độ khó thực tế của đề thi: <strong>Đề khó (CDI &gt; 0.5)</strong> tự động hạ bớt điểm; <strong>Đề dễ (CDI &lt; 0.5)</strong> tự động nâng thêm điểm (mức co giãn tối đa ±25%).
                 </p>
               </div>
             </div>

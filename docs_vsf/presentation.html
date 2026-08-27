@@ -899,15 +899,15 @@
                   <div class="flex items-center justify-between mb-1.5">
                     <div class="flex items-center gap-2">
                       <i data-lucide="bar-chart-2" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i>
-                      <h3 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">2. CDI Adjustment (Empirical Heuristic)</h3>
+                      <h3 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">2. Hiệu Chỉnh Theo Độ Khó Đề Thi (CDI Adj)</h3>
                     </div>
-                    <span class="text-[9px] font-mono px-2 py-0.5 rounded font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-vsf-goldLight">Cold-Start Forecast</span>
+                    <span class="text-[9px] font-mono px-2 py-0.5 rounded font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-vsf-goldLight">Biên độ ±25%</span>
                   </div>
                   <div class="p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-xs md:text-[13px] mb-1.5 text-vsf-green dark:text-vsf-greenLight">
-                    <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span class="text-[10px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
+                    <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong>
                   </div>
                   <p class="text-[10.5px] md:text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    <strong>Tại sao dùng Heuristic thay IRT?</strong> IRT cần $\ge 200$ HS làm bài trước để calibrate tham số. Đề thi cuối kỳ là đề mới bảo mật, chưa có tương tác học sinh $\implies$ Dùng độ khó Bloom tiên nghiệm để dự báo sớm trước 2-3 tuần.
+                    Tự động điều chỉnh điểm dự báo theo độ khó thực tế của đề thi: <strong>Đề khó (CDI &gt; 0.5)</strong> tự động hạ bớt điểm; <strong>Đề dễ (CDI &lt; 0.5)</strong> tự động nâng thêm điểm (mức co giãn tối đa ±25%).
                   </p>
                 </div>
               </div>
