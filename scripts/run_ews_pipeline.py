@@ -10,7 +10,7 @@ Args:
     --school-year   Năm học (VD: 2025)
     --semester      Học kỳ (1 hoặc 2)
     --week          Tuần đánh giá
-                    HK1: [5, 8, 11, 14, 16]
+                    HK1: [8, 11, 14, 16]
                     HK2: [23, 26, 29, 32, 34]
     --cutoff-date   (optional) Ngày cutoff, mặc định tính từ week
     --skip-shap     (optional) Bỏ qua SHAP để tăng tốc
@@ -75,7 +75,7 @@ def estimate_cutoff_date(semester: int, week: int) -> date:
 # ============================================================================
 
 VALID_WEEKS = {
-    1: {5, 8, 11, 14, 16},
+    1: {8, 11, 14, 16},
     2: {23, 26, 29, 32, 34},
 }
 

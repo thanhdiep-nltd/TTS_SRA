@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="vi" class="dark">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VSF Student Risk Alert — Presentation V3</title>
-  
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons CDN -->
@@ -12,7 +13,9 @@
   <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
 
   <script>
     tailwind.config = {
@@ -43,41 +46,59 @@
   </script>
 
   <style>
-    @keyframes stroke-flow { to { stroke-dashoffset: -20; } }
-    .animated-flow-line { stroke-dasharray: 6, 4; animation: stroke-flow 1.2s linear infinite; }
-    
+    @keyframes stroke-flow {
+      to {
+        stroke-dashoffset: -20;
+      }
+    }
+
+    .animated-flow-line {
+      stroke-dasharray: 6, 4;
+      animation: stroke-flow 1.2s linear infinite;
+    }
+
     /* Hide scrollbars for crisp presentation view */
     body {
       user-select: text;
       overflow: hidden;
     }
+
     .custom-scrollbar::-webkit-scrollbar {
       width: 4px;
     }
+
     .custom-scrollbar::-webkit-scrollbar-track {
       background: transparent;
     }
+
     .custom-scrollbar::-webkit-scrollbar-thumb {
       background: rgba(140, 118, 62, 0.3);
       border-radius: 4px;
     }
   </style>
 </head>
-<body class="bg-vsf-light dark:bg-vsf-dark text-slate-900 dark:text-slate-100 font-sans h-screen flex flex-col justify-between transition-colors duration-300">
+
+<body
+  class="bg-vsf-light dark:bg-vsf-dark text-slate-900 dark:text-slate-100 font-sans h-screen flex flex-col justify-between transition-colors duration-300">
 
   <!-- Background Gradients -->
-  <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(140,118,62,0.05),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(45,106,79,0.05),transparent_50%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(194,174,120,0.07),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(82,183,136,0.06),transparent_50%)] pointer-events-none"></div>
+  <div
+    class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(140,118,62,0.05),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(45,106,79,0.05),transparent_50%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(194,174,120,0.07),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(82,183,136,0.06),transparent_50%)] pointer-events-none">
+  </div>
 
   <!-- ========================================================================= -->
   <!-- HEADER BAR -->
   <!-- ========================================================================= -->
-  <header class="px-6 lg:px-8 py-2.5 h-14 border-b border-vsf-lightBorder/80 dark:border-vsf-darkBorder/60 bg-vsf-light/85 dark:bg-vsf-dark/85 backdrop-blur-md flex items-center justify-between shrink-0 relative z-20">
+  <header
+    class="px-6 lg:px-8 py-2.5 h-14 border-b border-vsf-lightBorder/80 dark:border-vsf-darkBorder/60 bg-vsf-light/85 dark:bg-vsf-dark/85 backdrop-blur-md flex items-center justify-between shrink-0 relative z-20">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md bg-slate-900 dark:bg-vsf-green">
+      <div
+        class="w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md bg-slate-900 dark:bg-vsf-green">
         <i data-lucide="brain" class="w-4 h-4 text-emerald-400"></i>
       </div>
       <div>
-        <h2 id="header-title" class="text-xs md:text-sm font-extrabold tracking-tight line-clamp-1 text-slate-900 dark:text-white">
+        <h2 id="header-title"
+          class="text-xs md:text-sm font-extrabold tracking-tight line-clamp-1 text-slate-900 dark:text-white">
           VSF Student Risk Alert — Hệ Thống AI Phân Tích & Quản Trị Giáo Dục
         </h2>
         <p id="header-subtitle" class="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">
@@ -88,12 +109,15 @@
 
     <div class="flex items-center gap-2.5">
       <!-- Theme Toggle -->
-      <button id="btn-theme" type="button" onclick="toggleTheme()" class="p-1.5 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark text-vsf-gold dark:text-vsf-goldLight hover:bg-slate-100 dark:hover:bg-slate-900 transition active:scale-95" title="Đổi giao diện Sáng / Tối (T)">
+      <button id="btn-theme" type="button" onclick="toggleTheme()"
+        class="p-1.5 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark text-vsf-gold dark:text-vsf-goldLight hover:bg-slate-100 dark:hover:bg-slate-900 transition active:scale-95"
+        title="Đổi giao diện Sáng / Tối (T)">
         <i id="theme-icon" data-lucide="moon" class="w-4 h-4"></i>
       </button>
 
       <!-- Slide Counter Badge -->
-      <span id="slide-counter-badge" class="text-[10.5px] font-mono px-3 py-1 rounded-full font-bold bg-white dark:bg-[#0a1120] text-vsf-gold dark:text-vsf-goldLight border border-vsf-lightBorder dark:border-vsf-darkBorder">
+      <span id="slide-counter-badge"
+        class="text-[10.5px] font-mono px-3 py-1 rounded-full font-bold bg-white dark:bg-[#0a1120] text-vsf-gold dark:text-vsf-goldLight border border-vsf-lightBorder dark:border-vsf-darkBorder">
         1 / 9
       </span>
     </div>
@@ -111,24 +135,30 @@
   <!-- ========================================================================= -->
   <!-- FOOTER CONTROLS -->
   <!-- ========================================================================= -->
-  <footer class="px-6 lg:px-8 py-2 h-12 border-t border-vsf-lightBorder/80 dark:border-vsf-darkBorder/60 bg-vsf-light/85 dark:bg-vsf-dark/85 backdrop-blur-md flex items-center justify-between shrink-0 relative z-20">
+  <footer
+    class="px-6 lg:px-8 py-2 h-12 border-t border-vsf-lightBorder/80 dark:border-vsf-darkBorder/60 bg-vsf-light/85 dark:bg-vsf-dark/85 backdrop-blur-md flex items-center justify-between shrink-0 relative z-20">
     <!-- Progress Indicator Dots -->
     <div id="progress-dots" class="flex items-center gap-1.5">
       <!-- Dot bars injected dynamically -->
     </div>
 
     <!-- Slide Index Text -->
-    <div id="slide-counter-footer" class="text-[9.5px] font-bold uppercase tracking-wider text-vsf-gold dark:text-slate-400">
+    <div id="slide-counter-footer"
+      class="text-[9.5px] font-bold uppercase tracking-wider text-vsf-gold dark:text-slate-400">
       Slide 1 / 9
     </div>
 
     <!-- Actions -->
     <div class="flex items-center gap-2">
-      <button id="btn-prev" type="button" onclick="prevSlide()" class="p-1.5 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark text-vsf-gold dark:text-vsf-goldLight hover:bg-slate-100 dark:hover:bg-slate-900 transition disabled:opacity-30 disabled:pointer-events-none active:scale-95" title="Slide trước (←)">
+      <button id="btn-prev" type="button" onclick="prevSlide()"
+        class="p-1.5 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark text-vsf-gold dark:text-vsf-goldLight hover:bg-slate-100 dark:hover:bg-slate-900 transition disabled:opacity-30 disabled:pointer-events-none active:scale-95"
+        title="Slide trước (←)">
         <i data-lucide="chevron-left" class="w-4 h-4"></i>
       </button>
 
-      <button id="btn-next" type="button" onclick="nextSlide()" class="px-3 py-1 rounded-lg font-bold text-xs transition shadow-sm bg-slate-900 hover:bg-vsf-gold text-white dark:bg-vsf-goldLight dark:text-vsf-dark dark:hover:bg-amber-400 disabled:opacity-30 disabled:pointer-events-none active:scale-95 flex items-center gap-1" title="Slide tiếp theo (Space / →)">
+      <button id="btn-next" type="button" onclick="nextSlide()"
+        class="px-3 py-1 rounded-lg font-bold text-xs transition shadow-sm bg-slate-900 hover:bg-vsf-gold text-white dark:bg-vsf-goldLight dark:text-vsf-dark dark:hover:bg-amber-400 disabled:opacity-30 disabled:pointer-events-none active:scale-95 flex items-center gap-1"
+        title="Slide tiếp theo (Space / →)">
         <span>Tiếp theo</span>
         <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
       </button>
@@ -640,7 +670,6 @@
                     <i data-lucide="search" class="w-3.5 h-3.5 text-blue-500"></i>
                     <h3 class="text-xs font-bold text-slate-900 dark:text-white">Lượt A: VLM Tìm Mục Lục (TOC)</h3>
                   </div>
-                  <span class="text-[8px] font-mono px-1.5 py-0.5 rounded-full font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">~15 trang đầu</span>
                 </div>
                 <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
                   PyMuPDF crop ảnh trang → Qwen-VL phân tích cấu trúc cây Chương→Bài → Xuất JSON danh sách NEO cố định.
@@ -677,7 +706,7 @@
                   <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-slate-200">Data Chunking → Qdrant</h4>
                 </div>
                 <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
-                  Chunks 256–512 tokens kèm metadata mục SGK. Embedding vector → Qdrant phục vụ tìm kiếm ngữ nghĩa siêu tốc.
+                  Chunks 256–512 tokens kèm metadata mục SGK. Embedding vector → Qdrant phục vụ tìm kiếm ngữ nghĩa.
                 </p>
               </div>
             </div>
@@ -973,7 +1002,7 @@
     function renderSolutionDiagram() {
       const current = flows[activeFlow];
       const isDark = document.documentElement.classList.contains('dark');
-      
+
       const nodeInactiveClass = isDark
         ? "opacity-30 bg-[#070e1a]/60 border-[#263750] text-[#8f9cae] hover:opacity-80"
         : "opacity-35 bg-white/60 border-[#dcd7cc] text-[#4a5568] hover:opacity-80";
@@ -1249,11 +1278,10 @@
               </div>
               <div class="space-y-2">
                 ${flows.map((f, idx) => `
-                  <button type="button" onclick="selectFlow(${idx})" class="w-full p-2.5 rounded-xl border text-left transition-all duration-200 flex items-center justify-between text-xs font-bold ${
-                    activeFlow === idx
-                      ? (isDark ? 'bg-slate-900 border-vsf-greenLight text-vsf-greenLight shadow-[0_0_10px_rgba(82,183,136,0.2)]' : 'bg-slate-900 text-white border-slate-900 shadow-sm')
-                      : (isDark ? 'bg-slate-900/40 border-vsf-darkBorder text-slate-400 hover:border-slate-600 hover:text-white' : 'bg-white border-vsf-lightBorder text-slate-600 hover:border-vsf-gold hover:text-slate-900')
-                  }">
+                  <button type="button" onclick="selectFlow(${idx})" class="w-full p-2.5 rounded-xl border text-left transition-all duration-200 flex items-center justify-between text-xs font-bold ${activeFlow === idx
+          ? (isDark ? 'bg-slate-900 border-vsf-greenLight text-vsf-greenLight shadow-[0_0_10px_rgba(82,183,136,0.2)]' : 'bg-slate-900 text-white border-slate-900 shadow-sm')
+          : (isDark ? 'bg-slate-900/40 border-vsf-darkBorder text-slate-400 hover:border-slate-600 hover:text-white' : 'bg-white border-vsf-lightBorder text-slate-600 hover:border-vsf-gold hover:text-slate-900')
+        }">
                     <span class="truncate">${f.title}</span>
                     ${activeFlow === idx ? '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>' : ''}
                   </button>
@@ -1297,10 +1325,9 @@
       // Update Progress Dots
       const dotsContainer = document.getElementById('progress-dots');
       dotsContainer.innerHTML = slides.map((_, idx) => `
-        <button type="button" onclick="goToSlide(${idx})" class="h-1 rounded-full transition-all duration-300 ${
-          idx === currentSlide
-            ? 'w-6 bg-vsf-gold dark:bg-vsf-goldLight'
-            : 'w-1.5 bg-vsf-lightBorder dark:bg-vsf-darkBorder hover:bg-slate-400'
+        <button type="button" onclick="goToSlide(${idx})" class="h-1 rounded-full transition-all duration-300 ${idx === currentSlide
+          ? 'w-6 bg-vsf-gold dark:bg-vsf-goldLight'
+          : 'w-1.5 bg-vsf-lightBorder dark:bg-vsf-darkBorder hover:bg-slate-400'
         }" title="Chuyển tới slide ${idx + 1}"></button>
       `).join('');
 
@@ -1370,4 +1397,5 @@
     });
   </script>
 </body>
+
 </html>

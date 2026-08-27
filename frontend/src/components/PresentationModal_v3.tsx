@@ -425,15 +425,14 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               <button
                 key={f.id}
                 onClick={() => setActiveFlow(idx)}
-                className={`w-full p-2.5 rounded-xl border text-left transition-all duration-200 flex items-center justify-between text-xs font-bold ${
-                  activeFlow === idx
+                className={`w-full p-2.5 rounded-xl border text-left transition-all duration-200 flex items-center justify-between text-xs font-bold ${activeFlow === idx
                     ? isDark
                       ? "bg-[#070e1a] border-[#52b788] text-[#52b788] shadow-[0_0_10px_rgba(82,183,136,0.2)]"
                       : "bg-[#0f1e36] text-white border-[#0f1e36] shadow-sm"
                     : isDark
-                    ? "bg-[#070e1a]/40 border-[#263750] text-[#8f9cae] hover:border-slate-600 hover:text-white"
-                    : "bg-white border-[#dcd7cc] text-[#4a5568] hover:border-[#8c763e] hover:text-[#0f1e36]"
-                }`}
+                      ? "bg-[#070e1a]/40 border-[#263750] text-[#8f9cae] hover:border-slate-600 hover:text-white"
+                      : "bg-white border-[#dcd7cc] text-[#4a5568] hover:border-[#8c763e] hover:text-[#0f1e36]"
+                  }`}
               >
                 <span className="truncate">{f.title}</span>
                 {activeFlow === idx && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
@@ -933,7 +932,6 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
                   <Search className="w-4 h-4 text-blue-500" />
                   <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Lượt A: VLM Tìm Mục Lục (TOC)</h3>
                 </div>
-                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${isDark ? "bg-blue-950/30 text-blue-400" : "bg-blue-50 text-blue-600"}`}>~15 trang đầu</span>
               </div>
               <p className={`text-xs md:text-[12.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 PyMuPDF crop ảnh trang → Qwen-VL phân tích cấu trúc cây Chương→Bài → Xuất JSON danh sách NEO cố định.
@@ -971,7 +969,7 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
                 <h4 className={`text-sm md:text-base font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Data Chunking → Qdrant</h4>
               </div>
               <p className={`text-xs md:text-[12.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                Chunks 256–512 tokens kèm metadata mục SGK. Embedding vector → Qdrant phục vụ tìm kiếm ngữ nghĩa siêu tốc.
+                Chunks 256–512 tokens kèm metadata mục SGK. Embedding vector → Qdrant phục vụ tìm kiếm ngữ nghĩa.
               </p>
             </div>
           </div>
@@ -1250,75 +1248,119 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
       subtitle: "Đánh Giá Năng Lực Theo Cây Tri Thức, Thang Đo Bloom, Đối Soát Đa Nguồn (LMS vs Exam) & Majority Rule",
       type: "report_05",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
-          {/* MỤC ĐÍCH */}
-          <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <Activity className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
-              <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Chẩn Đoán Lỗ Hổng</h3>
-            </div>
-            <p className={`text-xs md:text-[13px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
-              Phát hiện <strong>lỗ hổng kiến thức</strong> từng học sinh ở cấp bài học bằng cách đối soát đa nguồn: năng lực LMS (Item Mastery × Bloom Factor) đối chiếu với điểm thi thật. Kết quả xuất Roster chi tiết.
-            </p>
-          </div>
-
-          {/* QUY TRÌNH 4 BƯỚC */}
-          <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-xs md:text-[13px] font-extrabold text-[#2d6a4f] dark:text-[#52b788]">Bước 1: Item Mastery</span>
-                <div className="text-[10.5px] text-slate-400 mt-1">Bloom Breadth × Depth Factor</div>
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3 md:space-y-3.5">
+          {/* HÀNG 1: MỤC ĐÍCH + QUY TRÌNH 4 BƯỚC */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div className={`md:col-span-4 p-3 md:p-3.5 rounded-2xl border flex flex-col justify-center ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Activity className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+                <h3 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Chẩn Đoán</h3>
               </div>
-              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-xs md:text-[13px] font-extrabold text-blue-500">Bước 2: Cross-Val</span>
-                <div className="text-[10.5px] text-slate-400 mt-1">Δ = LMS − Exam (|Δ| ≤ 30%)</div>
-              </div>
-              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-xs md:text-[13px] font-extrabold text-purple-500">Bước 3: Majority Rule</span>
-                <div className="text-[10.5px] text-slate-400 mt-1">Gộp trạng thái toàn khóa học</div>
-              </div>
-              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-xs md:text-[13px] font-extrabold text-[#8c763e] dark:text-[#c2ae78]">Bước 4: Roster</span>
-                <div className="text-[10.5px] text-slate-400 mt-1">Xuất bảng chẩn đoán & Drawer</div>
-              </div>
-            </div>
-          </div>
-
-          {/* CÔNG THỨC + 4 LOẠI KẾT LUẬN */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <BarChart2 className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" /> Công Thức Năng Lực
-              </h4>
-              <div className={`p-2 rounded-xl border font-mono text-xs md:text-[13px] ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
-                Mastery<sub>bài</sub> = (đúng / tổng) × BreadthRatio × (1 + DepthFactor)
-              </div>
-              <p className={`text-[10.5px] md:text-[11.5px] leading-relaxed mt-2 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                BreadthRatio: tỷ lệ bao phủ bậc Bloom. DepthFactor: thưởng câu Vận dụng cao. HS đúng hết NB+TH nhưng thiếu VD cao → Mastery phản ánh đúng thực chất.
+              <p className={`text-[11px] md:text-xs leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                Phát hiện <strong>lỗ hổng kiến thức</strong> từng học sinh ở cấp bài học bằng đối soát đa nguồn: năng lực LMS (Item Mastery) đối chiếu điểm thi thật.
               </p>
             </div>
 
-            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <CheckCircle2 className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" /> 4 Loại Kết Luận Đối Soát
-              </h4>
-              <div className="grid grid-cols-2 gap-2">
-                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
-                  <div className={`text-xs md:text-[13px] font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>OK</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">|Δ| ≤ 30% · Chuẩn xác</div>
+            <div className={`md:col-span-8 p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                  <span className="text-[11px] font-extrabold text-[#2d6a4f] dark:text-[#52b788]">B1: Item Mastery</span>
+                  <div className="text-[9.5px] text-slate-400 mt-0.5">Breadth × Depth</div>
                 </div>
-                <div className={`p-2 rounded-xl border ${isDark ? "bg-sky-950/20 border-sky-800/40" : "bg-sky-50 border-sky-200"}`}>
-                  <div className="text-xs md:text-[13px] font-black text-sky-600">LMS Vượt</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">LMS ≥ 9.5, thi {'<'} 4.5</div>
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                  <span className="text-[11px] font-extrabold text-blue-500">B2: Cross-Val</span>
+                  <div className="text-[9.5px] text-slate-400 mt-0.5">|Δ LMS - Exam| ≤ 30%</div>
                 </div>
-                <div className={`p-2 rounded-xl border ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
-                  <div className={`text-xs md:text-[13px] font-black ${isDark ? "text-amber-400" : "text-amber-600"}`}>Ít LMS</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">N {'<'} 5 câu · Luyện ít</div>
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                  <span className="text-[11px] font-extrabold text-purple-500">B3: Majority Rule</span>
+                  <div className="text-[9.5px] text-slate-400 mt-0.5">Đồng thuận lớp học</div>
                 </div>
-                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
-                  <div className="text-xs md:text-[13px] font-black text-purple-600">Chỉ Thi</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">LMS = 0% · Ước lượng thi</div>
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                  <span className="text-[11px] font-extrabold text-[#8c763e] dark:text-[#c2ae78]">B4: Roster</span>
+                  <div className="text-[9.5px] text-slate-400 mt-0.5">Bảng lớp & Drawer</div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* HÀNG 2: CÔNG THỨC NĂNG LỰC & GIẢI MÃ BREADTH + DEPTH */}
+          <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <BarChart2 className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+                <h4 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
+                  Công Thức Năng Lực: Mastery<sub>bài</sub> = (Đúng / Tổng) × BreadthRatio × (1 + DepthFactor)
+                </h4>
+              </div>
+              <span className={`text-[9.5px] font-mono px-2.5 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>
+                Bloom Standard
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Box 1: BreadthRatio */}
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                    <strong className={`text-[11.5px] md:text-xs font-extrabold ${isDark ? "text-blue-400" : "text-blue-700"}`}>
+                      1. BreadthRatio (Độ Rộng Bao Phủ Bloom)
+                    </strong>
+                  </div>
+                  <span className="text-[9px] font-mono text-slate-400 font-bold">Chiều Rộng</span>
+                </div>
+                <div className={`p-1.5 rounded-lg border font-mono text-[10px] md:text-[11px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-blue-300" : "bg-blue-50/60 border-blue-200 text-blue-800"}`}>
+                  BreadthRatio = (Số bậc Bloom đã làm) / (Tổng số bậc Bloom bài có)
+                </div>
+                <p className={`text-[10px] md:text-[10.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  • <strong>Bản chất:</strong> Đo độ đầy đủ của phổ nhận thức trong dữ liệu bài làm LMS mà học sinh đã trải qua.<br />
+                  • <strong>Tác dụng:</strong> Tránh <em>kết luận sớm</em> khi dữ liệu mới chỉ có câu hỏi ở mức cơ bản (Nhận biết/Thông hiểu). Đảm bảo chỉ đánh giá "Vững toàn diện" khi đã khảo sát đủ các bậc Bloom của bài.
+                </p>
+              </div>
+
+              {/* Box 2: DepthFactor */}
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <strong className={`text-[11.5px] md:text-xs font-extrabold ${isDark ? "text-emerald-400" : "text-emerald-700"}`}>
+                      2. DepthFactor (Độ Sâu Nhận Thức)
+                    </strong>
+                  </div>
+                  <span className="text-[9px] font-mono text-slate-400 font-bold">Chiều Sâu</span>
+                </div>
+                <div className={`p-1.5 rounded-lg border font-mono text-[10px] md:text-[11px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-emerald-300" : "bg-emerald-50/60 border-emerald-200 text-emerald-800"}`}>
+                  DepthFactor = +20% × min(1.0, Max_Bloom_Đạt_Được / 4.0)
+                </div>
+                <p className={`text-[10px] md:text-[10.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  • <strong>Bản chất:</strong> Ghi nhận và <strong>thưởng thêm</strong> khi bài làm chứng minh học sinh đã chinh phục câu hỏi mức độ cao (Bloom 3–6: Vận dụng, Phân tích, Sáng tạo).<br />
+                  • <strong>Tác dụng:</strong> Phân hóa chính xác học sinh có tư duy giải quyết vấn đề phức tạp.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* HÀNG 3: 4 LOẠI KẾT LUẬN ĐỐI SOÁT */}
+          <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <h4 className={`text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
+              <CheckCircle2 className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" /> 4 Loại Kết Luận Đối Soát Đa Nguồn (LMS ↔ Điểm Thi Trên Lớp)
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className={`p-2 rounded-xl border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
+                <div className={`text-xs md:text-[13px] font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>🟢 OK</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">|Δ| ≤ 30% · Chuẩn xác cao</div>
+              </div>
+              <div className={`p-2 rounded-xl border ${isDark ? "bg-sky-950/20 border-sky-800/40" : "bg-sky-50 border-sky-200"}`}>
+                <div className="text-xs md:text-[13px] font-black text-sky-600">🔵 LMS Vượt</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">LMS ≥ 9.5, thi &lt; 4.5</div>
+              </div>
+              <div className={`p-2 rounded-xl border ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
+                <div className={`text-xs md:text-[13px] font-black ${isDark ? "text-amber-400" : "text-amber-600"}`}>🟡 Ít LMS</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">N &lt; 5 câu · Luyện ít</div>
+              </div>
+              <div className={`p-2 rounded-xl border ${isDark ? "bg-purple-950/20 border-purple-800/40" : "bg-purple-50 border-purple-200"}`}>
+                <div className="text-xs md:text-[13px] font-black text-purple-600">🟣 Chỉ Thi (EXAM_ONLY)</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">LMS 0/0 câu · Tạm lấy điểm thi</div>
               </div>
             </div>
           </div>

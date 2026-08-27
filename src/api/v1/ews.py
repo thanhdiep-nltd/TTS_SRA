@@ -1727,7 +1727,7 @@ def get_ews_top_risk_classes(
 # ============================================================================
 
 # Các tuần checkpoint chuẩn (khớp scripts/run_ews_pipeline.py)
-_VALID_WEEKS = {1: [5, 8, 11, 14, 16], 2: [23, 26, 29, 32, 34]}
+_VALID_WEEKS = {1: [8, 11, 14, 16], 2: [23, 26, 29, 32, 34]}
 _DEFAULT_SCHOOL_START = {1: date(2025, 9, 1), 2: date(2026, 1, 15)}
 
 # Chỉ ADMIN/PRINCIPAL (BGH) được dùng control panel
