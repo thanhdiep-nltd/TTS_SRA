@@ -1,4 +1,8 @@
-# Hệ Thống Cảnh Báo Sớm Học Sinh Có Nguy Cơ Sư Phạm (Build TTS: Student Risk Alert - SRA)
+<p align="center">
+  <img src="frontend/public/icon.png" width="110" alt="EduOwl Logo" />
+</p>
+
+<h1 align="center">Hệ Thống Cảnh Báo Sớm Học Sinh Có Nguy Cơ Sư Phạm (Build TTS: Student Risk Alert - SRA)</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11" />
