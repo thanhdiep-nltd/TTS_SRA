@@ -1,9 +1,20 @@
-# EduOwl (AI20K-075) — Nền Tảng AI Trợ Lý Phân Tích Kết Quả Học Tập & Quản Trị Học Vụ Toàn Trường (K-12)
+<p align="center">
+  <img src="frontend/public/icon.png" width="110" alt="EduOwl Logo" />
+</p>
 
-> **Hệ thống Conversational BI & Học máy phân tích học thuật thông minh dành cho Ban Giám Hiệu, Trưởng bộ môn và Giáo viên.**  
-> Tối ưu hóa chất lượng dạy - học, phát hiện sớm học sinh có nguy cơ học thuật (EWS), chẩn đoán lỗ hổng kiến thức chuẩn chương trình GDPT 2018 và tự động hóa báo cáo học vụ đa định dạng.
+<h1 align="center">Hệ Thống Cảnh Báo Sớm Học Sinh Có Nguy Cơ Sư Phạm (Build TTS: Student Risk Alert - SRA)</h1>
 
----
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11" />
+  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-16.2+-black?style=flat-square&logo=next.js&logoColor=white" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Neon_Cloud-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL Neon" />
+  <img src="https://img.shields.io/badge/AI_Agent-LangGraph-FF6F00?style=flat-square&logo=langchain&logoColor=white" alt="LangGraph" />
+  <img src="https://img.shields.io/badge/ML-CatBoost_Ensemble-FFCC00?style=flat-square&logo=yandex&logoColor=black" alt="CatBoost" />
+  <img src="https://img.shields.io/badge/Vector_DB-Qdrant-DC2626?style=flat-square&logo=qdrant&logoColor=white" alt="Qdrant" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License MIT" />
+</p>
+
 
 ## 📌 1. Bối Cảnh & Phương Pháp Phát Triển (6-Week Sprint Context)
 
@@ -14,28 +25,25 @@ Dự án được nghiên cứu và phát triển trong lộ trình **6 tuần**
     *   Hệ thống hiện tại đang vận hành ở môi trường **Development** với toàn bộ dữ liệu là **Data Mock / Synthetic Data**.
 *   **Giải pháp & Phương pháp tiếp cận**:
     *   Chủ động thiết kế và lập trình **Pipeline sinh dữ liệu giả lập đa chiều (Multi-source Synthetic Data Generation)** dựa trên 14+ hồ sơ học sinh thực tế: điểm số các cột MOET (Miệng, 15p, Giữa kỳ, Cuối kỳ), lịch sử làm bài tập trắc nghiệm LMS, dữ liệu điểm danh chuyên cần, vi phạm hạnh kiểm và ma trận cấu trúc đề thi.
-    *   Để thuận tiện cho việc phát triển cục bộ, chạy automated tests (CI/CD) và kiểm thử nhanh các phân quyền (RBAC 7 vai trò), các tài khoản mẫu trong scripts seed được **hardcode mật khẩu mặc định** (ví dụ `admin123`, `password123`).
+    *   Để thuận tiện cho việc phát triển cục bộ, chạy automated tests (CI/CD) và kiểm thử nhanh các phân quyền (RBAC 7 vai trò), các tài khoản mẫu trong scripts seed được **gán mật khẩu kiểm thử mặc định** *(chi tiết cấu hình xem trong các script seed tương ứng, không liệt kê mật khẩu cụ thể ở đây vì lý do an toàn thông tin)*.
     *   Xây dựng hệ thống kiểm thử độc lập (Offline Unit & Integration Tests với mock LLM) giúp bảo đảm mọi luồng nghiệp vụ, công thức tính toán và mô hình ML chạy chuẩn xác 100% trước khi kết nối môi trường thực tế.
 
 ---
 
 ## 🌟 2. 5 Flow Nghiệp Vụ & Kỹ Thuật Cốt Lõi (Core Capabilities)
 
-Dự án tập trung vào 5 luồng xử lý chính kết hợp giữa Trí tuệ nhân tạo (Multi-Agent, VLM, RAG), Học máy (Machine Learning) và Thuật toán giải tích sư phạm:
-
 ```
-                                  ┌──────────────────────────────────────────────┐
-                                  │      GIÁO VIÊN / BGH / TRƯỞNG BỘ MÔN         │
-                                  └──────────────────────┬───────────────────────┘
-                                                         │
-         ┌───────────────────────┬───────────────────────┼───────────────────────┬────────────────────────┐
-         │ (Flow 1)              │ (Flow 2)              │ (Flow 3)              │ (Flow 4)               │ (Flow 5)
-         ▼                       ▼                       ▼                       ▼                        ▼
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│   Multi-Agent    │    │   EWS Pipeline   │    │    Curriculum    │    │    Pass/Fail     │    │  Knowledge Gaps  │
-│    Chat Flow     │    │   (CatBoost ML)  │    │  Ingest & RAG    │    │  Exam Forecast   │    │  & Item Mastery  │
-│ (Supervisor + 4) │    │  (22 Features)   │    │   (2-Pass VLM)   │    │ (Pure Analytics) │    │(Cross-Validation)│
-└──────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   NGƯỜI DÙNG: BGH / TRƯỞNG BỘ MÔN / GIÁO VIÊN               │
+└──────┬─────────────────┬──────────────────┬─────────────────┬───────────────┘
+       │                 │                  │                 │
+       ▼                 ▼                  ▼                 ▼
+┌──────────────┐  ┌──────────────┐   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│    Flow 1    │  │    Flow 2    │   │    Flow 3    │  │    Flow 4    │  │    Flow 5    │
+│ Multi-Agent  │  │ EWS Pipeline │   │  Curriculum  │  │  Pass/Fail   │  │Knowledge Gaps│
+│   Chat AI    │  │(CatBoost+LLM)│   │ Ingestion+RAG│  │ Exam Forecast│  │& Item Mastery│
+│(Supervisor+4)│  │(22 Features) │   │ (2-Pass VLM) │  │ (Deterministic) (Cross-Valid) │
+└──────────────┘  └──────────────┘   └──────────────┘  └──────────────┘  └──────────────┘
 ```
 
 ---
@@ -94,7 +102,7 @@ CatBoost thuần túy chỉ phân tích các con số định lượng, hoàn to
 Tự động hóa số hóa sách giáo khoa và xây dựng cơ sở tri thức phục vụ giảng dạy và giải đáp.
 
 *   **VLM 2 Lượt Quét Chống Ảo Giác (2-Pass Vision-Language Ingestion)**:
-    *   *Lượt A (Quét Mục Lục)*: Đọc ~15 trang đầu của PDF SGK bằng VLM (Qwen-VL) để dựng cây cấu trúc Chương $\rightarrow$ Bài học và tạo danh sách các khái niệm định danh chuẩn (NEO Anchors).
+    *   *Lượt A (Quét Mục Lục)*: Đọc ~15 trang đầu của PDF SGK bằng VLM (Qwen-VL qua Replicate / OpenRouter) để dựng cây cấu trúc Chương → Bài học và tạo danh sách các khái niệm định danh chuẩn (NEO Anchors).
     *   *Lượt B (Phân Loại Nội Dung)*: Duyệt từng trang nội dung và **chỉ được phép gán vào NEO có sẵn từ Lượt A**, loại bỏ hoàn toàn hiện tượng VLM tự bịa tên bài học.
     *   *Làm giàu dữ liệu (Enrichment)*: Tự động trích xuất tóm tắt trọng tâm, từ khóa cốt lõi và các mục con cho từng bài học.
 *   **Knowledge Retrieval**: Vector store Qdrant lưu trữ các chunks tri thức, hỗ trợ tìm kiếm ngữ nghĩa theo khối/môn/chương với độ chính xác cao.
@@ -106,12 +114,12 @@ Tự động hóa số hóa sách giáo khoa và xây dựng cơ sở tri thức
 Module phân tích **thuần logic - giải tích sư phạm** (Pure Deterministic Logic, không phụ thuộc LLM/ML) giúp giáo viên bộ môn dự đoán kết quả bài thi sắp tới.
 
 *   **Chuỗi fallback 4 cấp độ năng lực (Ability Resolution)**:
-    $$\text{Unit có LMS} \rightarrow \text{TB Chương của HS} \rightarrow \text{TB Môn của HS} \rightarrow \text{INSUFFICIENT}$$
+    `Unit có LMS` → `TB Chương của HS` → `TB Môn của HS` → `INSUFFICIENT`
 *   **Công thức Dự đoán Điểm**:
-    $$\text{Predicted Score} = \left( \frac{\sum (w_u \times \text{Ability}_u)}{\sum w_u} \right) \times \text{Difficulty\_Adj}(\text{CDI})$$
-    Trong đó hệ số điều chỉnh độ khó nội dung $\text{Difficulty\_Adj}(\text{CDI}) = 1.0 + (0.5 - \text{CDI}) \times 0.5$ (dao động từ $0.75$ đến $1.25$).
+    $$\text{Predicted Score} = \left( \frac{\sum (w_u \cdot \text{Ability}_u)}{\sum w_u} \right) \cdot \text{DifficultyAdj}(\text{CDI})$$
+    Trong đó hệ số điều chỉnh độ khó nội dung: $\text{DifficultyAdj}(\text{CDI}) = 1.0 + (0.5 - \text{CDI}) \times 0.5$ (dao động từ $0.75$ đến $1.25$).
 *   **Phân loại kết quả**: $\ge 5.5$ (**PASS**), $< 4.5$ (**FAIL**), $4.5 - 5.5$ (**BORDERLINE**).
-*   **Đề xuất hành động**: Tự động chỉ ra **Top 2 bài học học sinh bị hổng nặng nhất** dựa trên độ mất điểm: $\text{Loss} = (10 - \text{Ability}_u) \times w_u$.
+*   **Đề xuất hành động**: Tự động chỉ ra **Top 2 bài học học sinh bị hổng nặng nhất** dựa trên độ mất điểm: $\text{Loss} = (10 - \text{Ability}_u) \cdot w_u$.
 
 ---
 
@@ -122,7 +130,7 @@ Module phân tích **thuần logic - giải tích sư phạm** (Pure Determinist
 *   **Đo lường năng lực chuẩn hóa Bloom**:
     *   Kết hợp **Độ rộng (Breadth Ratio)** (số bậc Bloom đã làm) và **Độ sâu (Depth Factor)** (trọng số câu hỏi Vận dụng / Vận dụng cao) để tính toán **Điểm tin cậy (Confidence Score)** từ $0.0$ đến $1.0$.
 *   **Động cơ Đối soát Đa nguồn (Cross-Validation Engine)**:
-    *   So sánh độ lệch $\Delta = \text{Raw Mastery (LMS)} - \text{Exam (Điểm thi tập trung)}$ để tự động điều chỉnh trọng số và gán nhãn:
+    *   So sánh độ lệch $\Delta = \text{Raw Mastery (LMS)} - \text{Exam}$ (với $\text{Exam}$ là điểm thi tập trung có giám thị) để tự động điều chỉnh trọng số và gán nhãn:
         *   🟢 `OK` (Đồng thuận): Điểm bài tập online và điểm thi tương đồng ($|\Delta| \le 30\%$).
         *   🔵 `LMS_EXCEEDS_EXAM` (LMS vượt trội): Làm online điểm rất cao ($\ge 9.5$) nhưng thi thật điểm thấp ($< 4.5$) $\rightarrow$ Cảnh báo nguy cơ học sinh tra đáp án hoặc gian lận.
         *   🟡 `LOW_ENGAGEMENT` (Ít luyện tập): Học sinh bỏ bài tập LMS ($N_{items} < 5$).
@@ -131,16 +139,15 @@ Module phân tích **thuần logic - giải tích sư phạm** (Pure Determinist
 
 ---
 
-## 📊 3. Bảng So Sánh 3 Phân Hệ Phân Tích
+## 📊 3. Bảng So Sánh Toàn Diện Các Phân Hệ Phân Tích & Nghiệp Vụ
 
-| Tiêu chí | Chẩn đoán Lỗ hổng Kiến thức (Flow 5) | Dự báo Đỗ/Trượt (Flow 4) | Cảnh báo Sớm EWS (Flow 2) |
-| :--- | :--- | :--- | :--- |
-| **Mục tiêu cốt lõi** | Chỉ rõ bài học/khái niệm học sinh bị hổng trong SGK | Dự đoán điểm số & xác suất qua/rớt bài thi cuối kỳ | Cảnh báo nguy cơ học sinh trượt môn/bỏ học toàn kỳ & giải trình biến cố đời sống |
-| **Mức độ chi tiết** | Cấp độ **Từng bài học / Câu hỏi Bloom** | Cấp độ **Đề thi sắp diễn ra** | Cấp độ **Toàn môn học & Học kỳ** |
-| **Mô hình xử lý** | Đối soát Đa nguồn + Bloom Weighting | Công thức thuần ($\sum \text{Ability} \times w \times \text{CDI}$) | **Hybrid 2-Tier**: CatBoost GBDT (22 Features) + LLM Qualitative Forecasting (Biến cố & Bệnh tật) |
-| **Nguồn dữ liệu** | Bài tập LMS + Điểm thi có giám thị | Năng lực LMS + Ma trận trọng số đề | **Đa nguồn**: Điểm số, LMS, Chuyên cần, Kỷ luật + Hồ sơ Biến cố gia đình & Y tế |
-| **Thời điểm can thiệp** | Liên tục trong suốt quá trình học | 1 - 2 tuần trước kỳ thi | Định kỳ hàng tuần trong suốt học kỳ |
-| **Đối tượng sử dụng** | Giáo viên bộ môn & Học sinh | Giáo viên bộ môn | Ban Giám Hiệu, Trưởng khối & GVCN |
+| Phân hệ / Flow | Mục tiêu cốt lõi | Mức độ chi tiết | Mô hình / Công nghệ xử lý | Nguồn dữ liệu đầu vào | Đối tượng sử dụng |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 🤖 **Flow 1: Multi-Agent Chat AI** | Hỏi đáp dữ liệu & tự động hóa báo cáo học vụ qua ngôn ngữ tự nhiên | Toàn trường / Khối / Lớp / Cá nhân | LangGraph StateGraph (Supervisor + 4 Sub-agents) | DB PostgreSQL + Qdrant Vector SGK | BGH, Trưởng bộ môn, Giáo viên |
+| ⚠️ **Flow 2: Cảnh Báo Sớm (EWS)** | Dự báo rủi ro rớt môn / bỏ học toàn kỳ & thấu hiểu biến cố đời sống | Cấp độ **Toàn môn học & Học kỳ** | **Hybrid 2-Tier**: CatBoost GBDT (22 Features) + LLM Qualitative Forecasting | Điểm số, LMS, Điểm danh, Hạnh kiểm + Hồ sơ Biến cố/Y tế | BGH, Trưởng khối, GVCN |
+| 📖 **Flow 3: Curriculum Ingestion** | Số hóa sách giáo khoa và xây dựng kho tri thức GDPT 2018 | Cấp độ **Chương / Bài học SGK** | 2-Pass VLM (Qwen-VL) + Qdrant Vector Search | Tệp PDF Sách giáo khoa, Kế hoạch bài dạy | Trưởng bộ môn, Giáo viên |
+| 🎯 **Flow 4: Dự Báo Đỗ/Trượt (Pass/Fail)** | Dự đoán điểm số & xác suất qua/rớt bài thi cuối kỳ sắp tới | Cấp độ **Bài thi chuẩn bị diễn ra** | Công thức giải tích thuần ($\sum \text{Ability} \times w \times \text{CDI}$) | Năng lực LMS + Ma trận trọng số đề | Giáo viên bộ môn |
+| 🔍 **Flow 5: Chẩn Đoán Lỗ Hổng (Gaps)** | Chỉ rõ từng khái niệm/bài học bị hổng & đối soát độ trung thực | Cấp độ **Từng bài học / Câu hỏi Bloom** | Đối soát Đa nguồn (Cross-Validation) + Bloom Weighting | Bài tập LMS + Điểm thi tập trung có giám thị | Giáo viên bộ môn, Học sinh |
 
 ---
 
@@ -150,10 +157,11 @@ Module phân tích **thuần logic - giải tích sư phạm** (Pure Determinist
 | :--- | :--- | :--- |
 | **Frontend** | **Next.js 16 (App Router)** · React 19 · TailwindCSS v4 · Recharts · Lucide | Giao diện chuẩn Portal giáo dục (phong cách vnEdu), hỗ trợ Dark/Light mode |
 | **Backend API** | **FastAPI** · Python 3.11 · Uvicorn · Pydantic v2 | RESTful API, SSE/WebSocket streaming, kiến trúc phân lớp Clean Architecture |
-| **Database & ORM** | **PostgreSQL (Neon Cloud)** · SQLAlchemy 2.0 · Alembic | 21+ bảng thực thể quan hệ, hỗ trợ multi-tenancy qua `school_id` |
-| **Vector DB / RAG** | **Qdrant** · Embeddings models | Lưu trữ và tìm kiếm ngữ nghĩa chunks sách giáo khoa |
-| **AI Multi-Agent** | **LangGraph** (`StateGraph`) · LangChain · OpenAI GPT-4o-mini / DeepSeek | Supervisor Router điều phối 4 sub-agents: Data, Stat, Knowledge, Report |
-| **Machine Learning** | **CatBoost** · Scikit-Learn · NumPy · Pandas | Pipeline huấn luyện và suy luận EWS, giải trình SHAP values |
+| **Database & ORM** | **PostgreSQL (Neon Cloud)** · SQLAlchemy 2.0 · Alembic · `pgvector` | 21+ bảng thực thể quan hệ, hỗ trợ multi-tenancy qua `school_id` |
+| **Vector DB / RAG** | **Qdrant** (Local/Cloud) · Embeddings models | Lưu trữ và tìm kiếm ngữ nghĩa chunks sách giáo khoa |
+| **AI Multi-Agent** | **LangGraph** (`StateGraph`) · LangChain · OpenAI GPT-4o-mini / DeepSeek v4 Flash | Supervisor Router điều phối 4 sub-agents: Data, Stat, Knowledge, Report |
+| **Machine Learning** | **CatBoost** · Scikit-Learn · NumPy · Pandas | Pipeline huấn luyện và suy luận EWS 22 features, giải trình SHAP values |
+| **Vision Language (VLM)** | **Qwen-VL** (qua OpenRouter / Replicate) | Quét mục lục 2 lượt tự động trích xuất cấu trúc sách giáo khoa |
 | **Bảo mật & Guardrails** | **SQLGlot** · JWT (Access/Refresh) · BCrypt · RLS | Bắt buộc truy vấn Read-only SELECT, tự động inject `school_id`, RBAC 7 vai trò |
 | **Observability** | **Prometheus** · Langfuse / LangSmith tracing | Thu thập telemetry, latency, token usage và audit log |
 
@@ -163,8 +171,11 @@ Module phân tích **thuần logic - giải tích sư phạm** (Pure Determinist
 
 ### 1. Yêu cầu môi trường
 *   Python 3.11+
-*   Node.js 18+ & npm
+*   Node.js 18+ & npm / pnpm
 *   PostgreSQL Database (Neon Cloud hoặc Local PostgreSQL)
+*   Docker (tùy chọn: dùng để chạy Qdrant Vector DB local)
+
+---
 
 ### 2. Cài đặt Backend (FastAPI)
 
@@ -182,20 +193,15 @@ pip install -r requirements.txt
 
 # 3. Thiết lập biến môi trường
 cp .env.example .env
-# Chỉnh sửa thông tin DATABASE_URL, OPENAI_API_KEY, JWT_SECRET_KEY trong .env
+# Chỉnh sửa thông tin DATABASE_URL, OPENAI_API_KEY, JWT_SECRET_KEY trong file .env
 
-# 4. Chạy Database Migrations
-alembic upgrade head
-
-# 5. Khởi tạo dữ liệu mẫu & Tạo tài khoản quản trị (môi trường dev)
-python scripts/seed_remark_subjects.py
-python scripts/create_admin.py --email admin@admin.edu.vn --password "admin123"
-
-# 6. Khởi chạy Backend Server
+# 7. Khởi chạy Backend Server
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 *   **Swagger API Docs**: `http://localhost:8000/docs`
 *   **Health Check**: `http://localhost:8000/health`
+
+---
 
 ### 3. Cài đặt Frontend (Next.js)
 
@@ -207,8 +213,8 @@ cd frontend
 npm install
 
 # 3. Cấu hình biến môi trường frontend
-# Tạo file frontend/.env.local:
-# NEXT_PUBLIC_API_URL=http://localhost:8000
+# Tạo file frontend/.env.local và thêm dòng sau:
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 
 # 4. Khởi chạy giao diện phát triển
 npm run dev
@@ -219,12 +225,10 @@ npm run dev
 
 ## 💬 6. Mẫu Câu Hỏi Tương Tác Với Trợ Lý AI Chat
 
-| Nhóm Agent | Mẫu câu hỏi tương tác |
+| Nhóm Nghiệp Vụ | Mẫu câu hỏi tương tác mẫu |
 | :--- | :--- |
-| **Data Service Agent** | • *"Hiển thị bảng điểm chi tiết môn Toán học kỳ 1 của lớp 9A."*<br>• *"Cho tôi xem danh sách học sinh lớp 6B và giáo viên chủ nhiệm."* |
-| **Stat Agent** | • *"Tính chỉ số lạm phát điểm (GDI) và độ lệch điểm $\Delta G$ môn Tiếng Anh khối 8."*<br>• *"Lớp nào có động lượng học tập (Learning Momentum) tiến bộ nhất sau kỳ thi giữa kỳ?"* |
-| **Knowledge Agent (RAG)** | • *"Định nghĩa số nguyên tố và hợp số trong SGK Toán 6 Cánh Diều là gì?"*<br>• *"Nêu các yêu cầu cần đạt của bài Phương trình bậc nhất một ẩn môn Toán 8."* |
-| **Report Agent** | • *"Xuất báo cáo tổng kết tình hình học tập học kỳ 1 của khối 9 dạng Word (DOCX)."*<br>• *"Tổng hợp báo cáo các môn có tỷ lệ học sinh chưa đạt trên 15%."* |
+| **Tra cứu Hồ sơ & Sổ điểm** | • *"Hiển thị bảng điểm chi tiết môn Toán học kỳ 1 của lớp 9A."*<br>• *"Cho tôi xem danh sách học sinh lớp 6B và giáo viên chủ nhiệm."* |
+| **Xuất Báo Cáo Tự Động** | • *"Xuất báo cáo tổng kết tình hình học tập học kỳ 1 của khối 9 dạng Word (DOCX)."*<br>• *"Tổng hợp báo cáo các môn có tỷ lệ học sinh chưa đạt trên 15%."* |
 
 ---
 
@@ -239,16 +243,25 @@ npm run dev
 │   │   ├── knowledge_agent/      #   Sub-agent RAG tra cứu SGK qua Qdrant
 │   │   ├── report_agent/         #   Sub-agent sinh báo cáo học vụ (DOCX/PDF/HTML)
 │   │   └── graph.py              #   Biên dịch StateGraph & Conditional Edges
-│   ├── api/v1/                   # 🌐 Hệ thống 27+ Router endpoints REST API
+│   ├── api/v1/                   # 🌐 Hệ thống Router endpoints REST API
 │   │   ├── chat.py               #   Chat streaming, sessions & feedback
-│   │   ├── ews.py                #   Kích hoạt pipeline dự báo nguy cơ học tập
-│   │   ├── knowledge_gap.py      #   Chẩn đoán lỗ hổng kiến thức & Roster lớp
+│   │   ├── ews.py                #   Pipeline EWS dự báo nguy cơ học tập & job status
+│   │   ├── knowledge_gap.py      #   Chẩn đoán lỗ hổng kiến thức & Class Roster
 │   │   ├── pass_fail_forecast.py #   Dự báo điểm thi cuối kỳ
 │   │   ├── gradebook.py          #   Sổ điểm điện tử & Bảng tổng hợp lớp
+│   │   ├── scores.py             #   Nhập điểm, phê duyệt & Row-level Security
+│   │   ├── users.py              #   Quản lý tài khoản & phân công giảng dạy
 │   │   └── curriculum.py         #   Ingestion SGK & Quản lý cây bài học
 │   ├── core/security/            # 🛡️ SQLGlot Query Validator & Tenant Isolation
 │   ├── db/                       # 🗄️ Database Session & Engine
-│   ├── ews/                      # ⚠️ Early Warning System (CatBoost Inference & Feature Extractor)
+│   ├── ews/                      # ⚠️ Early Warning System Core Engine
+│   │   ├── feature_extractor.py  #   SQL trích xuất 22 features qua Materialized CTE
+│   │   ├── inference_service.py  #   CatBoost v1 & v2 ensemble inference + SHAP
+│   │   ├── llm_forecasting.py    #   Tầng 2 LLM Qualitative Forecasting (Biến cố & Bệnh tật)
+│   │   ├── job_worker.py         #   FIFO Queue Worker & Self-healing timeout
+│   │   ├── pipeline_runner.py    #   Điều phối toàn bộ chu trình EWS
+│   │   ├── risk_config.py        #   Cấu hình ngưỡng rủi ro & Factor keys
+│   │   └── risk_weights.yaml     #   Trọng số các thành phần đánh giá nguy cơ
 │   ├── models/                   # 📋 21+ ORM Models (SQLAlchemy)
 │   ├── schemas/                  # 📥 Pydantic DTO Schemas
 │   └── services/                 # ⚙️ Business Logic (Item Mastery, Scoring, RBAC, VLM)
@@ -262,9 +275,10 @@ npm run dev
 │   │   ├── question-bank/        #   Ngân hàng câu hỏi & Bloom Taxonomy
 │   │   └── lesson-plans/         #   Trợ lý Soạn giáo án (CV 5512)
 │   └── src/components/           # 📂 Reusable UI Components
+├── data_mock/                    # 📦 Dữ liệu giả lập mẫu (CSV / JSON)
 ├── alembic/                      # 🗄️ Database Migrations
 ├── docs/                         # 📚 Tài liệu kiến trúc & Thiết kế kỹ thuật
-├── docs_vsf/reports/             # 📑 5 Bản báo cáo kỹ thuật chi tiết các Flow
+├── docs_vsf/                     # 📑 Hồ sơ 6 tuần thực tập & 5 Bản báo cáo kỹ thuật chi tiết các Flow (docs_vsf/reports/)
 ├── scripts/                      # 🐍 Data Seeding & Admin Creation Scripts
 └── tests/                        # 🧪 Kiểm thử tự động pytest
 ```
@@ -273,18 +287,18 @@ npm run dev
 
 ## 🧠 8. Ghi Chú Kiến Trúc & Cảnh Báo Vận Hành Dành Cho AI Agent / Kỹ Sư Phát Triển (Agent System Context)
 
-> **Mục tiêu của phần này**: Cung cấp toàn bộ ngữ cảnh hệ thống (System Context & Design Rationales) để bất kỳ AI Agent hoặc Kỹ sư nào khi tiếp quản dự án đều hiểu rõ **tại sao hệ thống lại được thiết kế như vậy**, tránh sửa sai cấu trúc hoặc hiểu nhầm về trạng thái dữ liệu.
-
+> **Mục tiêu của phần này**: để bất kỳ AI Agent hoặc Kỹ sư nào khi tiếp quản dự án đều hiểu rõ **tại sao hệ thống lại được thiết kế như vậy**, tránh sửa sai cấu trúc hoặc hiểu nhầm về trạng thái dữ liệu.
 ### 1. Bối Cảnh Dữ Liệu Mock & Hardcoded Credentials trong Development
 *   **Tại sao có Data Mock?** Vì đội ngũ ban đầu không được cấp máy truy cập trực tiếp vào hệ thống dev/staging của trường, toàn bộ các bảng trong CSDL (`fact_gradebooks`, `lms_question_response`, `fact_so_daily_attendance`, `fact_behavior_logs`, v.v.) đều được nạp dữ liệu giả lập từ các kịch bản seed (`scripts/seed_*.py`).
-*   **Tại sao Hardcode Password trong Seed Data?** Để phục vụ việc test tự động (Automated Integration Tests), benchmark hiệu năng, và cho phép kiểm thử các vai trò RBAC (Admin, Hiệu trưởng, Giáo viên chủ nhiệm, Giáo viên bộ môn) mà không cần bước đăng ký/kích hoạt phức tạp, mật khẩu các tài khoản seed được gán mặc định (ví dụ: `admin123`, `password123`).
+*   **Tại sao Hardcode Password trong Seed Data?** Để phục vụ việc test tự động (Automated Integration Tests), benchmark hiệu năng, và cho phép kiểm thử các vai trò RBAC (Admin, Hiệu trưởng, Giáo viên chủ nhiệm, Giáo viên bộ môn) mà không cần bước đăng ký/kích hoạt phức tạp, mật khẩu các tài khoản seed được gán giá trị mặc định cho môi trường dev *(chi tiết xem trong các script seed tương ứng)*.
 
 ### 2. ⚠️ LƯU Ý QUAN TRỌNG KHI TRIỂN KHAI PRODUCTION (Production Deployment Checkpoints)
 Khi kết nối với cơ sở dữ liệu thật của Sở GD&ĐT / Nhà trường hoặc triển khai lên môi trường Production, **BẮT BUỘC** thực hiện các bước sau:
-1.  **Đổi toàn bộ mật khẩu**: Tuyệt đối không giữ các mật khẩu mặc định (`admin123`, `password123`). Bắt buộc ép đổi mật khẩu (force reset password) ngay lần đầu đăng nhập.
+1.  **Đổi toàn bộ mật khẩu**: Tuyệt đối không giữ các mật khẩu mặc định của môi trường dev. Bắt buộc ép đổi mật khẩu (force reset password) ngay lần đầu đăng nhập.
 2.  **Ngừng chạy các script Seed Data Mock**: Không chạy các file `scripts/seed_mock_*.py` lên môi trường Production để tránh làm ô nhiễm dữ liệu thật.
 3.  **Thay đổi JWT Secret Key**: Thiết lập biến môi trường `JWT_SECRET_KEY` bằng một chuỗi ngẫu nhiên bảo mật cao (tối thiểu 32 bytes) trong `.env`.
 4.  **Chuyển đổi nguồn dữ liệu**: Cập nhật `DATABASE_URL` sang hệ thống PostgreSQL chính thức và kết nối API đồng bộ với cổng LMS/Sổ điểm điện tử của trường.
+5.  **Rà soát & chuẩn hóa ma trận phân quyền (RBAC Matrix)**: Trong phiên bản phát triển hiện tại, do giới hạn thời gian demo và để phục vụ kiểm thử nhanh (testing/demo), một số quyền hạn đang được điều chỉnh linh hoạt giữa các role (ví dụ: tài khoản *Hiệu trưởng* được cấp tạm một số quyền quản trị của *Admin*). Khi triển khai chính thức lên Production, cần rà soát và siết chặt lại ma trận RBAC theo đúng quy định chuẩn của nhà trường.
 
 ### 3. Lý Do Thiết Kế Kiến Trúc (Architecture Design Rationales)
 *   **Tại sao dùng Multi-Agent StateGraph thay vì Single LLM?**
