@@ -11,10 +11,6 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License MIT" />
 </p>
 
-> **Nền tảng Conversational BI & Học máy phân tích học thuật thông minh dành cho Ban Giám Hiệu, Trưởng bộ môn và Giáo viên K-12.**  
-> Tối ưu hóa chất lượng dạy - học, phát hiện sớm học sinh có nguy cơ học thuật (EWS), chẩn đoán lỗ hổng kiến thức chuẩn chương trình GDPT 2018 và tự động hóa báo cáo học vụ đa định dạng.
-
----
 
 ## 📌 1. Bối Cảnh & Phương Pháp Phát Triển (6-Week Sprint Context)
 
@@ -102,7 +98,7 @@ CatBoost thuần túy chỉ phân tích các con số định lượng, hoàn to
 Tự động hóa số hóa sách giáo khoa và xây dựng cơ sở tri thức phục vụ giảng dạy và giải đáp.
 
 *   **VLM 2 Lượt Quét Chống Ảo Giác (2-Pass Vision-Language Ingestion)**:
-    *   *Lượt A (Quét Mục Lục)*: Đọc ~15 trang đầu của PDF SGK bằng VLM (Qwen-VL qua Replicate / OpenRouter) để dựng cây cấu trúc Chương $\rightarrow$ Bài học và tạo danh sách các khái niệm định danh chuẩn (NEO Anchors).
+    *   *Lượt A (Quét Mục Lục)*: Đọc ~15 trang đầu của PDF SGK bằng VLM (Qwen-VL qua Replicate / OpenRouter) để dựng cây cấu trúc Chương → Bài học và tạo danh sách các khái niệm định danh chuẩn (NEO Anchors).
     *   *Lượt B (Phân Loại Nội Dung)*: Duyệt từng trang nội dung và **chỉ được phép gán vào NEO có sẵn từ Lượt A**, loại bỏ hoàn toàn hiện tượng VLM tự bịa tên bài học.
     *   *Làm giàu dữ liệu (Enrichment)*: Tự động trích xuất tóm tắt trọng tâm, từ khóa cốt lõi và các mục con cho từng bài học.
 *   **Knowledge Retrieval**: Vector store Qdrant lưu trữ các chunks tri thức, hỗ trợ tìm kiếm ngữ nghĩa theo khối/môn/chương với độ chính xác cao.
@@ -114,12 +110,12 @@ Tự động hóa số hóa sách giáo khoa và xây dựng cơ sở tri thức
 Module phân tích **thuần logic - giải tích sư phạm** (Pure Deterministic Logic, không phụ thuộc LLM/ML) giúp giáo viên bộ môn dự đoán kết quả bài thi sắp tới.
 
 *   **Chuỗi fallback 4 cấp độ năng lực (Ability Resolution)**:
-    $$\text{Unit có LMS} \rightarrow \text{TB Chương của HS} \rightarrow \text{TB Môn của HS} \rightarrow \text{INSUFFICIENT}$$
+    `Unit có LMS` → `TB Chương của HS` → `TB Môn của HS` → `INSUFFICIENT`
 *   **Công thức Dự đoán Điểm**:
-    $$\text{Predicted Score} = \left( \frac{\sum (w_u \times \text{Ability}_u)}{\sum w_u} \right) \times \text{Difficulty\_Adj}(\text{CDI})$$
-    Trong đó hệ số điều chỉnh độ khó nội dung $\text{Difficulty\_Adj}(\text{CDI}) = 1.0 + (0.5 - \text{CDI}) \times 0.5$ (dao động từ $0.75$ đến $1.25$).
+    $$\text{Predicted Score} = \left( \frac{\sum (w_u \cdot \text{Ability}_u)}{\sum w_u} \right) \cdot \text{DifficultyAdj}(\text{CDI})$$
+    Trong đó hệ số điều chỉnh độ khó nội dung: $\text{DifficultyAdj}(\text{CDI}) = 1.0 + (0.5 - \text{CDI}) \times 0.5$ (dao động từ $0.75$ đến $1.25$).
 *   **Phân loại kết quả**: $\ge 5.5$ (**PASS**), $< 4.5$ (**FAIL**), $4.5 - 5.5$ (**BORDERLINE**).
-*   **Đề xuất hành động**: Tự động chỉ ra **Top 2 bài học học sinh bị hổng nặng nhất** dựa trên độ mất điểm: $\text{Loss} = (10 - \text{Ability}_u) \times w_u$.
+*   **Đề xuất hành động**: Tự động chỉ ra **Top 2 bài học học sinh bị hổng nặng nhất** dựa trên độ mất điểm: $\text{Loss} = (10 - \text{Ability}_u) \cdot w_u$.
 
 ---
 
@@ -130,7 +126,7 @@ Module phân tích **thuần logic - giải tích sư phạm** (Pure Determinist
 *   **Đo lường năng lực chuẩn hóa Bloom**:
     *   Kết hợp **Độ rộng (Breadth Ratio)** (số bậc Bloom đã làm) và **Độ sâu (Depth Factor)** (trọng số câu hỏi Vận dụng / Vận dụng cao) để tính toán **Điểm tin cậy (Confidence Score)** từ $0.0$ đến $1.0$.
 *   **Động cơ Đối soát Đa nguồn (Cross-Validation Engine)**:
-    *   So sánh độ lệch $\Delta = \text{Raw Mastery (LMS)} - \text{Exam (Điểm thi tập trung)}$ để tự động điều chỉnh trọng số và gán nhãn:
+    *   So sánh độ lệch $\Delta = \text{Raw Mastery (LMS)} - \text{Exam}$ (với $\text{Exam}$ là điểm thi tập trung có giám thị) để tự động điều chỉnh trọng số và gán nhãn:
         *   🟢 `OK` (Đồng thuận): Điểm bài tập online và điểm thi tương đồng ($|\Delta| \le 30\%$).
         *   🔵 `LMS_EXCEEDS_EXAM` (LMS vượt trội): Làm online điểm rất cao ($\ge 9.5$) nhưng thi thật điểm thấp ($< 4.5$) $\rightarrow$ Cảnh báo nguy cơ học sinh tra đáp án hoặc gian lận.
         *   🟡 `LOW_ENGAGEMENT` (Ít luyện tập): Học sinh bỏ bài tập LMS ($N_{items} < 5$).
@@ -292,7 +288,7 @@ npm run dev
 ├── data_mock/                    # 📦 Dữ liệu giả lập mẫu (CSV / JSON)
 ├── alembic/                      # 🗄️ Database Migrations
 ├── docs/                         # 📚 Tài liệu kiến trúc & Thiết kế kỹ thuật
-├── docs_vsf/reports/             # 📑 5 Bản báo cáo kỹ thuật chi tiết các Flow
+├── docs_vsf/                     # 📑 Hồ sơ 6 tuần thực tập & 5 Bản báo cáo kỹ thuật chi tiết các Flow (docs_vsf/reports/)
 ├── scripts/                      # 🐍 Data Seeding & Admin Creation Scripts
 └── tests/                        # 🧪 Kiểm thử tự động pytest
 ```
