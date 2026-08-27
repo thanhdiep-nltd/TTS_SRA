@@ -275,10 +275,10 @@ npm run dev
 │   │   ├── question-bank/        #   Ngân hàng câu hỏi & Bloom Taxonomy
 │   │   └── lesson-plans/         #   Trợ lý Soạn giáo án (CV 5512)
 │   └── src/components/           # 📂 Reusable UI Components
-├── data_mock/                    # 📦 Dữ liệu giả lập mẫu (CSV / JSON)
+├── data_mock/                    # 📦 Dữ liệu giả lập mẫu (CSV / JSON) & synthetic generator
 ├── alembic/                      # 🗄️ Database Migrations
-├── docs/                         # 📚 Tài liệu kiến trúc & Thiết kế kỹ thuật
 ├── docs_vsf/                     # 📑 Hồ sơ 6 tuần thực tập & 5 Bản báo cáo kỹ thuật chi tiết các Flow (docs_vsf/reports/)
+├── monitoring/                   # 📊 Cấu hình giám sát hệ thống (Prometheus & Grafana Dashboards)
 ├── scripts/                      # 🐍 Data Seeding & Admin Creation Scripts
 └── tests/                        # 🧪 Kiểm thử tự động pytest
 ```
