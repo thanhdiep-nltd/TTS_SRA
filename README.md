@@ -1,9 +1,4 @@
-# EduOwl (AI20K-075) — Nền Tảng AI Trợ Lý Phân Tích Kết Quả Học Tập & Quản Trị Học Vụ Toàn Trường (K-12)
-
-> **Hệ thống Conversational BI & Học máy phân tích học thuật thông minh dành cho Ban Giám Hiệu, Trưởng bộ môn và Giáo viên.**  
-> Tối ưu hóa chất lượng dạy - học, phát hiện sớm học sinh có nguy cơ học thuật (EWS), chẩn đoán lỗ hổng kiến thức chuẩn chương trình GDPT 2018 và tự động hóa báo cáo học vụ đa định dạng.
-
----
+# Hệ Thống Cảnh Báo Sớm Học Sinh Có Nguy Cơ Sư Phạm (Build TTS: Student Risk Alert - SRA)
 
 ## 📌 1. Bối Cảnh & Phương Pháp Phát Triển (6-Week Sprint Context)
 
