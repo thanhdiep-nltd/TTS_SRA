@@ -103,7 +103,7 @@
   <!-- MAIN SLIDES CONTAINER -->
   <!-- ========================================================================= -->
   <main class="flex-1 flex items-center justify-center relative z-10 overflow-hidden px-4 lg:px-6 py-2">
-    <div id="slide-container" class="w-full h-full mx-auto flex items-center justify-center max-w-5xl">
+    <div id="slide-container" class="w-full h-full mx-auto flex items-center justify-center max-w-6xl 2xl:max-w-7xl">
       <!-- Slides will be injected dynamically via JS -->
     </div>
   </main>
@@ -377,50 +377,50 @@
         subtitle: "Phát hiện sớm học sinh nguy cơ rớt môn qua CatBoost ML trên 22 features từ 4 nguồn dữ liệu",
         type: "report_02a",
         render: () => `
-          <div class="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-              <div class="md:col-span-4 p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-center">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="shield-alert" class="w-4 h-4 text-rose-500 shrink-0"></i>
-                  <h3 class="text-xs font-bold text-slate-900 dark:text-white">Mục Đích EWS</h3>
+          <div class="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+              <div class="md:col-span-4 p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-center">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <i data-lucide="shield-alert" class="w-5 h-5 text-rose-500 shrink-0"></i>
+                  <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Mục Đích EWS</h3>
                 </div>
-                <p class="text-[10.5px] leading-relaxed text-slate-600 dark:text-slate-300">
-                  Dùng <strong>CatBoost GBDT</strong> phát hiện nguy cơ học sinh rớt môn qua <strong>22 đặc trưng</strong> từ 4 nguồn DWH. Hỗ trợ BGH/GV can thiệp kịp thời trước kỳ thi.
+                <p class="text-xs md:text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
+                  Dùng <strong>CatBoost GBDT</strong> phát hiện sớm học sinh có nguy cơ rớt môn qua <strong>22 đặc trưng</strong> từ 4 nguồn DWH. Hỗ trợ Ban giám hiệu và Giáo viên can thiệp kịp thời trước kỳ thi.
                 </p>
               </div>
 
-              <div class="md:col-span-8 p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1.5">
-                  <i data-lucide="git-branch" class="w-3.5 h-3.5 text-vsf-gold dark:text-vsf-goldLight"></i>
-                  <h3 class="text-xs font-bold text-slate-900 dark:text-white">Flow Tổng Quan 4 Bước</h3>
+              <div class="md:col-span-8 p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-2">
+                  <i data-lucide="git-branch" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i>
+                  <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Flow Tổng Quan 4 Bước</h3>
                 </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  <div class="flex items-center gap-1.5 p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                    <span class="text-sm font-black font-mono text-vsf-gold dark:text-vsf-goldLight">1</span>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div class="flex items-center gap-2.5 p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                    <span class="text-lg font-black font-mono text-vsf-gold dark:text-vsf-goldLight">1</span>
                     <div class="min-w-0">
-                      <div class="text-[10px] font-bold truncate text-slate-900 dark:text-slate-200">Kích hoạt</div>
-                      <div class="text-[8.5px] text-slate-400 truncate">POST /ews/predict</div>
+                      <div class="text-xs md:text-[13px] font-bold truncate text-slate-900 dark:text-slate-200">Kích hoạt</div>
+                      <div class="text-[10px] md:text-[11px] text-slate-400 truncate">POST /ews/predict</div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-1.5 p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                    <span class="text-sm font-black font-mono text-blue-500">2</span>
+                  <div class="flex items-center gap-2.5 p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                    <span class="text-lg font-black font-mono text-blue-500">2</span>
                     <div class="min-w-0">
-                      <div class="text-[10px] font-bold truncate text-slate-900 dark:text-slate-200">22 Features</div>
-                      <div class="text-[8.5px] text-slate-400 truncate">Materialized SQL</div>
+                      <div class="text-xs md:text-[13px] font-bold truncate text-slate-900 dark:text-slate-200">22 Features</div>
+                      <div class="text-[10px] md:text-[11px] text-slate-400 truncate">Materialized SQL (&lt;5s)</div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-1.5 p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                    <span class="text-sm font-black font-mono text-purple-500">3</span>
+                  <div class="flex items-center gap-2.5 p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                    <span class="text-lg font-black font-mono text-purple-500">3</span>
                     <div class="min-w-0">
-                      <div class="text-[10px] font-bold truncate text-slate-900 dark:text-slate-200">CatBoost</div>
-                      <div class="text-[8.5px] text-slate-400 truncate">5-Fold Ensemble</div>
+                      <div class="text-xs md:text-[13px] font-bold truncate text-slate-900 dark:text-slate-200">CatBoost</div>
+                      <div class="text-[10px] md:text-[11px] text-slate-400 truncate">5-Fold Ensemble</div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-1.5 p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                    <span class="text-sm font-black font-mono text-emerald-500">4</span>
+                  <div class="flex items-center gap-2.5 p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                    <span class="text-lg font-black font-mono text-emerald-500">4</span>
                     <div class="min-w-0">
-                      <div class="text-[10px] font-bold truncate text-slate-900 dark:text-slate-200">SHAP</div>
-                      <div class="text-[8.5px] text-slate-400 truncate">Giải trình rủi ro</div>
+                      <div class="text-xs md:text-[13px] font-bold truncate text-slate-900 dark:text-slate-200">SHAP</div>
+                      <div class="text-[10px] md:text-[11px] text-slate-400 truncate">Giải trình rủi ro</div>
                     </div>
                   </div>
                 </div>
@@ -428,54 +428,54 @@
             </div>
 
             <!-- 22 Features 4 Nhóm -->
-            <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-              <div class="flex items-center gap-1.5 mb-1.5">
-                <i data-lucide="database" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                <h3 class="text-xs font-bold text-slate-900 dark:text-white">22 Đặc Trưng Trích Xuất Từ 4 Nguồn DWH</h3>
+            <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+              <div class="flex items-center gap-2 mb-2.5">
+                <i data-lucide="database" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">22 Đặc Trưng Trích Xuất Từ 4 Nguồn DWH</h3>
               </div>
-              <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                <div class="p-2 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-[10px] font-bold text-emerald-500">Điểm Số</span>
-                    <span class="text-[8px] font-mono text-slate-400">9 features</span>
+              <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div class="p-3 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs md:text-[13px] font-extrabold text-emerald-500">Điểm Số</span>
+                    <span class="text-[10px] font-mono text-slate-400 font-bold">9 features</span>
                   </div>
-                  <ul class="space-y-0.5 text-[9px] text-slate-500 dark:text-slate-400">
+                  <ul class="space-y-1.5 text-[11px] md:text-xs text-slate-500 dark:text-slate-400">
                     <li>• TB sớm / muộn</li>
                     <li>• Độ dốc (Slope)</li>
                     <li>• Biến thiên & sụt giảm</li>
                     <li>• Điểm hệ số cao nhất</li>
                   </ul>
                 </div>
-                <div class="p-2 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-[10px] font-bold text-blue-500">LMS</span>
-                    <span class="text-[8px] font-mono text-slate-400">5 features</span>
+                <div class="p-3 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs md:text-[13px] font-extrabold text-blue-500">LMS</span>
+                    <span class="text-[10px] font-mono text-slate-400 font-bold">5 features</span>
                   </div>
-                  <ul class="space-y-0.5 text-[9px] text-slate-500 dark:text-slate-400">
+                  <ul class="space-y-1.5 text-[11px] md:text-xs text-slate-500 dark:text-slate-400">
                     <li>• TB bài tập LMS</li>
                     <li>• Lệch LMS vs sổ điểm</li>
                     <li>• Tỷ lệ nộp bài</li>
                     <li>• Nộp bài 4 tuần gần</li>
                   </ul>
                 </div>
-                <div class="p-2 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-[10px] font-bold text-amber-500">Chuyên Cần</span>
-                    <span class="text-[8px] font-mono text-slate-400">4 features</span>
+                <div class="p-3 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs md:text-[13px] font-extrabold text-amber-500">Chuyên Cần</span>
+                    <span class="text-[10px] font-mono text-slate-400 font-bold">4 features</span>
                   </div>
-                  <ul class="space-y-0.5 text-[9px] text-slate-500 dark:text-slate-400">
+                  <ul class="space-y-1.5 text-[11px] md:text-xs text-slate-500 dark:text-slate-400">
                     <li>• Nghỉ chung</li>
                     <li>• Nghỉ không phép</li>
                     <li>• Nghỉ có phép</li>
                     <li>• Đi muộn</li>
                   </ul>
                 </div>
-                <div class="p-2 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-[10px] font-bold text-rose-500">Hạnh Kiểm</span>
-                    <span class="text-[8px] font-mono text-slate-400">4 features</span>
+                <div class="p-3 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/50">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs md:text-[13px] font-extrabold text-rose-500">Hạnh Kiểm</span>
+                    <span class="text-[10px] font-mono text-slate-400 font-bold">4 features</span>
                   </div>
-                  <ul class="space-y-0.5 text-[9px] text-slate-500 dark:text-slate-400">
+                  <ul class="space-y-1.5 text-[11px] md:text-xs text-slate-500 dark:text-slate-400">
                     <li>• Điểm trừ hành vi</li>
                     <li>• Tái phạm</li>
                     <li>• Kỷ luật nặng</li>
@@ -496,103 +496,103 @@
         subtitle: "Trọng số động Softmax — ví dụ minh họa cách hệ thống phóng đại rủi ro để phát hiện sớm học sinh nguy cơ",
         type: "report_02b",
         render: () => `
-          <div class="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto">
+          <div class="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start w-full">
               <!-- Cột Trái -->
-              <div class="lg:col-span-5 space-y-2.5">
-                <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold bg-[#f0f4f0] dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight border border-[#cbdcd0] dark:border-vsf-green/40">
-                  <i data-lucide="shield-alert" class="w-3 h-3 text-vsf-green dark:text-vsf-greenLight"></i> Cảnh báo sớm rủi ro
+              <div class="lg:col-span-5 space-y-3.5">
+                <div class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10.5px] font-bold bg-[#f0f4f0] dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight border border-[#cbdcd0] dark:border-vsf-green/40">
+                  <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i> Cảnh báo sớm rủi ro
                 </div>
                 <h2 class="text-xl md:text-2xl font-extrabold tracking-tight leading-tight text-slate-900 dark:text-white">
                   Trọng Số Động Softmax
                 </h2>
-                <p class="leading-relaxed text-[10.5px] text-slate-600 dark:text-slate-400">
+                <p class="leading-relaxed text-xs md:text-[13px] text-slate-600 dark:text-slate-300">
                   Thay vì dùng trọng số cố định cho mọi học sinh, hệ thống tự điều chỉnh trọng số theo từng học sinh: yếu tố nào đang rủi ro cao sẽ được "phóng đại" để ảnh hưởng mạnh hơn đến điểm rủi ro cuối cùng.
                 </p>
 
-                <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-slate-900/50 shadow-xs">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                    <strong class="text-[11px] font-extrabold text-slate-900 dark:text-slate-200">Công thức Softmax động</strong>
+                <div class="p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-slate-900/50 shadow-xs">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <strong class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-slate-200">Công thức Softmax động</strong>
                   </div>
-                  <p class="text-[10px] leading-relaxed font-mono text-vsf-green dark:text-vsf-greenLight">
+                  <p class="text-xs md:text-sm leading-relaxed font-mono text-vsf-green dark:text-vsf-greenLight">
                     w<sub>k</sub> = base<sub>k</sub>·e<sup>α<sub>k</sub>·S<sub>k</sub></sup> / Σ base<sub>j</sub>·e<sup>α<sub>j</sub>·S<sub>j</sub></sup>
                   </p>
-                  <p class="text-[8.5px] leading-relaxed mt-1 text-slate-500 dark:text-slate-400">
+                  <p class="text-[10px] md:text-[11px] leading-relaxed mt-1.5 text-slate-500 dark:text-slate-400">
                     S<sub>k</sub>: điểm rủi ro yếu tố k · α<sub>k</sub>: độ nhạy riêng từng yếu tố · base<sub>k</sub>: trọng số gốc
                   </p>
                 </div>
 
-                <div class="p-2.5 rounded-xl border border-[#ebdcb0]/80 dark:border-vsf-gold/15 bg-[#faf6e8] dark:bg-vsf-gold/5 shadow-xs">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
-                    <strong class="text-[11px] font-extrabold text-slate-900 dark:text-slate-200">Điểm rủi ro cuối</strong>
+                <div class="p-3.5 rounded-2xl border border-[#ebdcb0]/80 dark:border-vsf-gold/15 bg-[#faf6e8] dark:bg-vsf-gold/5 shadow-xs">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+                    <strong class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-slate-200">Điểm rủi ro cuối</strong>
                   </div>
-                  <p class="text-[10px] leading-relaxed font-mono text-slate-900 dark:text-slate-300">
+                  <p class="text-xs md:text-sm leading-relaxed font-mono text-slate-900 dark:text-slate-300">
                     final = (1−β)·Σ(w·S) + β·max(S)
                   </p>
-                  <p class="text-[8.5px] leading-relaxed mt-1 text-slate-500 dark:text-slate-400">
+                  <p class="text-[10px] md:text-[11px] leading-relaxed mt-1.5 text-slate-500 dark:text-slate-400">
                     β = worst_factor_beta (mặc định 0 → chỉ dùng trung bình có trọng số động).
                   </p>
                 </div>
               </div>
 
               <!-- Cột Phải -->
-              <div class="lg:col-span-7 space-y-2.5">
-                <div class="p-3 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                  <div class="flex items-center justify-between mb-2">
-                    <strong class="text-xs font-extrabold text-slate-900 dark:text-slate-200">Ví dụ: học sinh nghỉ học nhiều</strong>
-                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-50 dark:bg-rose-950/30 text-red-700 dark:text-rose-400 border border-red-200 dark:border-rose-800/40">Kết quả: HIGH</span>
+              <div class="lg:col-span-7 space-y-3.5">
+                <div class="p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                  <div class="flex items-center justify-between mb-3">
+                    <strong class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-slate-200">Ví dụ: học sinh nghỉ học nhiều</strong>
+                    <span class="text-[10px] md:text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-50 dark:bg-rose-950/30 text-red-700 dark:text-rose-400 border border-red-200 dark:border-rose-800/40">Kết quả: HIGH</span>
                   </div>
                   <div class="overflow-x-auto">
-                    <table class="w-full text-left text-[10px]">
+                    <table class="w-full text-left text-xs md:text-[13px]">
                       <thead>
                         <tr class="border-b border-vsf-lightBorder dark:border-vsf-darkBorder text-slate-600 dark:text-slate-400">
-                          <th class="py-1 pr-2 font-semibold">Yếu tố</th>
-                          <th class="py-1 pr-2 font-semibold">Rủi ro S</th>
-                          <th class="py-1 pr-2 font-semibold">Trọng số gốc</th>
-                          <th class="py-1 pr-2 font-semibold">Trọng số động</th>
+                          <th class="py-2 pr-3 font-semibold">Yếu tố</th>
+                          <th class="py-2 pr-3 font-semibold">Rủi ro S</th>
+                          <th class="py-2 pr-3 font-semibold">Trọng số gốc</th>
+                          <th class="py-2 pr-3 font-semibold">Trọng số động</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr class="border-b border-[#f0ece0] dark:border-[#1a2740]">
-                          <td class="py-1 pr-2">Điểm</td>
-                          <td class="py-1 pr-2">30</td>
-                          <td class="py-1 pr-2">0.55</td>
-                          <td class="py-1 pr-2">0.29</td>
+                          <td class="py-2 pr-3">Điểm</td>
+                          <td class="py-2 pr-3">30</td>
+                          <td class="py-2 pr-3">0.55</td>
+                          <td class="py-2 pr-3">0.29</td>
                         </tr>
                         <tr class="border-b border-[#f0ece0] dark:border-[#1a2740]">
-                          <td class="py-1 pr-2">Học tập (LMS)</td>
-                          <td class="py-1 pr-2">70</td>
-                          <td class="py-1 pr-2">0.15</td>
-                          <td class="py-1 pr-2">0.21</td>
+                          <td class="py-2 pr-3">Học tập (LMS)</td>
+                          <td class="py-2 pr-3">70</td>
+                          <td class="py-2 pr-3">0.15</td>
+                          <td class="py-2 pr-3">0.21</td>
                         </tr>
                         <tr class="border-b border-[#f0ece0] dark:border-[#1a2740]">
-                          <td class="py-1 pr-2">Chuyên cần</td>
-                          <td class="py-1 pr-2 font-bold text-rose-500">90</td>
-                          <td class="py-1 pr-2">0.15</td>
-                          <td class="py-1 pr-2 font-bold text-rose-500">0.42</td>
+                          <td class="py-2 pr-3">Chuyên cần</td>
+                          <td class="py-2 pr-3 font-bold text-rose-500">90</td>
+                          <td class="py-2 pr-3">0.15</td>
+                          <td class="py-2 pr-3 font-bold text-rose-500">0.42</td>
                         </tr>
                         <tr>
-                          <td class="py-1 pr-2">Hạnh kiểm</td>
-                          <td class="py-1 pr-2">20</td>
-                          <td class="py-1 pr-2">0.15</td>
-                          <td class="py-1 pr-2">0.08</td>
+                          <td class="py-2 pr-3">Hạnh kiểm</td>
+                          <td class="py-2 pr-3">20</td>
+                          <td class="py-2 pr-3">0.15</td>
+                          <td class="py-2 pr-3">0.08</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                  <div class="mt-2 pt-2 border-t border-vsf-lightBorder dark:border-vsf-darkBorder text-[10px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <div class="mt-3 pt-3 border-t border-vsf-lightBorder dark:border-vsf-darkBorder text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                     <strong class="text-slate-900 dark:text-slate-200">Điểm cuối = 62.7 → HIGH.</strong> Yếu tố "Chuyên cần" rủi ro cao (90) được nâng từ 0.15 lên 0.42, giúp hệ thống bắt đúng học sinh nguy cơ thực sự.
                   </div>
                 </div>
 
-                <div class="p-2.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-slate-900/50 shadow-xs">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <span class="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
-                    <strong class="text-[11px] font-extrabold text-slate-900 dark:text-slate-200">So sánh: tắt trọng số động</strong>
+                <div class="p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-slate-900/50 shadow-xs">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
+                    <strong class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-slate-200">So sánh: tắt trọng số động</strong>
                   </div>
-                  <p class="text-[9.5px] leading-relaxed text-slate-600 dark:text-slate-400">
+                  <p class="text-[11px] md:text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                     Cùng học sinh, nếu dùng trọng số tĩnh: <span class="font-mono">0.55×30 + 0.15×70 + 0.15×90 + 0.15×20 = 43.5 → MODERATE</span>. Trọng số động giúp phát hiện sớm hơn một bậc rủi ro.
                   </p>
                 </div>
@@ -610,73 +610,73 @@
         subtitle: "VLM 2 lượt quét tìm TOC → khớp trang → node phẳng → chunking → Qdrant → RAG trong phân tách đề thi",
         type: "report_03",
         render: () => `
-          <div class="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="book-open" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                  <h3 class="text-xs font-bold text-slate-900 dark:text-white">Mục Đích Ingestion</h3>
+          <div class="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <i data-lucide="book-open" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                  <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Mục Đích Ingestion</h3>
                 </div>
-                <p class="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+                <p class="text-xs md:text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
                   Biến PDF SGK thành <strong>cây tri thức có cấu trúc</strong> (Chương → Bài). Xuất node phẳng <code>curriculum_units</code>, chunk text và embedding vector vào <strong>Qdrant</strong> để phục vụ truy vấn RAG có trích dẫn.
                 </p>
               </div>
 
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="search" class="w-3.5 h-3.5 text-vsf-gold dark:text-vsf-goldLight"></i>
-                  <h3 class="text-xs font-bold text-slate-900 dark:text-white">RAG Trong Phân Tách Đề Thi</h3>
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <i data-lucide="search" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i>
+                  <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">RAG Trong Phân Tách Đề Thi</h3>
                 </div>
-                <p class="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+                <p class="text-xs md:text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
                   Đề thi được trích xuất competency → Embed tìm chunks SGK tương ứng trong Qdrant → Map chính xác <code>unit_id</code> làm trọng số cho dự báo Pass/Fail (Semantic Lookup chuẩn xác).
                 </p>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center justify-between mb-1">
-                  <div class="flex items-center gap-1.5">
-                    <i data-lucide="search" class="w-3.5 h-3.5 text-blue-500"></i>
-                    <h3 class="text-xs font-bold text-slate-900 dark:text-white">Lượt A: VLM Tìm Mục Lục (TOC)</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="search" class="w-4 h-4 text-blue-500"></i>
+                    <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Lượt A: VLM Tìm Mục Lục (TOC)</h3>
                   </div>
-                  <span class="text-[8px] font-mono px-1.5 py-0.5 rounded-full font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">~15 trang đầu</span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">~15 trang đầu</span>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-xs md:text-[12.5px] leading-relaxed text-slate-500 dark:text-slate-400">
                   PyMuPDF crop ảnh trang → Qwen-VL phân tích cấu trúc cây Chương→Bài → Xuất JSON danh sách NEO cố định.
                 </p>
               </div>
 
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center justify-between mb-1">
-                  <div class="flex items-center gap-1.5">
-                    <i data-lucide="layers" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                    <h3 class="text-xs font-bold text-slate-900 dark:text-white">Lượt B: Phân Loại & Khớp Từng Trang</h3>
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="layers" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                    <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Lượt B: Phân Loại & Khớp Từng Trang</h3>
                   </div>
-                  <span class="text-[8px] font-mono px-1.5 py-0.5 rounded-full font-bold bg-emerald-50 dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight">NEO constraint</span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-emerald-50 dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight">NEO constraint</span>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-xs md:text-[12.5px] leading-relaxed text-slate-500 dark:text-slate-400">
                   VLM duyệt từng trang, khóa cứng vào danh sách NEO id có sẵn. <strong>Constrained decoding:</strong> chống bịa bài học 100%.
                 </p>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="git-branch" class="w-3 h-3 text-purple-500"></i>
-                  <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-slate-200">Node Phẳng (curriculum_units)</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <i data-lucide="git-branch" class="w-4 h-4 text-purple-500"></i>
+                  <h4 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-slate-200">Node Phẳng (curriculum_units)</h4>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-xs md:text-[12.5px] leading-relaxed text-slate-500 dark:text-slate-400">
                   Sinh tóm tắt, từ khóa, mục con. Bảng quan hệ phẳng: <code>subject_id | chapter | lesson | summary | keywords</code>.
                 </p>
               </div>
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="database" class="w-3 h-3 text-amber-500"></i>
-                  <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-slate-200">Data Chunking → Qdrant</h4>
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <i data-lucide="database" class="w-4 h-4 text-amber-500"></i>
+                  <h4 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-slate-200">Data Chunking → Qdrant</h4>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-xs md:text-[12.5px] leading-relaxed text-slate-500 dark:text-slate-400">
                   Chunks 256–512 tokens kèm metadata mục SGK. Embedding vector → Qdrant phục vụ tìm kiếm ngữ nghĩa siêu tốc.
                 </p>
               </div>
@@ -693,82 +693,141 @@
         subtitle: "Upload đề → LLM tách câu → Qdrant semantic lookup → map competency→unit_id & tính CDI",
         type: "report_04a",
         render: () => `
-          <div class="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-            <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-              <div class="flex items-center gap-1.5 mb-1">
-                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                <h3 class="text-xs font-bold text-slate-900 dark:text-white">Mục Đích Phân Tách Đề</h3>
+          <div class="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3 md:space-y-3.5">
+            <div class="p-3 md:p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+              <div class="flex items-center gap-2 mb-1">
+                <i data-lucide="trending-up" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Mục Đích Phân Tách Đề</h3>
               </div>
-              <p class="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+              <p class="text-xs md:text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
                 Biến file PDF/DOCX đề thi thành Ma trận Trọng số từng bài học <code>competency → unit_id</code> để tính điểm dự báo theo chuẩn kiến thức thực tế.
               </p>
             </div>
 
             <!-- 3 Bước -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div class="p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-500"></i>
-                  <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-white">B1: Tách Đề Thành Câu</h4>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="p-3 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1">
+                  <i data-lucide="file-text" class="w-4 h-4 text-blue-500"></i>
+                  <h4 class="text-xs md:text-[13px] font-extrabold text-slate-900 dark:text-white">B1: Tách Đề Thành Câu</h4>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-[11px] md:text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   VLM / Layout Detector tách từng câu hỏi, cắt hình minh họa, đọc điểm số từng câu.
                 </p>
               </div>
 
-              <div class="p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="search" class="w-3.5 h-3.5 text-purple-500"></i>
-                  <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-white">B2: Semantic Lookup</h4>
+              <div class="p-3 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1">
+                  <i data-lucide="search" class="w-4 h-4 text-purple-500"></i>
+                  <h4 class="text-xs md:text-[13px] font-extrabold text-slate-900 dark:text-white">B2: Semantic Lookup</h4>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-[11px] md:text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   Embedding câu hỏi → Tìm chunks SGK trong pgvector/Qdrant → Lấy bằng chứng thực tế.
                 </p>
               </div>
 
-              <div class="p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <div class="flex items-center gap-1.5 mb-1">
-                  <i data-lucide="git-branch" class="w-3.5 h-3.5 text-amber-500"></i>
-                  <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-white">B3: Map & Tính CDI Đề</h4>
+              <div class="p-3 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <div class="flex items-center gap-2 mb-1">
+                  <i data-lucide="git-branch" class="w-4 h-4 text-amber-500"></i>
+                  <h4 class="text-xs md:text-[13px] font-extrabold text-slate-900 dark:text-white">B3: Map & Tính CDI Đề</h4>
                 </div>
-                <p class="text-[9.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-[11px] md:text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   Phân rã bài con (Σw = 100%). Tính <strong>CDI = Σ(Bloom<sub>i</sub> × w<sub>i</sub>) / (6 × Σw<sub>i</sub>)</strong>.
                 </p>
               </div>
             </div>
 
-            <!-- Công thức CDI & So sánh -->
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-              <div class="md:col-span-6 p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
-                <div>
-                  <div class="flex items-center justify-between mb-1">
-                    <div class="flex items-center gap-1.5">
-                      <i data-lucide="target" class="w-3.5 h-3.5 text-vsf-gold dark:text-vsf-goldLight"></i>
-                      <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-white">Cách Tính Chỉ Số Độ Khó Đề (CDI)</h4>
-                    </div>
-                    <span class="text-[8px] font-mono px-1.5 py-0.2 rounded font-bold bg-emerald-50 dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight">Bloom Scale 1..6</span>
+            <!-- 6 BẬC NHẬN THỨC BLOOM (bloom_level) -->
+            <div class="p-3 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="brain" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i>
+                  <h4 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">
+                    Khung 6 Mức Độ Nhận Thức Bloom (bloom_level) Chuẩn Khảo Thí GD&ĐT
+                  </h4>
+                </div>
+                <span class="text-[9.5px] font-mono px-2.5 py-0.5 rounded-full font-bold bg-[#f0faf4] dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight">
+                  Thang đo 1–6
+                </span>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                <div class="p-2 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark flex flex-col justify-between">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <span class="w-4.5 h-4.5 rounded-full bg-blue-500/20 text-blue-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">1</span>
+                    <strong class="text-[11px] font-extrabold truncate text-blue-700 dark:text-blue-400">Nhận biết</strong>
                   </div>
-                  <div class="p-1.5 rounded-lg border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-[9.5px] mb-1 text-vsf-green dark:text-vsf-greenLight">
+                  <p class="text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">Nhớ định nghĩa, công thức, nhận diện trực tiếp</p>
+                </div>
+                <div class="p-2 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark flex flex-col justify-between">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <span class="w-4.5 h-4.5 rounded-full bg-emerald-500/20 text-emerald-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">2</span>
+                    <strong class="text-[11px] font-extrabold truncate text-emerald-700 dark:text-emerald-400">Thông hiểu</strong>
+                  </div>
+                  <p class="text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">Giải thích, tính toán đơn giản 1 bước, phân biệt khái niệm</p>
+                </div>
+                <div class="p-2 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark flex flex-col justify-between">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <span class="w-4.5 h-4.5 rounded-full bg-amber-500/20 text-amber-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">3</span>
+                    <strong class="text-[11px] font-extrabold truncate text-amber-700 dark:text-amber-400">Vận dụng</strong>
+                  </div>
+                  <p class="text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">Áp dụng công thức vào bài toán cụ thể, tính toán 2-3 bước</p>
+                </div>
+                <div class="p-2 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark flex flex-col justify-between">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <span class="w-4.5 h-4.5 rounded-full bg-purple-500/20 text-purple-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">4</span>
+                    <strong class="text-[11px] font-extrabold truncate text-purple-700 dark:text-purple-400">Vận dụng cao</strong>
+                  </div>
+                  <p class="text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">Bài toán tổng hợp, kết hợp nhiều kiến thức, suy luận logic</p>
+                </div>
+                <div class="p-2 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark flex flex-col justify-between">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <span class="w-4.5 h-4.5 rounded-full bg-rose-500/20 text-rose-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">5</span>
+                    <strong class="text-[11px] font-extrabold truncate text-rose-700 dark:text-rose-400">Đánh giá</strong>
+                  </div>
+                  <p class="text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">So sánh phương án, chứng minh, tìm lỗi sai</p>
+                </div>
+                <div class="p-2 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark flex flex-col justify-between">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <span class="w-4.5 h-4.5 rounded-full bg-indigo-500/20 text-indigo-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">6</span>
+                    <strong class="text-[11px] font-extrabold truncate text-indigo-700 dark:text-indigo-400">Sáng tạo</strong>
+                  </div>
+                  <p class="text-[9.5px] text-slate-500 dark:text-slate-400 leading-snug">Thiết kế bài toán mới, tổng quát hóa quy luật</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Công thức CDI & So sánh -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+              <div class="md:col-span-6 p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="target" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i>
+                      <h4 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">Cách Tính Chỉ Số Độ Khó Đề (CDI)</h4>
+                    </div>
+                    <span class="text-[9px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-50 dark:bg-vsf-green/20 text-vsf-green dark:text-vsf-greenLight">Bloom Scale 1..6</span>
+                  </div>
+                  <div class="p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-xs md:text-[13px] mb-1.5 text-vsf-green dark:text-vsf-greenLight">
                     <strong>CDI = Σ(Bloom<sub>i</sub> × w<sub>i</sub>) / (6 × Σw<sub>i</sub>) ∈ [0.0, 1.0]</strong>
                   </div>
-                  <p class="text-[8.5px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    • <strong>Bloom<sub>i</sub> (1..6):</strong> Bậc nhận thức câu <em>i</em> (1: Biết, 2: Hiểu, 3: Vận dụng, 4–6: Vận dụng cao).<br />
-                    • <strong>w<sub>i</sub>:</strong> Điểm số câu <em>i</em> · <strong>Σw<sub>i</sub>:</strong> Tổng điểm toàn bài (dùng tính TB gia quyền theo điểm câu).<br />
+                  <p class="text-[10px] md:text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                    • <strong>Bloom<sub>i</sub> (1..6):</strong> Mức độ nhận thức của câu <em>i</em> theo khung 6 bậc Bloom.<br />
+                    • <strong>w<sub>i</sub>:</strong> Điểm số câu <em>i</em> · <strong>Σw<sub>i</sub>:</strong> Tổng điểm toàn bài (tính TB gia quyền theo điểm câu).<br />
                     • <strong>Số 6:</strong> Bậc Bloom tối đa để chuẩn hóa CDI về thang [0, 1]. (CDI=0.50: Đề chuẩn Bộ GD&ĐT).
                   </p>
                 </div>
               </div>
 
-              <div class="md:col-span-6 p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
+              <div class="md:col-span-6 p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                    <h4 class="text-[10.5px] font-bold text-slate-900 dark:text-white">Định Vị Bằng Semantic Lookup</h4>
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                    <h4 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">Định Vị Bằng Semantic Lookup</h4>
                   </div>
-                  <p class="text-[9px] leading-relaxed mb-1 text-slate-600 dark:text-slate-300">
+                  <p class="text-[11px] md:text-xs leading-relaxed mb-1.5 text-slate-600 dark:text-slate-300">
                     <strong>Tại sao không hỏi LLM trực tiếp?</strong> LLM dễ ảo giác tự bịa tên bài không có trong SGK.
                   </p>
-                  <p class="text-[8.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  <p class="text-[10.5px] md:text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400">
                     👉 Vector hóa câu hỏi → So khớp top-1 chunk SGK chuẩn trong pgvector/Qdrant → Đảm bảo 100% mã <code>unit_id</code> thuộc SGK thực tế.
                   </p>
                 </div>
@@ -786,97 +845,97 @@
         subtitle: "Weighted Ability × CDI Adjustment, 4 tầng fallback, verdict PASS/BORDER/FAIL & Weak Units",
         type: "report_04b",
         render: () => `
-          <div class="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-              <div class="md:col-span-6 p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
+          <div class="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3 md:space-y-3.5">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+              <div class="md:col-span-6 p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div class="flex items-center justify-between mb-1">
-                    <div class="flex items-center gap-1.5">
-                      <i data-lucide="trending-up" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                      <h3 class="text-xs font-bold text-slate-900 dark:text-white">1. Weighted Ability (Test Blueprint)</h3>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="trending-up" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                      <h3 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">1. Weighted Ability (Test Blueprint)</h3>
                     </div>
-                    <span class="text-[8px] font-mono px-1.5 py-0.2 rounded font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-vsf-greenLight">Domain Sampling</span>
+                    <span class="text-[9px] font-mono px-2 py-0.5 rounded font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-vsf-greenLight">Domain Sampling</span>
                   </div>
-                  <div class="p-1.5 rounded-lg border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-[9.5px] mb-1 text-vsf-green dark:text-vsf-greenLight">
+                  <div class="p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-xs md:text-[13px] mb-1.5 text-vsf-green dark:text-vsf-greenLight">
                     <strong>Weighted Ability = Σ(w<sub>u</sub> × Ability<sub>u</sub>) / Σ(w<sub>u</sub>)</strong>
                   </div>
-                  <p class="text-[9px] leading-relaxed text-slate-600 dark:text-slate-300">
+                  <p class="text-[10.5px] md:text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-300">
                     <strong>Cơ sở Khảo thí:</strong> Mô hình <em>Composite Score</em> chuẩn dựa trên lý thuyết <em>Test Blueprint</em> (Ma trận đặc tả) & <em>Domain Sampling</em>: khi đề thi tập trung vào mục tiêu nào thì năng lực tổng hợp phải được ánh xạ theo tỷ trọng của mục tiêu đó.
                   </p>
                 </div>
               </div>
 
-              <div class="md:col-span-6 p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
+              <div class="md:col-span-6 p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-between">
                 <div>
-                  <div class="flex items-center justify-between mb-1">
-                    <div class="flex items-center gap-1.5">
-                      <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-vsf-gold dark:text-vsf-goldLight"></i>
-                      <h3 class="text-xs font-bold text-slate-900 dark:text-white">2. CDI Adjustment (Empirical Heuristic)</h3>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="bar-chart-2" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i>
+                      <h3 class="text-xs md:text-sm font-extrabold text-slate-900 dark:text-white">2. CDI Adjustment (Empirical Heuristic)</h3>
                     </div>
-                    <span class="text-[8px] font-mono px-1.5 py-0.2 rounded font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-vsf-goldLight">Cold-Start Forecast</span>
+                    <span class="text-[9px] font-mono px-2 py-0.5 rounded font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-vsf-goldLight">Cold-Start Forecast</span>
                   </div>
-                  <div class="p-1.5 rounded-lg border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-[9.5px] mb-1 text-vsf-green dark:text-vsf-greenLight">
-                    <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span class="text-[8.5px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
+                  <div class="p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-xs md:text-[13px] mb-1.5 text-vsf-green dark:text-vsf-greenLight">
+                    <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span class="text-[10px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
                   </div>
-                  <p class="text-[9px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    <strong>Tại sao dùng Heuristic thay IRT?</strong> IRT cần ≥ 200 HS làm bài trước để calibrate tham số. Đề thi cuối kỳ là đề mới bảo mật, chưa có tương tác học sinh $\implies$ Dùng độ khó Bloom tiên nghiệm để dự báo sớm trước 2-3 tuần.
+                  <p class="text-[10.5px] md:text-[11.5px] leading-relaxed text-slate-600 dark:text-slate-300">
+                    <strong>Tại sao dùng Heuristic thay IRT?</strong> IRT cần $\ge 200$ HS làm bài trước để calibrate tham số. Đề thi cuối kỳ là đề mới bảo mật, chưa có tương tác học sinh $\implies$ Dùng độ khó Bloom tiên nghiệm để dự báo sớm trước 2-3 tuần.
                   </p>
                 </div>
               </div>
             </div>
 
             <!-- 4 Tầng Fallback -->
-            <div class="p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-              <h3 class="text-[10px] font-bold mb-1 text-slate-900 dark:text-white">4 Tầng Fallback Xác Định Năng Lực Học Sinh (Ability<sub>u</sub>)</h3>
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-vsf-green dark:text-vsf-greenLight">Tầng 1: Có LMS</span>
-                  <div class="text-[8.5px] text-slate-400">Ability = Raw × 10</div>
+            <div class="p-3 md:p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+              <h3 class="text-xs md:text-[13px] font-extrabold mb-2 text-slate-900 dark:text-white">4 Tầng Fallback Xác Định Năng Lực Học Sinh (Ability<sub>u</sub>)</h3>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-[11px] font-extrabold text-vsf-green dark:text-vsf-greenLight">Tầng 1: Có LMS</span>
+                  <div class="text-[10px] text-slate-400 mt-0.5 font-mono">Ability = Raw × 10</div>
                 </div>
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-blue-500">Tầng 2: Thiếu bài</span>
-                  <div class="text-[8.5px] text-slate-400">Lấy TB Chương</div>
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-[11px] font-extrabold text-blue-500">Tầng 2: Thiếu bài</span>
+                  <div class="text-[10px] text-slate-400 mt-0.5">Lấy TB Chương</div>
                 </div>
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-vsf-gold dark:text-vsf-goldLight">Tầng 3: Thiếu chương</span>
-                  <div class="text-[8.5px] text-slate-400">Lấy TB toàn Môn</div>
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-[11px] font-extrabold text-vsf-gold dark:text-vsf-goldLight">Tầng 3: Thiếu chương</span>
+                  <div class="text-[10px] text-slate-400 mt-0.5">Lấy TB toàn Môn</div>
                 </div>
-                <div class="p-1.5 rounded-lg border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-950/20">
-                  <span class="text-[9px] font-bold text-rose-500">Tầng 4: Không LMS</span>
-                  <div class="text-[8.5px] text-slate-400">→ INSUFFICIENT</div>
+                <div class="p-2.5 rounded-xl border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-950/20">
+                  <span class="text-[11px] font-extrabold text-rose-500">Tầng 4: Không LMS</span>
+                  <div class="text-[10px] text-slate-400 mt-0.5">→ INSUFFICIENT</div>
                 </div>
               </div>
             </div>
 
             <!-- Phân loại Verdict & Weak Units -->
-            <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-              <div class="md:col-span-7 p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <h4 class="text-[10px] font-bold mb-1 text-slate-900 dark:text-slate-200">Phân Loại Kết Luận (Predicted = Weighted Ability × CDI Adj)</h4>
-                <div class="grid grid-cols-4 gap-1.5">
-                  <div class="text-center p-1 rounded-lg border border-[#cbdcd0] dark:border-vsf-green/30 bg-[#f0faf4] dark:bg-vsf-green/10">
-                    <span class="text-xs font-black text-vsf-green dark:text-vsf-greenLight">PASS</span>
-                    <div class="text-[9px] text-slate-400">≥ 5.5</div>
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+              <div class="md:col-span-7 p-3 md:p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <h4 class="text-xs md:text-[13px] font-extrabold mb-2 text-slate-900 dark:text-slate-200">Phân Loại Kết Luận (Predicted = Weighted Ability × CDI Adj)</h4>
+                <div class="grid grid-cols-4 gap-2">
+                  <div class="text-center p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-green/30 bg-[#f0faf4] dark:bg-vsf-green/10">
+                    <span class="text-sm md:text-base font-black text-vsf-green dark:text-vsf-greenLight">PASS</span>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">≥ 5.5</div>
                   </div>
-                  <div class="text-center p-1 rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20">
-                    <span class="text-xs font-black text-amber-500">BORDER</span>
-                    <div class="text-[9px] text-slate-400">4.5–5.4</div>
+                  <div class="text-center p-2 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20">
+                    <span class="text-sm md:text-base font-black text-amber-500">BORDER</span>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">4.5–5.4</div>
                   </div>
-                  <div class="text-center p-1 rounded-lg border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-950/20">
-                    <span class="text-xs font-black text-rose-500">FAIL</span>
-                    <div class="text-[9px] text-slate-400">&lt; 4.5</div>
+                  <div class="text-center p-2 rounded-xl border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-950/20">
+                    <span class="text-sm md:text-base font-black text-rose-500">FAIL</span>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">&lt; 4.5</div>
                   </div>
-                  <div class="text-center p-1 rounded-lg border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark">
-                    <span class="text-xs font-black text-slate-400">INSUF</span>
-                    <div class="text-[9px] text-slate-400">Chưa đủ</div>
+                  <div class="text-center p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark">
+                    <span class="text-sm md:text-base font-black text-slate-400">INSUF</span>
+                    <div class="text-[10px] text-slate-400 mt-0.5">Chưa đủ</div>
                   </div>
                 </div>
               </div>
 
-              <div class="md:col-span-5 p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-center">
-                <h4 class="text-[10px] font-bold mb-0.5 flex items-center gap-1.5 text-slate-900 dark:text-slate-200">
-                  <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-vsf-gold dark:text-vsf-goldLight"></i> Weak Units
+              <div class="md:col-span-5 p-3 md:p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm flex flex-col justify-center">
+                <h4 class="text-xs md:text-[13px] font-extrabold mb-1 flex items-center gap-2 text-slate-900 dark:text-slate-200">
+                  <i data-lucide="alert-triangle" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i> Weak Units
                 </h4>
-                <p class="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p class="text-[11px] md:text-xs leading-relaxed text-slate-600 dark:text-slate-300">
                   <code>compute_weak_units()</code> bóc tách Top 2 bài yếu nhất gây mất điểm trong đề để GV lên kế hoạch phụ đạo mục tiêu.
                 </p>
               </div>
@@ -893,44 +952,78 @@
         subtitle: "Đánh Giá Năng Lực Theo Cây Tri Thức, Thang Đo Bloom, Đối Soát Đa Nguồn (LMS vs Exam) & Majority Rule",
         type: "report_05",
         render: () => `
-          <div class="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
-            <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-              <div class="flex items-center gap-1.5 mb-1">
-                <i data-lucide="activity" class="w-3.5 h-3.5 text-vsf-green dark:text-vsf-greenLight"></i>
-                <h3 class="text-xs font-bold text-slate-900 dark:text-white">Mục Đích Chẩn Đoán Lỗ Hổng</h3>
+          <div class="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
+            <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+              <div class="flex items-center gap-2 mb-1.5">
+                <i data-lucide="activity" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i>
+                <h3 class="text-sm md:text-base font-extrabold text-slate-900 dark:text-white">Mục Đích Chẩn Đoán Lỗ Hổng</h3>
               </div>
-              <p class="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
+              <p class="text-xs md:text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
                 Phát hiện <strong>lỗ hổng kiến thức</strong> từng học sinh ở cấp bài học bằng cách đối soát đa nguồn: năng lực LMS (Item Mastery × Bloom Factor) đối chiếu với điểm thi thật. Kết quả xuất Roster chi tiết.
               </p>
             </div>
 
-            <div class="p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-vsf-green dark:text-vsf-greenLight">Bước 1: Item Mastery</span>
-                  <div class="text-[8.5px] text-slate-400 mt-0.5">Bloom Breadth × Depth Factor</div>
+            <div class="p-3 md:p-3.5 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-xs md:text-[13px] font-extrabold text-vsf-green dark:text-vsf-greenLight">Bước 1: Item Mastery</span>
+                  <div class="text-[10.5px] text-slate-400 mt-1">Bloom Breadth × Depth Factor</div>
                 </div>
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-blue-500">Bước 2: Cross-Val</span>
-                  <div class="text-[8.5px] text-slate-400 mt-0.5">Δ = LMS − Exam (|Δ| ≤ 30%)</div>
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-xs md:text-[13px] font-extrabold text-blue-500">Bước 2: Cross-Val</span>
+                  <div class="text-[10.5px] text-slate-400 mt-1">Δ = LMS − Exam (|Δ| ≤ 30%)</div>
                 </div>
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-purple-500">Bước 3: Majority Rule</span>
-                  <div class="text-[8.5px] text-slate-400 mt-0.5">Gộp trạng thái toàn khóa học</div>
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-xs md:text-[13px] font-extrabold text-purple-500">Bước 3: Majority Rule</span>
+                  <div class="text-[10.5px] text-slate-400 mt-1">Gộp trạng thái toàn khóa học</div>
                 </div>
-                <div class="p-1.5 rounded-lg border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
-                  <span class="text-[9px] font-bold text-vsf-gold dark:text-vsf-goldLight">Bước 4: Roster</span>
-                  <div class="text-[8.5px] text-slate-400 mt-0.5">Xuất bảng chẩn đoán & Drawer</div>
+                <div class="p-2.5 rounded-xl border border-[#ebdcb0] dark:border-vsf-darkBorder bg-[#faf8f5] dark:bg-vsf-dark">
+                  <span class="text-xs md:text-[13px] font-extrabold text-vsf-gold dark:text-vsf-goldLight">Bước 4: Roster</span>
+                  <div class="text-[10.5px] text-slate-400 mt-1">Xuất bảng chẩn đoán & Drawer</div>
                 </div>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              <div class="p-2.5 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
-                <h4 class="text-[10.5px] font-bold mb-1 flex items-center gap-1.5 text-slate-900 dark:text-slate-200">
-                  <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-vsf-gold dark:text-vsf-goldLight"></i> Công Thức Năng Lực
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <h4 class="text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 text-slate-900 dark:text-slate-200">
+                  <i data-lucide="bar-chart-2" class="w-4 h-4 text-vsf-gold dark:text-vsf-goldLight"></i> Công Thức Năng Lực
                 </h4>
-                <div class="p-1.5 rounded-lg border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-[9.5px] text-vsf-green dark:text-vsf-greenLight">
+                <div class="p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-darkBorder bg-[#f0faf4] dark:bg-vsf-dark font-mono text-xs md:text-[13px] text-vsf-green dark:text-vsf-greenLight">
+                  Mastery<sub>bài</sub> = (đúng / tổng) × BreadthRatio × (1 + DepthFactor)
+                </div>
+                <p class="text-[10.5px] md:text-[11.5px] leading-relaxed mt-2 text-slate-500 dark:text-slate-400">
+                  BreadthRatio: tỷ lệ bao phủ bậc Bloom. DepthFactor: thưởng câu Vận dụng cao. HS đúng hết NB+TH nhưng thiếu VD cao → Mastery phản ánh đúng thực chất.
+                </p>
+              </div>
+
+              <div class="p-3.5 md:p-4 rounded-2xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark/80 shadow-sm">
+                <h4 class="text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 text-slate-900 dark:text-slate-200">
+                  <i data-lucide="check-circle-2" class="w-4 h-4 text-vsf-green dark:text-vsf-greenLight"></i> 4 Loại Kết Luận Đối Soát
+                </h4>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="p-2 rounded-xl border border-[#cbdcd0] dark:border-vsf-green/30 bg-[#f0faf4] dark:bg-vsf-green/10">
+                    <div class="text-xs md:text-[13px] font-black text-vsf-green dark:text-vsf-greenLight">OK</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">|Δ| ≤ 30% · Chuẩn xác</div>
+                  </div>
+                  <div class="p-2 rounded-xl border border-sky-200 dark:border-sky-800/40 bg-sky-50 dark:bg-sky-950/20">
+                    <div class="text-xs md:text-[13px] font-black text-sky-600">LMS Vượt</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">LMS ≥ 9.5, thi &lt; 4.5</div>
+                  </div>
+                  <div class="p-2 rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/20">
+                    <div class="text-xs md:text-[13px] font-black text-amber-500">Ít LMS</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">N &lt; 5 câu · Luyện ít</div>
+                  </div>
+                  <div class="p-2 rounded-xl border border-vsf-lightBorder dark:border-vsf-darkBorder bg-white dark:bg-vsf-dark">
+                    <div class="text-xs md:text-[13px] font-black text-purple-600">Chỉ Thi</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">LMS = 0% · Ước lượng thi</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `
+      } text-[9.5px] text-vsf-green dark:text-vsf-greenLight">
                   Mastery<sub>bài</sub> = (đúng / tổng) × BreadthRatio × (1 + DepthFactor)
                 </div>
                 <p class="text-[9px] mt-1 text-slate-500 dark:text-slate-400">
@@ -1290,7 +1383,7 @@
       if (slide.type === 'report_01') {
         container.className = 'w-full h-full mx-auto flex items-center justify-center max-w-none px-0';
       } else {
-        container.className = 'w-full h-full mx-auto flex items-center justify-center max-w-5xl';
+        container.className = 'w-full h-full mx-auto flex items-center justify-center max-w-6xl 2xl:max-w-7xl';
       }
       container.innerHTML = slide.render();
 

@@ -697,43 +697,43 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 3: EWS — MỤC ĐÍCH + FLOW + 22 FEATURES (BÁO CÁO 02A)
+    // SLIDE 4: EWS — MỤC ĐÍCH + FLOW + 22 FEATURES (BÁO CÁO 02A)
     // =========================================================================
     {
       title: "Báo Cáo 02A: EWS Pipeline — Mục Đích, Flow & 22 Đặc Trưng",
       subtitle: "Phát hiện sớm học sinh nguy cơ rớt môn qua CatBoost ML trên 22 features từ 4 nguồn dữ liệu",
       type: "report_02a",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
           {/* HÀNG 1: MỤC ĐÍCH + FLOW 4 BƯỚC */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-            <div className={`md:col-span-4 p-2.5 rounded-xl border flex flex-col justify-center ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
-                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích EWS</h3>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+            <div className={`md:col-span-4 p-3.5 md:p-4 rounded-2xl border flex flex-col justify-center ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
+                <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích EWS</h3>
               </div>
-              <p className={`text-[10.5px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
-                Dùng <strong>CatBoost GBDT</strong> phát hiện nguy cơ học sinh rớt môn qua <strong>22 đặc trưng</strong> từ 4 nguồn DWH. Hỗ trợ BGH/GV can thiệp kịp thời trước kỳ thi.
+              <p className={`text-xs md:text-[13px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                Dùng <strong>CatBoost GBDT</strong> phát hiện sớm học sinh có nguy cơ rớt môn qua <strong>22 đặc trưng</strong> từ 4 nguồn DWH. Hỗ trợ Ban giám hiệu và Giáo viên can thiệp kịp thời trước kỳ thi.
               </p>
             </div>
 
-            <div className={`md:col-span-8 p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <GitBranch className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
-                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Flow Tổng Quan 4 Bước</h3>
+            <div className={`md:col-span-8 p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <GitBranch className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+                <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Flow Tổng Quan 4 Bước</h3>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {[
                   { num: "1", label: "Kích hoạt", desc: "POST /ews/predict → FIFO Job", color: "text-[#8c763e] dark:text-[#c2ae78]" },
                   { num: "2", label: "22 Features", desc: "Materialized SQL (<5s)", color: "text-blue-500" },
                   { num: "3", label: "CatBoost", desc: "5-Fold Ensemble", color: "text-purple-500" },
                   { num: "4", label: "SHAP", desc: "Giải trình + UPSERT", color: "text-emerald-500" }
                 ].map((item, idx) => (
-                  <div key={idx} className={`flex items-center gap-1.5 p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                    <span className={`text-sm font-black font-mono ${item.color}`}>{item.num}</span>
+                  <div key={idx} className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                    <span className={`text-lg font-black font-mono ${item.color}`}>{item.num}</span>
                     <div className="min-w-0">
-                      <div className={`text-[10px] font-bold truncate ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>{item.label}</div>
-                      <div className="text-[8.5px] text-slate-400 truncate">{item.desc}</div>
+                      <div className={`text-xs md:text-[13px] font-bold truncate ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>{item.label}</div>
+                      <div className="text-[10px] md:text-[11px] text-slate-400 truncate">{item.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -742,27 +742,27 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
           </div>
 
           {/* HÀNG 2: 22 FEATURES 4 NHÓM */}
-          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Database className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-              <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>22 Đặc Trưng Trích Xuất Từ 4 Nguồn DWH</h3>
+          <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="flex items-center gap-2 mb-2.5">
+              <Database className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+              <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>22 Đặc Trưng Trích Xuất Từ 4 Nguồn DWH</h3>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               {[
                 { name: "Điểm Số", count: "9 features", items: ["TB sớm / muộn", "Độ dốc (Slope)", "Biến thiên & sụt giảm", "Điểm hệ số cao nhất"], color: "text-emerald-500" },
                 { name: "LMS", count: "5 features", items: ["TB bài tập LMS", "Lệch LMS vs sổ điểm", "Tỷ lệ nộp bài", "Nộp bài 4 tuần gần"], color: "text-blue-500" },
                 { name: "Chuyên Cần", count: "4 features", items: ["Nghỉ chung", "Nghỉ không phép", "Nghỉ có phép", "Đi muộn"], color: "text-amber-500" },
                 { name: "Hạnh Kiểm", count: "4 features", items: ["Điểm trừ hành vi", "Tái phạm", "Kỷ luật nặng", "Loại môn & khối"], color: "text-rose-500" }
               ].map((group, idx) => (
-                <div key={idx} className={`p-2 rounded-lg border ${isDark ? "bg-[#070e1a]/50 border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-[10px] font-bold ${group.color}`}>{group.name}</span>
-                    <span className="text-[8px] font-mono text-slate-400">{group.count}</span>
+                <div key={idx} className={`p-3 rounded-xl border ${isDark ? "bg-[#070e1a]/50 border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-xs md:text-[13px] font-extrabold ${group.color}`}>{group.name}</span>
+                    <span className="text-[10px] font-mono text-slate-400 font-bold">{group.count}</span>
                   </div>
-                  <ul className="space-y-0.5">
+                  <ul className="space-y-1.5">
                     {group.items.map((item, i) => (
-                      <li key={i} className="text-[9px] text-slate-400 flex items-center gap-1">
-                        <span className="w-1 h-1 rounded-full bg-slate-500 shrink-0" />
+                      <li key={i} className="text-[11px] md:text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
                         <span className="truncate">{item}</span>
                       </li>
                     ))}
@@ -783,107 +783,107 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
       subtitle: "Trọng số động Softmax — ví dụ minh họa cách hệ thống phóng đại rủi ro để phát hiện sớm học sinh nguy cơ",
       type: "report_02b",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto">
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start w-full">
             {/* CỘT TRÁI: KHÁI NIỆM & CÔNG THỨC */}
-            <div className="lg:col-span-5 space-y-2.5">
-              <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788] border-[#2d6a4f]/40" : "bg-[#f0f4f0] text-[#2d6a4f] border-[#cbdcd0]"} border`}>
-                <ShieldAlert className="w-3 h-3 text-[#2d6a4f] dark:text-[#52b788]" /> Cảnh báo sớm rủi ro
+            <div className="lg:col-span-5 space-y-3.5">
+              <div className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10.5px] font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788] border-[#2d6a4f]/40" : "bg-[#f0f4f0] text-[#2d6a4f] border-[#cbdcd0]"} border`}>
+                <ShieldAlert className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" /> Cảnh báo sớm rủi ro
               </div>
               <h2 className={`text-xl md:text-2xl font-extrabold tracking-tight leading-tight ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
                 Trọng Số Động Softmax
               </h2>
-              <p className={`leading-relaxed text-[10.5px] ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`leading-relaxed text-xs md:text-[13px] ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                 Thay vì dùng trọng số cố định cho mọi học sinh, hệ thống tự điều chỉnh trọng số theo từng học sinh: yếu tố nào đang rủi ro cao sẽ được "phóng đại" để ảnh hưởng mạnh hơn đến điểm rủi ro cuối cùng.
               </p>
 
               {/* Box 1: Softmax */}
-              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                  <strong className={`text-[11px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Công thức Softmax động</strong>
+              <div className={`p-3.5 rounded-2xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                  <strong className={`text-xs md:text-sm font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Công thức Softmax động</strong>
                 </div>
-                <p className={`text-[10px] leading-relaxed font-mono ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>
+                <p className={`text-xs md:text-sm leading-relaxed font-mono ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>
                   w<sub>k</sub> = base<sub>k</sub>·e<sup>α<sub>k</sub>·S<sub>k</sub></sup> / Σ base<sub>j</sub>·e<sup>α<sub>j</sub>·S<sub>j</sub></sup>
                 </p>
-                <p className={`text-[8.5px] leading-relaxed mt-1 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                <p className={`text-[10px] md:text-[11px] leading-relaxed mt-1.5 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                   S<sub>k</sub>: điểm rủi ro yếu tố k · α<sub>k</sub>: độ nhạy riêng từng yếu tố · base<sub>k</sub>: trọng số gốc
                 </p>
               </div>
 
               {/* Box 2: Final Risk Score */}
-              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#8c763e]/5 border-[#8c763e]/15" : "bg-[#faf6e8] border-[#ebdcb0]/80 shadow-xs"}`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                  <strong className={`text-[11px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Điểm rủi ro cuối</strong>
+              <div className={`p-3.5 rounded-2xl border ${isDark ? "bg-[#8c763e]/5 border-[#8c763e]/15" : "bg-[#faf6e8] border-[#ebdcb0]/80 shadow-xs"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                  <strong className={`text-xs md:text-sm font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Điểm rủi ro cuối</strong>
                 </div>
-                <p className={`text-[10px] leading-relaxed font-mono ${isDark ? "text-slate-300" : "text-[#0f1e36]"}`}>
+                <p className={`text-xs md:text-sm leading-relaxed font-mono ${isDark ? "text-slate-300" : "text-[#0f1e36]"}`}>
                   final = (1−β)·Σ(w·S) + β·max(S)
                 </p>
-                <p className={`text-[8.5px] leading-relaxed mt-1 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                <p className={`text-[10px] md:text-[11px] leading-relaxed mt-1.5 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                   β = worst_factor_beta (mặc định 0 → chỉ dùng trung bình có trọng số động).
                 </p>
               </div>
             </div>
 
             {/* CỘT PHẢI: BẢNG VÍ DỤ MINH HỌA & SO SÁNH */}
-            <div className="lg:col-span-7 space-y-2.5">
+            <div className="lg:col-span-7 space-y-3.5">
               {/* Card Bảng */}
-              <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <strong className={`text-xs font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Ví dụ: học sinh nghỉ học nhiều</strong>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isDark ? "bg-rose-950/30 border border-rose-800/40 text-rose-400" : "bg-[#fdf2f2] text-red-700"}`}>Kết quả: HIGH</span>
+              <div className={`p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <strong className={`text-xs md:text-sm font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Ví dụ: học sinh nghỉ học nhiều</strong>
+                  <span className={`text-[10px] md:text-xs font-bold px-2.5 py-0.5 rounded-full ${isDark ? "bg-rose-950/30 border border-rose-800/40 text-rose-400" : "bg-[#fdf2f2] text-red-700"}`}>Kết quả: HIGH</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[10px]">
+                  <table className="w-full text-left text-xs md:text-[13px]">
                     <thead>
                       <tr className={`border-b ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
-                        <th className="py-1 pr-2 font-semibold">Yếu tố</th>
-                        <th className="py-1 pr-2 font-semibold">Rủi ro S</th>
-                        <th className="py-1 pr-2 font-semibold">Trọng số gốc</th>
-                        <th className="py-1 pr-2 font-semibold">Trọng số động</th>
+                        <th className="py-2 pr-3 font-semibold">Yếu tố</th>
+                        <th className="py-2 pr-3 font-semibold">Rủi ro S</th>
+                        <th className="py-2 pr-3 font-semibold">Trọng số gốc</th>
+                        <th className="py-2 pr-3 font-semibold">Trọng số động</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
-                        <td className="py-1 pr-2">Điểm</td>
-                        <td className="py-1 pr-2">30</td>
-                        <td className="py-1 pr-2">0.55</td>
-                        <td className="py-1 pr-2">0.29</td>
+                        <td className="py-2 pr-3">Điểm</td>
+                        <td className="py-2 pr-3">30</td>
+                        <td className="py-2 pr-3">0.55</td>
+                        <td className="py-2 pr-3">0.29</td>
                       </tr>
                       <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
-                        <td className="py-1 pr-2">Học tập (LMS)</td>
-                        <td className="py-1 pr-2">70</td>
-                        <td className="py-1 pr-2">0.15</td>
-                        <td className="py-1 pr-2">0.21</td>
+                        <td className="py-2 pr-3">Học tập (LMS)</td>
+                        <td className="py-2 pr-3">70</td>
+                        <td className="py-2 pr-3">0.15</td>
+                        <td className="py-2 pr-3">0.21</td>
                       </tr>
                       <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
-                        <td className="py-1 pr-2">Chuyên cần</td>
-                        <td className="py-1 pr-2 font-bold text-rose-500">90</td>
-                        <td className="py-1 pr-2">0.15</td>
-                        <td className="py-1 pr-2 font-bold text-rose-500">0.42</td>
+                        <td className="py-2 pr-3">Chuyên cần</td>
+                        <td className="py-2 pr-3 font-bold text-rose-500">90</td>
+                        <td className="py-2 pr-3">0.15</td>
+                        <td className="py-2 pr-3 font-bold text-rose-500">0.42</td>
                       </tr>
                       <tr>
-                        <td className="py-1 pr-2">Hạnh kiểm</td>
-                        <td className="py-1 pr-2">20</td>
-                        <td className="py-1 pr-2">0.15</td>
-                        <td className="py-1 pr-2">0.08</td>
+                        <td className="py-2 pr-3">Hạnh kiểm</td>
+                        <td className="py-2 pr-3">20</td>
+                        <td className="py-2 pr-3">0.15</td>
+                        <td className="py-2 pr-3">0.08</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                <div className={`mt-2 pt-2 border-t text-[10px] leading-relaxed ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
+                <div className={`mt-3 pt-3 border-t text-xs leading-relaxed ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
                   <strong className={isDark ? "text-slate-200" : "text-[#0f1e36]"}>Điểm cuối = 62.7 → HIGH.</strong> Yếu tố "Chuyên cần" rủi ro cao (90) được nâng từ 0.15 lên 0.42, giúp hệ thống bắt đúng học sinh nguy cơ thực sự.
                 </div>
               </div>
 
               {/* Card So Sánh */}
-              <div className={`p-2.5 rounded-2xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                  <strong className={`text-[11px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>So sánh: tắt trọng số động</strong>
+              <div className={`p-3.5 rounded-2xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+                  <strong className={`text-xs md:text-sm font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>So sánh: tắt trọng số động</strong>
                 </div>
-                <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                <p className={`text-[11px] md:text-xs leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                   Cùng học sinh, nếu dùng trọng số tĩnh: <span className="font-mono">0.55×30 + 0.15×70 + 0.15×90 + 0.15×20 = 43.5 → MODERATE</span>. Trọng số động giúp phát hiện sớm hơn một bậc rủi ro.
                 </p>
               </div>
@@ -894,83 +894,83 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 5: CURRICULUM + RAG (BÁO CÁO 03)
+    // SLIDE 6: CURRICULUM + RAG (BÁO CÁO 03)
     // =========================================================================
     {
       title: "Báo Cáo 03: Curriculum Ingestion & RAG Knowledge",
       subtitle: "VLM 2 lượt quét tìm TOC → khớp trang → node phẳng → chunking → Qdrant → RAG trong phân tách đề thi",
       type: "report_03",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
           {/* HÀNG 1: MỤC ĐÍCH + RAG PHÂN TÁCH ĐỀ THI */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <BookOpen className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Ingestion</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <BookOpen className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+                <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Ingestion</h3>
               </div>
-              <p className={`text-[10px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+              <p className={`text-xs md:text-[13px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                 Biến PDF SGK thành <strong>cây tri thức có cấu trúc</strong> (Chương → Bài). Xuất node phẳng <code>curriculum_units</code>, chunk text và embedding vector vào <strong>Qdrant</strong> để phục vụ truy vấn RAG có trích dẫn.
               </p>
             </div>
 
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Search className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
-                <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>RAG Trong Phân Tách Đề Thi</h3>
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <Search className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+                <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>RAG Trong Phân Tách Đề Thi</h3>
               </div>
-              <p className={`text-[10px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+              <p className={`text-xs md:text-[13px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                 Đề thi được trích xuất competency → Embed tìm chunks SGK tương ứng trong Qdrant → Map chính xác <code>unit_id</code> làm trọng số cho dự báo Pass/Fail (Semantic Lookup chuẩn xác).
               </p>
             </div>
           </div>
 
           {/* HÀNG 2: LƯỢT A + LƯỢT B */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <Search className="w-3.5 h-3.5 text-blue-500" />
-                  <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Lượt A: VLM Tìm Mục Lục (TOC)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Search className="w-4 h-4 text-blue-500" />
+                  <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Lượt A: VLM Tìm Mục Lục (TOC)</h3>
                 </div>
-                <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-full font-bold ${isDark ? "bg-blue-950/30 text-blue-400" : "bg-blue-50 text-blue-600"}`}>~15 trang đầu</span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${isDark ? "bg-blue-950/30 text-blue-400" : "bg-blue-50 text-blue-600"}`}>~15 trang đầu</span>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-xs md:text-[12.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 PyMuPDF crop ảnh trang → Qwen-VL phân tích cấu trúc cây Chương→Bài → Xuất JSON danh sách NEO cố định.
               </p>
             </div>
 
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-                  <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Lượt B: Phân Loại & Khớp Từng Trang</h3>
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+                  <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Lượt B: Phân Loại & Khớp Từng Trang</h3>
                 </div>
-                <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>NEO constraint</span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>NEO constraint</span>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-xs md:text-[12.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 VLM duyệt từng trang, khóa cứng vào danh sách NEO id có sẵn. <strong>Constrained decoding:</strong> chống bịa bài học 100%.
               </p>
             </div>
           </div>
 
           {/* HÀNG 3: NODE PHẲNG + CHUNKING QDRANT */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <GitBranch className="w-3 h-3 text-purple-500" />
-                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Node Phẳng (curriculum_units)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <GitBranch className="w-4 h-4 text-purple-500" />
+                <h4 className={`text-sm md:text-base font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Node Phẳng (curriculum_units)</h4>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-xs md:text-[12.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 Sinh tóm tắt, từ khóa, mục con. Bảng quan hệ phẳng: <code>subject_id | chapter | lesson | summary | keywords</code>.
               </p>
             </div>
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Database className="w-3 h-3 text-amber-500" />
-                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Data Chunking → Qdrant</h4>
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <Database className="w-4 h-4 text-amber-500" />
+                <h4 className={`text-sm md:text-base font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Data Chunking → Qdrant</h4>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-xs md:text-[12.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 Chunks 256–512 tokens kèm metadata mục SGK. Embedding vector → Qdrant phục vụ tìm kiếm ngữ nghĩa siêu tốc.
               </p>
             </div>
@@ -980,92 +980,151 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 6: PASS/FAIL 04A — PHÂN TÁCH ĐỀ THI (BÁO CÁO 04A)
+    // SLIDE 7: PASS/FAIL 04A — PHÂN TÁCH ĐỀ THI (BÁO CÁO 04A)
     // =========================================================================
     {
       title: "Báo Cáo 04A: Pass/Fail — Phân Tách Đề Thi & Định Vị Bài Học",
       subtitle: "Upload đề → LLM tách câu → Qdrant semantic lookup → map competency→unit_id",
       type: "report_04a",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3 md:space-y-3.5">
           {/* MỤC ĐÍCH */}
-          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <TrendingUp className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-              <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Phân Tách Đề</h3>
+          <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+              <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Phân Tách Đề</h3>
             </div>
-            <p className={`text-[10px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+            <p className={`text-xs md:text-[13px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
               Biến file PDF/DOCX đề thi thành Ma trận Trọng số từng bài học <code>competency → unit_id</code> để tính điểm dự báo theo chuẩn kiến thức thực tế.
             </p>
           </div>
 
           {/* QUY TRÌNH 3 BƯỚC */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <FileText className="w-3.5 h-3.5 text-blue-500" />
-                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B1: Tách Đề Thành Câu</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <FileText className="w-4 h-4 text-blue-500" />
+                <h4 className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B1: Tách Đề Thành Câu</h4>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-[11px] md:text-xs leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 VLM / Layout Detector tách từng câu hỏi, cắt hình minh họa, đọc điểm số từng câu.
               </p>
             </div>
 
-            <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Search className="w-3.5 h-3.5 text-purple-500" />
-                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B2: Semantic Lookup</h4>
+            <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Search className="w-4 h-4 text-purple-500" />
+                <h4 className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B2: Semantic Lookup</h4>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-[11px] md:text-xs leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 Embedding câu hỏi → Tìm chunks SGK trong pgvector/Qdrant → Lấy bằng chứng thực tế.
               </p>
             </div>
 
-            <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <GitBranch className="w-3.5 h-3.5 text-amber-500" />
-                <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B3: Map & Tính CDI Đề</h4>
+            <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <GitBranch className="w-4 h-4 text-amber-500" />
+                <h4 className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>B3: Map & Tính CDI Đề</h4>
               </div>
-              <p className={`text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-[11px] md:text-xs leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 Phân rã bài con (Σw = 100%). Tính <strong>CDI = Σ(Bloom<sub>i</sub> × w<sub>i</sub>) / (6 × Σw<sub>i</sub>)</strong>.
               </p>
             </div>
           </div>
 
-          {/* CÔNG THỨC CDI & SO SÁNH PHƯƠNG PHÁP */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-            {/* BOX CÔNG THỨC CDI */}
-            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
-                    <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Cách Tính Chỉ Số Độ Khó Đề (CDI)</h4>
-                  </div>
-                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>Bloom Scale 1..6</span>
+          {/* 6 BẬC NHẬN THỨC BLOOM (bloom_level) */}
+          <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+                <h4 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                  Khung 6 Mức Độ Nhận Thức Bloom (bloom_level) Chuẩn Khảo Thí GD&ĐT
+                </h4>
+              </div>
+              <span className={`text-[9.5px] font-mono px-2.5 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>
+                Thang đo 1–6
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-4.5 h-4.5 rounded-full bg-blue-500/20 text-blue-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">1</span>
+                  <strong className={`text-[11px] font-extrabold truncate ${isDark ? "text-blue-400" : "text-blue-700"}`}>Nhận biết</strong>
                 </div>
-                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+                <p className="text-[9.5px] text-slate-400 leading-snug">Nhớ định nghĩa, công thức, nhận diện trực tiếp</p>
+              </div>
+              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-4.5 h-4.5 rounded-full bg-emerald-500/20 text-emerald-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">2</span>
+                  <strong className={`text-[11px] font-extrabold truncate ${isDark ? "text-emerald-400" : "text-emerald-700"}`}>Thông hiểu</strong>
+                </div>
+                <p className="text-[9.5px] text-slate-400 leading-snug">Giải thích, tính toán đơn giản 1 bước, phân biệt khái niệm</p>
+              </div>
+              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-4.5 h-4.5 rounded-full bg-amber-500/20 text-amber-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">3</span>
+                  <strong className={`text-[11px] font-extrabold truncate ${isDark ? "text-amber-400" : "text-amber-700"}`}>Vận dụng</strong>
+                </div>
+                <p className="text-[9.5px] text-slate-400 leading-snug">Áp dụng công thức vào bài toán cụ thể, tính toán 2-3 bước</p>
+              </div>
+              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-4.5 h-4.5 rounded-full bg-purple-500/20 text-purple-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">4</span>
+                  <strong className={`text-[11px] font-extrabold truncate ${isDark ? "text-purple-400" : "text-purple-700"}`}>Vận dụng cao</strong>
+                </div>
+                <p className="text-[9.5px] text-slate-400 leading-snug">Bài toán tổng hợp, kết hợp nhiều kiến thức, suy luận logic</p>
+              </div>
+              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-4.5 h-4.5 rounded-full bg-rose-500/20 text-rose-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">5</span>
+                  <strong className={`text-[11px] font-extrabold truncate ${isDark ? "text-rose-400" : "text-rose-700"}`}>Đánh giá</strong>
+                </div>
+                <p className="text-[9.5px] text-slate-400 leading-snug">So sánh phương án, chứng minh, tìm lỗi sai</p>
+              </div>
+              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-4.5 h-4.5 rounded-full bg-indigo-500/20 text-indigo-500 font-black text-[10px] flex items-center justify-center font-mono shrink-0">6</span>
+                  <strong className={`text-[11px] font-extrabold truncate ${isDark ? "text-indigo-400" : "text-indigo-700"}`}>Sáng tạo</strong>
+                </div>
+                <p className="text-[9.5px] text-slate-400 leading-snug">Thiết kế bài toán mới, tổng quát hóa quy luật</p>
+              </div>
+            </div>
+          </div>
+
+          {/* CÔNG THỨC CDI & SO SÁNH PHƯƠNG PHÁP */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+            {/* BOX CÔNG THỨC CDI */}
+            <div className={`md:col-span-6 p-3.5 md:p-4 rounded-2xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+                    <h4 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Cách Tính Chỉ Số Độ Khó Đề (CDI)</h4>
+                  </div>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>Bloom Scale 1..6</span>
+                </div>
+                <div className={`p-2 rounded-xl border font-mono text-xs md:text-[13px] mb-1.5 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
                   <strong>CDI = Σ(Bloom<sub>i</sub> × w<sub>i</sub>) / (6 × Σw<sub>i</sub>) ∈ [0.0, 1.0]</strong>
                 </div>
-                <p className={`text-[8.5px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
-                  • <strong>Bloom<sub>i</sub> (1..6):</strong> Bậc nhận thức câu <em>i</em> (1: Biết, 2: Hiểu, 3: Vận dụng, 4–6: Vận dụng cao).<br />
-                  • <strong>w<sub>i</sub>:</strong> Điểm số câu <em>i</em> · <strong>Σw<sub>i</sub>:</strong> Tổng điểm toàn bài (dùng tính TB gia quyền theo điểm câu).<br />
+                <p className={`text-[10px] md:text-[11px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                  • <strong>Bloom<sub>i</sub> (1..6):</strong> Mức độ nhận thức của câu <em>i</em> theo khung 6 bậc Bloom.<br />
+                  • <strong>w<sub>i</sub>:</strong> Điểm số câu <em>i</em> · <strong>Σw<sub>i</sub>:</strong> Tổng điểm toàn bài (tính TB gia quyền theo điểm câu).<br />
                   • <strong>Số 6:</strong> Bậc Bloom tối đa để chuẩn hóa CDI về thang [0, 1]. (CDI=0.50: Đề chuẩn Bộ GD&ĐT).
                 </p>
               </div>
             </div>
 
             {/* SO SÁNH LLM VS SEMANTIC LOOKUP */}
-            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className={`md:col-span-6 p-3.5 md:p-4 rounded-2xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
               <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-                  <h4 className={`text-[10.5px] font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Định Vị Bằng Semantic Lookup</h4>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+                  <h4 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Định Vị Bằng Semantic Lookup</h4>
                 </div>
-                <p className={`text-[9px] leading-relaxed mb-1 ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                <p className={`text-[11px] md:text-xs leading-relaxed mb-1.5 ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                   <strong>Tại sao không hỏi LLM trực tiếp?</strong> LLM dễ ảo giác tự bịa tên bài không có trong SGK.
                 </p>
-                <p className={`text-[8.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                <p className={`text-[10.5px] md:text-[11.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                   👉 Vector hóa câu hỏi → So khớp top-1 chunk SGK chuẩn trong pgvector/Qdrant → Đảm bảo 100% mã <code>unit_id</code> thuộc SGK thực tế.
                 </p>
               </div>
@@ -1076,47 +1135,47 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 7: PASS/FAIL 04B — CÔNG THỨC DỰ BÁO (BÁO CÁO 04B)
+    // SLIDE 8: PASS/FAIL 04B — CÔNG THỨC DỰ BÁO (BÁO CÁO 04B)
     // =========================================================================
     {
       title: "Báo Cáo 04B: Pass/Fail Forecast — Công Thức Dự Báo & Phân Loại",
       subtitle: "Weighted Ability × CDI Adjustment, 4 tầng fallback, verdict PASS/BORDER/FAIL & Weak Units",
       type: "report_04b",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3 md:space-y-3.5">
           {/* HÀNG 1: CÔNG THỨC & CƠ SỞ KHẢO THÍ HỌC */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+            <div className={`md:col-span-6 p-3.5 md:p-4 rounded-2xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <TrendingUp className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-                    <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>1. Weighted Ability (Test Blueprint)</h3>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+                    <h3 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>1. Weighted Ability (Test Blueprint)</h3>
                   </div>
-                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${isDark ? "bg-emerald-950/30 text-[#52b788]" : "bg-emerald-50 text-emerald-700"}`}>Domain Sampling</span>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold ${isDark ? "bg-emerald-950/30 text-[#52b788]" : "bg-emerald-50 text-emerald-700"}`}>Domain Sampling</span>
                 </div>
-                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+                <div className={`p-2 rounded-xl border font-mono text-xs md:text-[13px] mb-1.5 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
                   <strong>Weighted Ability = Σ(w<sub>u</sub> × Ability<sub>u</sub>) / Σ(w<sub>u</sub>)</strong>
                 </div>
-                <p className={`text-[9px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                <p className={`text-[10.5px] md:text-[11.5px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                   <strong>Cơ sở Khảo thí:</strong> Mô hình <em>Composite Score</em> chuẩn dựa trên lý thuyết <em>Test Blueprint</em> (Ma trận đặc tả) & <em>Domain Sampling</em>: khi đề thi tập trung vào mục tiêu nào thì năng lực tổng hợp phải được ánh xạ theo tỷ trọng của mục tiêu đó.
                 </p>
               </div>
             </div>
 
-            <div className={`md:col-span-6 p-2.5 rounded-xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className={`md:col-span-6 p-3.5 md:p-4 rounded-2xl border flex flex-col justify-between ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <BarChart2 className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" />
-                    <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>2. CDI Adjustment (Empirical Heuristic)</h3>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <BarChart2 className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
+                    <h3 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>2. CDI Adjustment (Empirical Heuristic)</h3>
                   </div>
-                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-bold ${isDark ? "bg-amber-950/30 text-[#c2ae78]" : "bg-amber-50 text-amber-700"}`}>Cold-Start Forecast</span>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold ${isDark ? "bg-amber-950/30 text-[#c2ae78]" : "bg-amber-50 text-amber-700"}`}>Cold-Start Forecast</span>
                 </div>
-                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] mb-1 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
-                  <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span className="text-[8.5px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
+                <div className={`p-2 rounded-xl border font-mono text-xs md:text-[13px] mb-1.5 ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+                  <strong>CDI Adj = 1.0 + (0.5 − CDI) × 0.5</strong> <span className="text-[10px] text-slate-400 font-normal">→ CDI từ Slide 04A (Scale ±25%)</span>
                 </div>
-                <p className={`text-[9px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+                <p className={`text-[10.5px] md:text-[11.5px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                   <strong>Tại sao dùng Heuristic thay IRT?</strong> IRT cần $\ge 200$ HS làm bài trước để calibrate tham số. Đề thi cuối kỳ là đề mới bảo mật, chưa có tương tác học sinh $\implies$ Dùng độ khó Bloom tiên nghiệm để dự báo sớm trước 2-3 tuần.
                 </p>
               </div>
@@ -1124,57 +1183,57 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
           </div>
 
           {/* HÀNG 2: 4 TẦNG FALLBACK NĂNG LỰC */}
-          <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <h3 className={`text-[10px] font-bold mb-1 ${isDark ? "text-white" : "text-[#0f1e36]"}`}>4 Tầng Fallback Xác Định Năng Lực Học Sinh (Ability<sub>u</sub>)</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className={`text-[9px] font-bold ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>Tầng 1: Có LMS</span>
-                <div className="text-[8.5px] text-slate-400">Ability = Raw × 10</div>
+          <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <h3 className={`text-xs md:text-[13px] font-extrabold mb-2 ${isDark ? "text-white" : "text-[#0f1e36]"}`}>4 Tầng Fallback Xác Định Năng Lực Học Sinh (Ability<sub>u</sub>)</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className={`text-[11px] font-extrabold ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>Tầng 1: Có LMS</span>
+                <div className="text-[10px] text-slate-400 mt-0.5 font-mono">Ability = Raw × 10</div>
               </div>
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-[9px] font-bold text-blue-500">Tầng 2: Thiếu bài</span>
-                <div className="text-[8.5px] text-slate-400">Lấy TB Chương</div>
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className="text-[11px] font-extrabold text-blue-500">Tầng 2: Thiếu bài</span>
+                <div className="text-[10px] text-slate-400 mt-0.5">Lấy TB Chương</div>
               </div>
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className={`text-[9px] font-bold ${isDark ? "text-[#c2ae78]" : "text-[#8c763e]"}`}>Tầng 3: Thiếu chương</span>
-                <div className="text-[8.5px] text-slate-400">Lấy TB toàn Môn</div>
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className={`text-[11px] font-extrabold ${isDark ? "text-[#c2ae78]" : "text-[#8c763e]"}`}>Tầng 3: Thiếu chương</span>
+                <div className="text-[10px] text-slate-400 mt-0.5">Lấy TB toàn Môn</div>
               </div>
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-rose-950/20 border-rose-800/40" : "bg-rose-50 border-rose-200"}`}>
-                <span className="text-[9px] font-bold text-rose-500">Tầng 4: Không LMS</span>
-                <div className="text-[8.5px] text-slate-400">→ INSUFFICIENT</div>
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-rose-950/20 border-rose-800/40" : "bg-rose-50 border-rose-200"}`}>
+                <span className="text-[11px] font-extrabold text-rose-500">Tầng 4: Không LMS</span>
+                <div className="text-[10px] text-slate-400 mt-0.5">→ INSUFFICIENT</div>
               </div>
             </div>
           </div>
 
           {/* HÀNG 3: PHÂN LOẠI VERDICT + WEAK UNITS */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-            <div className={`md:col-span-7 p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10px] font-bold mb-1 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Phân Loại Kết Luận (Predicted = Weighted Ability × CDI Adj)</h4>
-              <div className="grid grid-cols-4 gap-1.5">
-                <div className={`text-center p-1 rounded-lg border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
-                  <span className={`text-xs font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>PASS</span>
-                  <div className="text-[9px] text-slate-400">≥ 5.5</div>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+            <div className={`md:col-span-7 p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <h4 className={`text-xs md:text-[13px] font-extrabold mb-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Phân Loại Kết Luận (Predicted = Weighted Ability × CDI Adj)</h4>
+              <div className="grid grid-cols-4 gap-2">
+                <div className={`text-center p-2 rounded-xl border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
+                  <span className={`text-sm md:text-base font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>PASS</span>
+                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">≥ 5.5</div>
                 </div>
-                <div className={`text-center p-1 rounded-lg border ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
-                  <span className="text-xs font-black text-amber-500">BORDER</span>
-                  <div className="text-[9px] text-slate-400">4.5–5.4</div>
+                <div className={`text-center p-2 rounded-xl border ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
+                  <span className="text-sm md:text-base font-black text-amber-500">BORDER</span>
+                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">4.5–5.4</div>
                 </div>
-                <div className={`text-center p-1 rounded-lg border ${isDark ? "bg-rose-950/20 border-rose-800/40" : "bg-rose-50 border-rose-200"}`}>
-                  <span className="text-xs font-black text-rose-500">FAIL</span>
-                  <div className="text-[9px] text-slate-400">{'<'} 4.5</div>
+                <div className={`text-center p-2 rounded-xl border ${isDark ? "bg-rose-950/20 border-rose-800/40" : "bg-rose-50 border-rose-200"}`}>
+                  <span className="text-sm md:text-base font-black text-rose-500">FAIL</span>
+                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">{'<'} 4.5</div>
                 </div>
-                <div className={`text-center p-1 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
-                  <span className="text-xs font-black text-slate-400">INSUF</span>
-                  <div className="text-[9px] text-slate-400">Chưa đủ</div>
+                <div className={`text-center p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
+                  <span className="text-sm md:text-base font-black text-slate-400">INSUF</span>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Chưa đủ</div>
                 </div>
               </div>
             </div>
 
-            <div className={`md:col-span-5 p-2 rounded-xl border flex flex-col justify-center ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10px] font-bold mb-0.5 flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <AlertTriangle className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" /> Weak Units
+            <div className={`md:col-span-5 p-3 md:p-3.5 rounded-2xl border flex flex-col justify-center ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <h4 className={`text-xs md:text-[13px] font-extrabold mb-1 flex items-center gap-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
+                <AlertTriangle className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" /> Weak Units
               </h4>
-              <p className={`text-[9px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-[11px] md:text-xs leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
                 <code>compute_weak_units()</code> bóc tách Top 2 bài yếu nhất gây mất điểm trong đề để GV lên kế hoạch phụ đạo mục tiêu.
               </p>
             </div>
@@ -1184,81 +1243,81 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
     },
 
     // =========================================================================
-    // SLIDE 8: CHẨN ĐOÁN LỖ HỔNG KIẾN THỨC (BÁO CÁO 05)
+    // SLIDE 9: CHẨN ĐOÁN LỖ HỔNG KIẾN THỨC (BÁO CÁO 05)
     // =========================================================================
     {
       title: "Báo Cáo 05: Chẩn Đoán Lỗ Hổng Kiến Thức & Năng Lực Học Sinh",
       subtitle: "Đánh Giá Năng Lực Theo Cây Tri Thức, Thang Đo Bloom, Đối Soát Đa Nguồn (LMS vs Exam) & Majority Rule",
       type: "report_05",
       content: (
-        <div className="w-full text-left flex flex-col justify-center h-full max-w-5xl mx-auto space-y-2.5">
+        <div className="w-full text-left flex flex-col justify-center h-full max-w-6xl mx-auto space-y-3.5 md:space-y-4">
           {/* MỤC ĐÍCH */}
-          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <Activity className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" />
-              <h3 className={`text-xs font-bold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Chẩn Đoán Lỗ Hổng</h3>
+          <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Activity className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" />
+              <h3 className={`text-sm md:text-base font-extrabold ${isDark ? "text-white" : "text-[#0f1e36]"}`}>Mục Đích Chẩn Đoán Lỗ Hổng</h3>
             </div>
-            <p className={`text-[10px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
+            <p className={`text-xs md:text-[13px] leading-relaxed ${isDark ? "text-slate-300" : "text-[#4a5568]"}`}>
               Phát hiện <strong>lỗ hổng kiến thức</strong> từng học sinh ở cấp bài học bằng cách đối soát đa nguồn: năng lực LMS (Item Mastery × Bloom Factor) đối chiếu với điểm thi thật. Kết quả xuất Roster chi tiết.
             </p>
           </div>
 
           {/* QUY TRÌNH 4 BƯỚC */}
-          <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-[9px] font-bold text-[#2d6a4f] dark:text-[#52b788]">Bước 1: Item Mastery</span>
-                <div className="text-[8.5px] text-slate-400 mt-0.5">Bloom Breadth × Depth Factor</div>
+          <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className="text-xs md:text-[13px] font-extrabold text-[#2d6a4f] dark:text-[#52b788]">Bước 1: Item Mastery</span>
+                <div className="text-[10.5px] text-slate-400 mt-1">Bloom Breadth × Depth Factor</div>
               </div>
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-[9px] font-bold text-blue-500">Bước 2: Cross-Val</span>
-                <div className="text-[8.5px] text-slate-400 mt-0.5">Δ = LMS − Exam (|Δ| ≤ 30%)</div>
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className="text-xs md:text-[13px] font-extrabold text-blue-500">Bước 2: Cross-Val</span>
+                <div className="text-[10.5px] text-slate-400 mt-1">Δ = LMS − Exam (|Δ| ≤ 30%)</div>
               </div>
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-[9px] font-bold text-purple-500">Bước 3: Majority Rule</span>
-                <div className="text-[8.5px] text-slate-400 mt-0.5">Gộp trạng thái toàn khóa học</div>
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className="text-xs md:text-[13px] font-extrabold text-purple-500">Bước 3: Majority Rule</span>
+                <div className="text-[10.5px] text-slate-400 mt-1">Gộp trạng thái toàn khóa học</div>
               </div>
-              <div className={`p-1.5 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                <span className="text-[9px] font-bold text-[#8c763e] dark:text-[#c2ae78]">Bước 4: Roster</span>
-                <div className="text-[8.5px] text-slate-400 mt-0.5">Xuất bảng chẩn đoán & Drawer</div>
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <span className="text-xs md:text-[13px] font-extrabold text-[#8c763e] dark:text-[#c2ae78]">Bước 4: Roster</span>
+                <div className="text-[10.5px] text-slate-400 mt-1">Xuất bảng chẩn đoán & Drawer</div>
               </div>
             </div>
           </div>
 
           {/* CÔNG THỨC + 4 LOẠI KẾT LUẬN */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10.5px] font-bold mb-1 flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <BarChart2 className="w-3.5 h-3.5 text-[#8c763e] dark:text-[#c2ae78]" /> Công Thức Năng Lực
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <h4 className={`text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
+                <BarChart2 className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" /> Công Thức Năng Lực
               </h4>
-              <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
+              <div className={`p-2 rounded-xl border font-mono text-xs md:text-[13px] ${isDark ? "bg-[#070e1a] border-[#263750] text-[#52b788]" : "bg-[#f0faf4] border-[#cbdcd0] text-[#2d6a4f]"}`}>
                 Mastery<sub>bài</sub> = (đúng / tổng) × BreadthRatio × (1 + DepthFactor)
               </div>
-              <p className={`text-[9px] mt-1 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+              <p className={`text-[10.5px] md:text-[11.5px] leading-relaxed mt-2 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
                 BreadthRatio: tỷ lệ bao phủ bậc Bloom. DepthFactor: thưởng câu Vận dụng cao. HS đúng hết NB+TH nhưng thiếu VD cao → Mastery phản ánh đúng thực chất.
               </p>
             </div>
 
-            <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
-              <h4 className={`text-[10.5px] font-bold mb-1 flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#2d6a4f] dark:text-[#52b788]" /> 4 Loại Kết Luận Đối Soát
+            <div className={`p-3.5 md:p-4 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
+              <h4 className={`text-xs md:text-sm font-extrabold mb-1.5 flex items-center gap-2 ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
+                <CheckCircle2 className="w-4 h-4 text-[#2d6a4f] dark:text-[#52b788]" /> 4 Loại Kết Luận Đối Soát
               </h4>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className={`p-1 rounded-lg border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
-                  <div className={`text-[11px] font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>OK</div>
-                  <div className="text-[8px] text-slate-400">|Δ| ≤ 30% · Chuẩn xác</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#2d6a4f]/10 border-[#52b788]/30" : "bg-[#f0faf4] border-[#cbdcd0]"}`}>
+                  <div className={`text-xs md:text-[13px] font-black ${isDark ? "text-[#52b788]" : "text-[#2d6a4f]"}`}>OK</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">|Δ| ≤ 30% · Chuẩn xác</div>
                 </div>
-                <div className={`p-1 rounded-lg border ${isDark ? "bg-sky-950/20 border-sky-800/40" : "bg-sky-50 border-sky-200"}`}>
-                  <div className="text-[11px] font-black text-sky-600">LMS Vượt</div>
-                  <div className="text-[8px] text-slate-400">LMS ≥ 9.5, thi {'<'} 4.5</div>
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-sky-950/20 border-sky-800/40" : "bg-sky-50 border-sky-200"}`}>
+                  <div className="text-xs md:text-[13px] font-black text-sky-600">LMS Vượt</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">LMS ≥ 9.5, thi {'<'} 4.5</div>
                 </div>
-                <div className={`p-1 rounded-lg border ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
-                  <div className={`text-[11px] font-black ${isDark ? "text-amber-400" : "text-amber-600"}`}>Ít LMS</div>
-                  <div className="text-[8px] text-slate-400">N {'<'} 5 câu · Luyện ít</div>
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50 border-amber-200"}`}>
+                  <div className={`text-xs md:text-[13px] font-black ${isDark ? "text-amber-400" : "text-amber-600"}`}>Ít LMS</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">N {'<'} 5 câu · Luyện ít</div>
                 </div>
-                <div className={`p-1 rounded-lg border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
-                  <div className="text-[11px] font-black text-purple-600">Chỉ Thi</div>
-                  <div className="text-[8px] text-slate-400">LMS = 0% · Ước lượng thi</div>
+                <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-white border-[#dcd7cc]"}`}>
+                  <div className="text-xs md:text-[13px] font-black text-purple-600">Chỉ Thi</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">LMS = 0% · Ước lượng thi</div>
                 </div>
               </div>
             </div>
@@ -1304,9 +1363,9 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
         </div>
       </header>
 
-      {/* Main Content Area — Compact & Perfectly fitted in 1 screen */}
-      <main className="flex-1 flex items-center justify-center relative z-10 overflow-hidden px-4 lg:px-6 py-2">
-        <div className={`w-full h-full mx-auto flex items-center justify-center ${slides[currentSlide].type === "report_01" ? "max-w-none px-0" : "max-w-5xl"}`}>
+      {/* Main Content Area */}
+      <main className="flex-1 flex items-center justify-center relative z-10 overflow-hidden px-4 lg:px-8 py-3">
+        <div className={`w-full h-full mx-auto flex items-center justify-center ${slides[currentSlide].type === "report_01" ? "max-w-none px-0" : "max-w-6xl 2xl:max-w-7xl"}`}>
           {slides[currentSlide].content}
         </div>
       </main>
