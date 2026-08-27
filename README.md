@@ -301,8 +301,7 @@ npm run dev
 
 ## 🧠 8. Ghi Chú Kiến Trúc & Cảnh Báo Vận Hành Dành Cho AI Agent / Kỹ Sư Phát Triển (Agent System Context)
 
-> **Mục tiêu của phần này**: Cung cấp toàn bộ ngữ cảnh hệ thống (System Context & Design Rationales) để bất kỳ AI Agent hoặc Kỹ sư nào khi tiếp quản dự án đều hiểu rõ **tại sao hệ thống lại được thiết kế như vậy**, tránh sửa sai cấu trúc hoặc hiểu nhầm về trạng thái dữ liệu.
-
+> **Mục tiêu của phần này**: để bất kỳ AI Agent hoặc Kỹ sư nào khi tiếp quản dự án đều hiểu rõ **tại sao hệ thống lại được thiết kế như vậy**, tránh sửa sai cấu trúc hoặc hiểu nhầm về trạng thái dữ liệu.
 ### 1. Bối Cảnh Dữ Liệu Mock & Hardcoded Credentials trong Development
 *   **Tại sao có Data Mock?** Vì đội ngũ ban đầu không được cấp máy truy cập trực tiếp vào hệ thống dev/staging của trường, toàn bộ các bảng trong CSDL (`fact_gradebooks`, `lms_question_response`, `fact_so_daily_attendance`, `fact_behavior_logs`, v.v.) đều được nạp dữ liệu giả lập từ các kịch bản seed (`scripts/seed_*.py`).
 *   **Tại sao Hardcode Password trong Seed Data?** Để phục vụ việc test tự động (Automated Integration Tests), benchmark hiệu năng, và cho phép kiểm thử các vai trò RBAC (Admin, Hiệu trưởng, Giáo viên chủ nhiệm, Giáo viên bộ môn) mà không cần bước đăng ký/kích hoạt phức tạp, mật khẩu các tài khoản seed được gán giá trị mặc định cho môi trường dev *(chi tiết xem trong các script seed tương ứng)*.
