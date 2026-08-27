@@ -1,16 +1,64 @@
+# Git & Repository metadata
 .git
 .gitignore
+.github/
+.vscode/
+.idea/
+.agents/
+.gemini/
+.claude/
+.roo/
+.playwright-mcp/
+.ruff_cache/
+.pytest_cache/
+
+# Environment variables
 .env
-.venv
-__pycache__
-*.pyc
-.pytest_cache
-.ruff_cache
+.env.*
+!.env.example
+
+# Python virtualenvs & cache
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+
+# Frontend builds & dependencies (avoid bloating backend Docker image)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+node_modules/
+
+# Local Data, Uploads, Mock & Temp files
+data/
+data_mock/
+uploads/
+temp/
+catboost_info/
+*.db
+*.sqlite3
+
+# Documentation & Presentations
 docs/
+docs_vsf/
 presentation/
 eval/
 *.md
 !requirements.txt
+
+# Docker config
 .dockerignore
 Dockerfile
-docker-compose.yml
+docker-compose*.yml
+
+# Logs & Coverage
+logs/
+*.log
+htmlcov/
+.coverage
