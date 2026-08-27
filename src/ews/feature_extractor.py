@@ -79,6 +79,7 @@ WITH student_grades AS MATERIALIZED (
         join_date AS join_date_raw
     FROM s360.dim_homeroom_class_student
     WHERE school_year_id = :school_year_id
+      AND (CAST(:so_school_id AS INTEGER) IS NULL OR so_school_id = CAST(:so_school_id AS INTEGER))
 ),
 subject_info AS (
     -- Lấy thông tin subject & subject_category
@@ -87,7 +88,7 @@ subject_info AS (
         COALESCE(subject_category,
             CASE
                 WHEN code LIKE 'TOAN%' OR code LIKE '%MATH%' OR code IN ('LY', 'HOA', 'SINH', 'KHTN', 'IB_SCI') THEN 'MATH_SCIENCE'
-                WHEN code LIKE '%ENG%' OR code IN ('VAN', 'ANH', 'LS_DL', 'CAM_ENG') THEN 'HUMANITIES'
+                WHEN code LIKE '%ENG%' OR code IN ('VAN', 'ANH', 'LS_DL', 'CAM_ENG', 'GDCD') THEN 'HUMANITIES'
                 WHEN code IN ('TIN', 'ROBOTICS') THEN 'TECHNOLOGY'
                 ELSE 'ARTS_PE'
             END
@@ -330,26 +331,36 @@ lms_features AS MATERIALIZED (
 ),
 attendance_features AS MATERIALIZED (
     SELECT
-        fda.student_code,
-        ROUND(SUM(fda.absent_periods) * 1.0 / NULLIF(SUM(fda.total_periods), 0), 4) AS daily_absence_rate,
-        ROUND(SUM(fda.absent_no_permission) * 1.0 / NULLIF(SUM(fda.total_periods), 0), 4) AS unexcused_absent_rate,
+        ca.student_code,
+        c.subject_id,
+        ROUND(
+            SUM(CASE WHEN ca.status = 'ABSENT' THEN 1 ELSE 0 END) * 1.0 /
+            NULLIF(COUNT(DISTINCT (ca._date, ca.timetable_period_code)), 0),
+            4
+        ) AS daily_absence_rate,
+        ROUND(
+            SUM(CASE WHEN ca.status = 'ABSENT' AND ca.status_name LIKE '%không phép%' THEN 1 ELSE 0 END) * 1.0 /
+            NULLIF(COUNT(DISTINCT (ca._date, ca.timetable_period_code)), 0),
+            4
+        ) AS unexcused_absent_rate,
         COALESCE(fal.excused_days, 0) AS excused_absent_days,
         COALESCE(fla.late_count, 0) AS total_late_count
-    FROM s360.fact_so_daily_attendance fda
+    FROM s360.fact_course_attendences ca
+    JOIN s360.dim_course c ON ca.course_id = c.id
     LEFT JOIN (
         SELECT student_code, COUNT(DISTINCT absent_date) AS excused_days
         FROM s360.fact_absent_logs
         WHERE absent_date <= CAST(:cutoff_date AS DATE) AND is_approved = 1
         GROUP BY student_code
-    ) fal ON fda.student_code = fal.student_code
+    ) fal ON ca.student_code = fal.student_code
     LEFT JOIN (
         SELECT student_code, COUNT(*) AS late_count
         FROM s360.fact_so_homeroom_class_late_attendances
         WHERE attendance_date <= CAST(:cutoff_date AS DATE) AND is_late = 1
         GROUP BY student_code
-    ) fla ON fda.student_code = fla.student_code
-    WHERE fda._date <= CAST(:cutoff_date AS DATE) AND fda.school_year_id = :school_year_id
-    GROUP BY fda.student_code, fal.excused_days, fla.late_count
+    ) fla ON ca.student_code = fla.student_code
+    WHERE ca._date <= CAST(:cutoff_date AS DATE) AND ca.school_year_id = :school_year_id
+    GROUP BY ca.student_code, c.subject_id, fal.excused_days, fla.late_count
 ),
 behavior_features AS MATERIALIZED (
     SELECT
@@ -359,20 +370,17 @@ behavior_features AS MATERIALIZED (
         COUNT(CASE WHEN fbl.sanction_code IS NOT NULL THEN 1 END) AS severe_sanction_count
     FROM s360.fact_behavior_logs fbl
     LEFT JOIN (
-        SELECT student_code, SUM(cnt - 1) AS repeat_count
-        FROM (
-            SELECT student_code, behavior_id, COUNT(*) AS cnt
-            FROM s360.fact_behavior_logs
-            WHERE comment_date <= CAST(:cutoff_date AS DATE) AND behavior_point < 0
-            GROUP BY student_code, behavior_id
-            HAVING COUNT(*) > 1
-        ) t
-        GROUP BY student_code
+        SELECT student_code, COUNT(*) AS repeat_count
+        FROM s360.fact_behavior_logs
+        WHERE comment_date <= CAST(:cutoff_date AS DATE)
+        GROUP BY student_code, behavior_code
+        HAVING COUNT(*) > 1
     ) rep ON fbl.student_code = rep.student_code
     WHERE fbl.comment_date <= CAST(:cutoff_date AS DATE) AND fbl.school_year_id = :school_year_id
     GROUP BY fbl.student_code, rep.repeat_count
 )
 SELECT
+    sg.so_school_id,
     tf.student_code,
     tf.subject_id,
     COALESCE(si.subject_category, 'MATH_SCIENCE') AS subject_category,
@@ -392,10 +400,10 @@ SELECT
     lf.lms_submission_rate,
     lf.lms_recent_submission_rate,
     lf.join_date,
-    af.daily_absence_rate,
-    af.unexcused_absent_rate,
-    af.excused_absent_days,
-    af.total_late_count,
+    COALESCE(af.daily_absence_rate, 0.0) AS daily_absence_rate,
+    COALESCE(af.unexcused_absent_rate, 0.0) AS unexcused_absent_rate,
+    COALESCE(af.excused_absent_days, 0) AS excused_absent_days,
+    COALESCE(af.total_late_count, 0) AS total_late_count,
     bf.total_demerit_points,
     bf.repeat_offense_count,
     bf.severe_sanction_count
@@ -403,8 +411,12 @@ FROM temporal_features tf
 LEFT JOIN subject_info si ON tf.subject_id = si.subject_id
 LEFT JOIN student_grades sg ON tf.student_code = sg.student_code
 LEFT JOIN lms_features lf ON tf.student_code = lf.student_code AND tf.subject_id = lf.subject_id
-LEFT JOIN attendance_features af ON tf.student_code = af.student_code
-LEFT JOIN behavior_features bf ON tf.student_code = bf.student_code;
+LEFT JOIN attendance_features af ON tf.student_code = af.student_code AND tf.subject_id = af.subject_id
+LEFT JOIN behavior_features bf ON tf.student_code = bf.student_code
+-- GUARD DỮ LIỆU MỒ CÔI: học sinh có điểm (temporal_features) nhưng KHÔNG có bản ghi
+-- homeroom/khối/trường trong dim_homeroom_class_student → sg.so_school_id = NULL.
+-- Không thể gán trường nào để persist/tenant isolation → loại bỏ (tránh lỗi astype(int) trên NaN).
+WHERE sg.so_school_id IS NOT NULL;
 """
 
 
@@ -414,6 +426,7 @@ def extract_live_features(
     semester_index: int,
     evaluated_at_week: int,
     cutoff_date: Optional[Union[date, str]] = None,
+    so_school_id: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Trích xuất DataFrame 24 Features (X) cho tất cả cặp (student_code, subject_id) tại mốc tuần.
@@ -424,6 +437,8 @@ def extract_live_features(
         semester_index: Học kỳ (1 hoặc 2)
         evaluated_at_week: Tuần học đang đánh giá (vd: 8)
         cutoff_date: Ngày cutoff (date hoặc 'YYYY-MM-DD'). Nếu None, tự động tính từ tuần.
+        so_school_id: Nếu cho, chỉ trích xuất học sinh của trường này (BGH control panel).
+            None = toàn bộ trường (hành vi cũ).
 
     Returns:
         pd.DataFrame chứa 24 features + student_code
@@ -441,6 +456,7 @@ def extract_live_features(
         "semester_index": semester_index,
         "cutoff_date": cutoff_date,
         "semester_start": base_start,
+        "so_school_id": so_school_id,
     }
 
     # Engine chung (src/db/session.py) set statement_timeout=3000ms cho MỌI kết nối. Query
@@ -480,6 +496,7 @@ def extract_live_features(
     _NON_NUMERIC_COLS = {
         "student_code", "subject_id", "subject_category",
         "grade_level", "semester_index", "evaluated_at_week", "join_date",
+        "so_school_id",
     }
     for _c in df.columns:
         if _c not in _NON_NUMERIC_COLS:
@@ -531,6 +548,15 @@ def extract_live_features(
     if "score_slope" in df.columns:
         df["score_slope"] = df["score_slope"].fillna(0.0)
 
+    # 3c. FIX TRAIN/SERVE SKEW — last_high_weight_score (Phương án C):
+    # Khi học sinh KHÔNG có bài hệ số lớn (high_weight_score_count=0), serve-side SQL trả NULL
+    # (ARRAY_AGG FILTER trả NULL khi không có phần tử).
+    # → GIỮ NULL THẬT (KHÔNG impute) — đồng bộ với training generator (compute_features_at_checkpoint
+    #   đã sửa thành NaN). CatBoost xử lý NaN native (nhánh riêng), model học "không có bài hệ số lớn"
+    #   là một trạng thái riêng, KHÔNG phạt như rủi ro cao.
+    # (Trước đây impute = weighted_early_avg gây hiểu lầm: feature vẫn xuất hiện trong Top 5 SHAP
+    #   với giá trị giả định dù thực tế NULL.)
+
     # 4. Context columns
     df["evaluated_at_week"] = evaluated_at_week
     df["semester_index"] = semester_index
@@ -548,9 +574,13 @@ def extract_live_features(
     # Reorder columns chuẩn: student_code, evaluated_at_week, semester_index, join_date + 24 features
     # + weighted_late_avg_imputed (cờ đánh dấu giá trị ĐTB Nửa Sau Kỳ bị impute — chỉ để persist/UI,
     # KHÔNG phải feature của model).
-    final_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS + ["weighted_late_avg_imputed"]
+    final_cols = ["student_code", "so_school_id", "evaluated_at_week", "semester_index", "join_date"] + EWS_FEATURE_COLS + ["weighted_late_avg_imputed"]
     df = df[final_cols].copy()
     df["weighted_late_avg_imputed"] = df["weighted_late_avg_imputed"].astype(bool)
+    # so_school_id giữ nguyên kiểu int (không phải feature của model, chỉ để persist/tenant isolation).
+    # Học sinh mồ côi (có điểm nhưng thiếu bản ghi trường/khối) đã bị loại ở SQL (WHERE sg.so_school_id
+    # IS NOT NULL) nên cột này không còn NULL → ép int an toàn.
+    df["so_school_id"] = df["so_school_id"].astype(int)
 
     logger.info(f"Feature extraction complete: {df.shape[0]:,} rows, {len(EWS_FEATURE_COLS)} features")
     return df

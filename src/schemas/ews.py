@@ -3,9 +3,19 @@
 src/schemas/ews.py — Pydantic Schemas cho Early Warning System (EWS) Dashboard APIs
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+
+
+# Xếp hạng thứ tự mức rủi ro (LOW < MODERATE < HIGH < CRITICAL) — dùng để xác định
+# sự "nâng rủi ro" do LLM so với CatBoost (rank(llm_risk_level) > rank(risk_level)).
+RISK_LEVEL_RANK: dict[str, int] = {
+    "LOW": 0,
+    "MODERATE": 1,
+    "HIGH": 2,
+    "CRITICAL": 3,
+}
 
 
 class EwsLevelCount(BaseModel):
@@ -29,7 +39,13 @@ class EwsPredictionRow(BaseModel):
     risk_score: float = Field(..., description="Thang điểm rủi ro [0.00, 100.00]")
     risk_level: str = Field(..., description="LOW | MODERATE | HIGH | CRITICAL")
     risk_probability: Optional[float] = None
-    risk_factors: List[str] = Field(default_factory=list, description="Cơ chế cờ rủi ro: SLOPE_DOWN | LAST_SCORE_LOW | ABSENTEEISM")
+    risk_factors: List[str] = Field(default_factory=list, description="Cờ nguyên nhân (backward compat): RISK_SCORE | RISK_LMS | RISK_ATTENDANCE | RISK_BEHAVIOR (giữ = primary_badge)")
+    primary_badge: List[str] = Field(default_factory=list, description="1–4 Cờ chính (Multi-badge): domain có Contribution cao nhất + mọi domain có risk_i >= threshold_moderate (MODERATE trở lên, do BGH tinh chỉnh)")
+    risk_factor_details: List[str] = Field(default_factory=list, description="Mảng chuỗi mô tả chi tiết nguyên nhân phụ (VD: 'Rủi ro Điểm số (đóng góp 0.24)', 'Rủi ro Học tập LMS (đóng góp 0.27)')")
+    shap_drivers: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Top 5 nhân tố tác động SHAP (Rank, feature, shap_value, value) — Signed SHAP, giữ dấu âm/dương",
+    )
     evaluated_at_date: Optional[date] = None
     cutoff_date: Optional[date] = None  # Ngày cutoff dữ liệu dùng để trích xuất feature (khớp feature_extractor)
     join_date: Optional[date] = None  # Ngày chuyển tới / nhập học vào lớp (NULL = có mặt từ đầu) — M2-PIVOT
@@ -78,6 +94,27 @@ class EwsPredictionRow(BaseModel):
     repeat_offense_count: Optional[int] = None
     severe_sanction_count: Optional[int] = None
 
+    # 5. LLM-based Forecasting (M5) — kết quả phân tích định tính + score điều chỉnh
+    llm_risk_score: Optional[float] = None
+    llm_risk_level: Optional[str] = None
+    llm_narrative_summary: Optional[str] = None
+    llm_forecast_trend: Optional[str] = None
+    llm_recommended_actions: Optional[Any] = None
+    llm_evaluated_at: Optional[datetime] = None
+    llm_risk_escalated: Optional[bool] = Field(
+        default=None,
+        description="True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm_risk_level) > rank(risk_level)). None nếu chưa có llm_risk_level.",
+    )
+    # Re-run audit: điểm LLM trước đó + lý do thay đổi (Khi "Chạy Lại Phân Tích")
+    llm_previous_score: Optional[float] = Field(
+        default=None,
+        description="Điểm LLM trước đó (trước lần re-run). None nếu chưa từng đánh giá.",
+    )
+    llm_score_change_reason: Optional[str] = Field(
+        default=None,
+        description="Lý do thay đổi điểm LLM trong lần re-run. None nếu giữ nguyên điểm cũ.",
+    )
+
 
 class EwsOverview(BaseModel):
     """Dữ liệu KPI tổng quan phân hệ EWS."""
@@ -90,6 +127,10 @@ class EwsOverview(BaseModel):
     avg_risk_score: Optional[float] = None
     levels: List[EwsLevelCount] = Field(default_factory=list)
     top_risk_subjects: List[Dict[str, Any]] = Field(default_factory=list)
+    top_risk_factors: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Tần suất các yếu tố (cờ nguyên nhân) khiến học sinh rơi vào rủi ro — dùng cho chart tròn",
+    )
 
 
 class EwsWeekOption(BaseModel):
@@ -109,7 +150,7 @@ class EwsClassOption(BaseModel):
 
 class EwsRiskFactorOption(BaseModel):
     """Một tùy chọn cờ nguyên nhân (Risk Badge) cho bộ lọc."""
-    code: str = Field(..., description="Mã cờ (vd: SLOPE_DOWN, ABSENTEEISM)")
+    code: str = Field(..., description="Mã cờ (vd: RISK_SCORE, RISK_LMS, RISK_ATTENDANCE, RISK_BEHAVIOR)")
     label: str = Field(..., description="Nhãn tiếng Việt")
 
 
@@ -143,6 +184,7 @@ class EwsRawScore(BaseModel):
 
 class EwsRawLmsItem(BaseModel):
     """Một bài tập LMS trong cửa sổ hiện diện [join_date, cutoff]."""
+    assignment_id: Optional[int] = None
     code: Optional[str] = None
     fullname: Optional[str] = None
     max_grade: Optional[float] = None
@@ -169,6 +211,33 @@ class EwsRawBehaviorItem(BaseModel):
     sanction_name: Optional[str] = None
 
 
+class EwsRawLifeEventItem(BaseModel):
+    """Một biến cố cuộc sống / gia đình của học sinh (fact_student_life_events)."""
+    event_name: Optional[str] = None
+    event_type: Optional[str] = None
+    event_date: Optional[date] = None
+    severity: Optional[str] = None
+    description: Optional[str] = None
+    # Mô hình thời gian (Temporal Status)
+    time_quantity: Optional[int] = None
+    time_unit: Optional[str] = None
+    status: Optional[str] = None
+
+
+class EwsRawMedicalItem(BaseModel):
+    """Một bệnh lý / tiền sử y tế của học sinh (fact_student_medical_history)."""
+    condition_name: Optional[str] = None
+    condition_type: Optional[str] = None
+    severity: Optional[str] = None
+    is_chronic: Optional[bool] = None
+    diagnosed_date: Optional[date] = None
+    notes: Optional[str] = None
+    # Mô hình thời gian (Temporal Status)
+    time_quantity: Optional[int] = None
+    time_unit: Optional[str] = None
+    status: Optional[str] = None
+
+
 class EwsRawDetail(BaseModel):
     """Dữ liệu gốc (raw) để đối chiếu dự báo EWS của cặp (học sinh - môn)."""
     student_code: str
@@ -181,5 +250,201 @@ class EwsRawDetail(BaseModel):
     lms: List[EwsRawLmsItem] = Field(default_factory=list)
     lms_expected: int = 0
     lms_submitted: int = 0
+    lms_evidence: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Bằng chứng hành vi LMS (pattern + explanation) — từ classify_lms_behavior (M3).",
+    )
     attendance: List[EwsRawAttendanceItem] = Field(default_factory=list)
     behavior: List[EwsRawBehaviorItem] = Field(default_factory=list)
+    life_events: List[EwsRawLifeEventItem] = Field(default_factory=list)
+    medical_history: List[EwsRawMedicalItem] = Field(default_factory=list)
+
+
+class EwsGoldenSetCase(BaseModel):
+    """Một case trong golden set: tình huống + dự đoán + kỳ vọng."""
+    id: str
+    description: str
+    predicted: str
+    expected: str
+    passed: bool
+    risk_score: float
+    score_risk: Optional[float] = None
+    lms_risk: Optional[float] = None
+    attendance_risk: Optional[float] = None
+    behavior_risk: Optional[float] = None
+    weight_attendance: Optional[float] = None
+    weight_behavior: Optional[float] = None
+    # Bộ 24 thông số đầu vào (đã sanitize NaN -> None) để UI hiển thị chi tiết.
+    # Giá trị có thể là số (numeric feature) hoặc string (categorical: subject_id, ...).
+    features: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EwsGoldenSetResult(BaseModel):
+    """Kết quả chạy golden set: accuracy + danh sách case."""
+    total: int
+    passed: int
+    accuracy: float
+    cases: List[EwsGoldenSetCase] = Field(default_factory=list)
+    # Metadata (Optional, non-breaking) — để dashboard hiển thị phiên bản model
+    # và thời điểm sinh file cache tĩnh.
+    model_version: Optional[str] = None
+    generated_at: Optional[datetime] = None
+    # school_id: trường được test (None = baseline YAML thuần). Chỉ dùng cho
+    # file cache sinh ad-hoc khi BGH test thông số override; không ảnh hưởng API.
+    school_id: Optional[int] = None
+
+
+class EwsRiskBreakdownItem(BaseModel):
+    """Mô tả phân bố rủi ro của 1 đơn vị (nhóm môn, môn học, hoặc lớp học)."""
+    id: Optional[Any] = None
+    name: str
+    total_cnt: int = 0
+    low_cnt: int = 0
+    moderate_cnt: int = 0
+    high_cnt: int = 0
+    critical_cnt: int = 0
+    low_pct: float = 0.0
+    moderate_pct: float = 0.0
+    high_pct: float = 0.0
+    critical_pct: float = 0.0
+    ch_pct: float = 0.0
+
+
+class EwsStudentRiskDetailItem(BaseModel):
+    """Bản ghi rủi ro từng học sinh khi drill-down tới level student."""
+    student_code: str
+    student_name: str
+    week_label: str
+    risk_level: str
+    risk_score: float
+
+
+class EwsSubjectDrilldownResponse(BaseModel):
+    """Kết quả trả về cho API drill-down rủi ro theo môn học."""
+    level: str  # 'group' | 'subject' | 'class' | 'student'
+    breadcrumb: List[str] = Field(default_factory=list)
+    items: List[EwsRiskBreakdownItem] = Field(default_factory=list)
+    student_items: List[EwsStudentRiskDetailItem] = Field(default_factory=list)
+    summary: Optional[EwsRiskBreakdownItem] = None
+
+
+class EwsTopClassRiskItem(BaseModel):
+    """Bản ghi thống kê trong Top 5 lớp rủi ro cao nhất."""
+    rank: int
+    class_name: str
+    total_cnt: int = 0
+    low_cnt: int = 0
+    moderate_cnt: int = 0
+    high_cnt: int = 0
+    critical_cnt: int = 0
+    low_pct: float = 0.0
+    moderate_pct: float = 0.0
+    high_pct: float = 0.0
+    critical_pct: float = 0.0
+    ch_pct: float = 0.0
+
+
+# ============================================================================
+# EWS CONTROL PANEL (BGH) — dự đoán theo tuần + tinh chỉnh trọng số
+# ============================================================================
+
+
+class EwsPredictRequest(BaseModel):
+    """Yêu cầu chạy dự đoán EWS theo tuần (BGH)."""
+    school_year_id: int = Field(..., description="Năm học (VD: 2025)")
+    semester_index: int = Field(..., ge=1, le=2, description="Học kỳ (1 hoặc 2)")
+    evaluated_at_week: int = Field(..., description="Tuần đánh giá")
+    model_version: str = Field("v2_ensemble", description="'v1_single' hoặc 'v2_ensemble'")
+
+
+class EwsLlmForecastRequest(BaseModel):
+    """Yêu cầu kích hoạt thủ công LLM-based Forecasting cho 1 học sinh (BGH/GVCN)."""
+    student_code: str = Field(..., description="Mã học sinh")
+    subject_id: int = Field(..., description="ID môn học")
+    school_year_id: int = Field(..., description="Năm học (VD: 2025)")
+    semester_index: int = Field(..., ge=1, le=2, description="Học kỳ (1 hoặc 2)")
+    evaluated_at_week: int = Field(..., description="Tuần đánh giá")
+    model_version: str = Field("v1_single", description="'v1_single' hoặc 'v2_ensemble' (để định vị dòng dự báo)")
+
+
+class EwsJobRead(BaseModel):
+    """Bản ghi job dự đoán EWS."""
+    id: int
+    so_school_id: int
+    requested_by: int
+    school_year_id: int
+    semester_index: int
+    evaluated_at_week: int
+    cutoff_date: Optional[date] = None
+    model_version: str
+    status: str
+    progress: int = 0
+    rows_processed: Optional[int] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class EwsWeightConfig(BaseModel):
+    """Override trọng số EWS theo trường (BGH tinh chỉnh). Mọi field đều optional."""
+    weight_score: Optional[float] = None
+    weight_lms: Optional[float] = None
+    weight_attendance: Optional[float] = None
+    weight_behavior: Optional[float] = None
+    alpha_score: Optional[float] = None
+    alpha_lms: Optional[float] = None
+    alpha_attendance: Optional[float] = None
+    alpha_behavior: Optional[float] = None
+    weight_floor: Optional[float] = None
+    worst_factor_beta: Optional[float] = None
+    threshold_low: Optional[float] = None
+    threshold_moderate: Optional[float] = None
+    threshold_high: Optional[float] = None
+    threshold_critical: Optional[float] = None
+
+
+class EwsEffectiveConfig(BaseModel):
+    """Config hiệu lực: baseline (YAML) + override (DB) + effective (đã merge)."""
+    baseline: Dict[str, Any]
+    override: Optional[EwsWeightConfig] = None
+    effective: Dict[str, Any]
+
+
+class EwsValidWeeks(BaseModel):
+    """Các tuần hợp lệ để dự đoán theo học kỳ."""
+    semester_1: List[int]
+    semester_2: List[int]
+
+
+class EwsAssignmentQuestionItem(BaseModel):
+    """Chi tiết 1 câu hỏi LMS trong bài tập kèm kết quả làm bài của học sinh."""
+    question_id: int
+    question_text: str
+    options: List[str] = Field(default_factory=list)
+    bloom_level: int
+    unit_id: Optional[int] = None
+    lesson_name: Optional[str] = None
+    is_correct: Optional[bool] = None
+    score: Optional[float] = None
+    max_score: Optional[float] = None
+    response_time_seconds: Optional[int] = None
+    attempt_number: Optional[int] = None
+    integrity_flag: Optional[int] = None
+    chosen_option: Optional[str] = None
+    explanation: Optional[str] = None
+
+
+class EwsAssignmentDrilldownResponse(BaseModel):
+    """Dữ liệu chi tiết drill-down khi click vào 1 bài tập LMS trong EWS."""
+    assignment_id: int
+    assignment_name: str
+    student_code: str
+    total_questions: int
+    correct_count: int
+    score: Optional[float] = None
+    max_grade: Optional[float] = None
+    submitted: bool = False
+    submitted_at: Optional[datetime] = None
+    questions: List[EwsAssignmentQuestionItem] = Field(default_factory=list)
+

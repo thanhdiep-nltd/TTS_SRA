@@ -21,7 +21,7 @@ def test_full_access_only_school_filter(monkeypatch):
     """ADMIN/PRINCIPAL (full access) -> chỉ giới hạn theo so_school_id, không theo khối/lớp."""
     _patch_constraints(monkeypatch, {"is_full_access": True})
     where, params = ews_module._ews_rbac_filter(None, _user("ADMIN", so_school_id=7))
-    assert "hcs.so_school_id = :school_id" in where
+    assert "rp.so_school_id = :school_id" in where
     assert params == {"school_id": 7}
     assert "grade_id" not in where
     assert "homeroom_class_id" not in where
@@ -39,7 +39,7 @@ def test_grade_head_filters_by_grade(monkeypatch):
         },
     )
     where, params = ews_module._ews_rbac_filter(None, _user("GRADE_HEAD_PRIMARY"))
-    assert "hcs.so_school_id = :school_id" in where
+    assert "rp.so_school_id = :school_id" in where
     assert "hcs.grade_id IN (:g0)" in where
     assert params["g0"] == 6
     assert params["school_id"] == 1
@@ -111,3 +111,81 @@ def test_merged_grade_and_class_scope(monkeypatch):
     assert " OR " in where
     assert params["g0"] == 6
     assert params["c0"] == 2
+
+
+def test_raw_rejects_cross_school_even_for_full_access(monkeypatch):
+    """/raw phải chặn truy cập học sinh thuộc trường KHÁC, kể cả user full-access (ADMIN/PRINCIPAL)."""
+    from fastapi import HTTPException
+
+    # User full-access thuộc trường 1
+    user = _user("ADMIN", so_school_id=1)
+
+    # DB trả về học sinh thuộc trường 2 (student_code trùng nhưng khác trường)
+    class _FakeRow:
+        so_school_id = 2
+        grade_id = 6
+        homeroom_class_id = 10
+        join_date = None
+
+    class _FakeResult:
+        def fetchone(self):
+            return _FakeRow()
+
+    class _FakeDB:
+        def execute(self, *a, **k):
+            return _FakeResult()
+
+    try:
+        ews_module.get_ews_raw(
+            student_code="HS260001",
+            subject_id=106,
+            school_year_id=2025,
+            semester_index=1,
+            evaluated_at_week=8,
+            cutoff_date=None,
+            current_user=user,
+            db=_FakeDB(),
+        )
+        assert False, "Phải raise HTTPException 403 cho học sinh trường khác"
+    except HTTPException as e:
+        assert e.status_code == 403
+
+
+def test_raw_allows_same_school_full_access(monkeypatch):
+    """/raw cho phép user full-access truy cập học sinh CÙNG trường (không bị chặn ở bước so_school_id)."""
+    from fastapi import HTTPException
+
+    user = _user("ADMIN", so_school_id=1)
+
+    class _FakeRow:
+        so_school_id = 1
+        grade_id = 6
+        homeroom_class_id = 10
+        join_date = None
+
+    class _FakeResult:
+        def fetchone(self):
+            return _FakeRow()
+
+        def fetchall(self):
+            return []
+
+    class _FakeDB:
+        def execute(self, *a, **k):
+            return _FakeResult()
+
+    # Không được raise 403 ở bước kiểm tra so_school_id (có thể raise 404/khác ở bước sau,
+    # nhưng KHÔNG được là 403 do khác trường).
+    try:
+        ews_module.get_ews_raw(
+            student_code="HS160001",
+            subject_id=106,
+            school_year_id=2025,
+            semester_index=1,
+            evaluated_at_week=8,
+            cutoff_date=None,
+            current_user=user,
+            db=_FakeDB(),
+        )
+    except HTTPException as e:
+        assert e.status_code != 403, "Cùng trường không được bị chặn 403"

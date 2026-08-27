@@ -1,0 +1,141 @@
+table_name,column_name,data_type
+cm_course,id,integer
+cm_course,content1,varchar
+cm_course,content2,varchar
+cm_course,subjectid,integer
+cm_course,gradeid,integer
+cm_course,period,double
+cm_course,issubcourse,boolean
+cm_course,subcode,varchar
+cm_course,subname,varchar
+cm_course,maincourseid,integer
+cm_course,code,varchar
+cm_course,name,varchar
+cm_course,description,varchar
+cm_course,ordernumber,integer
+cm_course,status,integer
+cm_course,createdbyid,varchar
+cm_course,createdat,timestamp(6) with time zone
+cm_course,modifiedbyid,varchar
+cm_course,modifiedat,timestamp(6) with time zone
+cm_course,isdeleted,boolean
+cm_course,schoolyearid,varchar
+cm_course,_processed_at,integer
+cm_course,ingest_date,integer
+cm_courseassessment,id,integer
+cm_courseassessment,courseid,integer
+cm_courseassessment,period,double
+cm_courseassessment,startdate,date
+cm_courseassessment,enddate,date
+cm_courseassessment,content1,varchar
+cm_courseassessment,organizationmethod,varchar
+cm_courseassessment,evaluatemethod,varchar
+cm_courseassessment,scale,varchar
+cm_courseassessment,objectivesubjective,"decimal(5,4)"
+cm_courseassessment,personalgroup,"decimal(5,4)"
+cm_courseassessment,code,varchar
+cm_courseassessment,name,varchar
+cm_courseassessment,description,varchar
+cm_courseassessment,ordernumber,integer
+cm_courseassessment,status,integer
+cm_courseassessment,createdbyid,varchar
+cm_courseassessment,createdat,timestamp(6) with time zone
+cm_courseassessment,modifiedbyid,varchar
+cm_courseassessment,modifiedat,timestamp(6) with time zone
+cm_courseassessment,isdeleted,boolean
+cm_courseassessment,schoolyearid,varchar
+cm_courseassessment,uploadtime,timestamp(6) with time zone
+cm_courseassessment,publishtime,timestamp(6) with time zone
+cm_courseassessment,phase,varchar
+cm_courseassessment,testspecsfilename,varchar
+cm_courseassessment,testspecsurl,varchar
+cm_courseassessment,_processed_at,integer
+cm_courseassessment,ingest_date,integer
+cm_courseassessmentunit,courseassessmentid,integer
+cm_courseassessmentunit,unitid,integer
+cm_courseassessmentunit,_processed_at,integer
+cm_courseassessmentunit,ingest_date,integer
+cm_lesson,id,integer
+cm_lesson,startdate,date
+cm_lesson,enddate,date
+cm_lesson,color,varchar
+cm_lesson,content1,varchar
+cm_lesson,unitid,integer
+cm_lesson,code,varchar
+cm_lesson,name,varchar
+cm_lesson,description,varchar
+cm_lesson,ordernumber,integer
+cm_lesson,period,double
+cm_lesson,status,integer
+cm_lesson,createdbyid,varchar
+cm_lesson,createdat,timestamp(6) with time zone
+cm_lesson,modifiedbyid,varchar
+cm_lesson,modifiedat,timestamp(6) with time zone
+cm_lesson,isdeleted,boolean
+cm_lesson,schoolyearid,varchar
+cm_lesson,_processed_at,integer
+cm_lesson,ingest_date,integer
+cm_lessonplan,id,integer
+cm_lessonplan,lessonid,integer
+cm_lessonplan,schoolid,integer
+cm_lessonplan,schoolyearid,varchar
+cm_lessonplan,schoolyearid1,varchar
+cm_lessonplan,lessonplanactivitytypes,varchar
+cm_lessonplan,startdate,date
+cm_lessonplan,enddate,date
+cm_lessonplan,hascustomdaterange,boolean
+cm_lessonplan,approvedbyid,varchar
+cm_lessonplan,approvedat,timestamp(6) with time zone
+cm_lessonplan,code,varchar
+cm_lessonplan,name,varchar
+cm_lessonplan,description,varchar
+cm_lessonplan,ordernumber,integer
+cm_lessonplan,status,integer
+cm_lessonplan,createdbyid,varchar
+cm_lessonplan,createdat,timestamp(6) with time zone
+cm_lessonplan,rejectbyid,varchar
+cm_lessonplan,rejectat,timestamp(6) with time zone
+cm_lessonplan,modifiedbyid,varchar
+cm_lessonplan,modifiedat,timestamp(6) with time zone
+cm_lessonplan,isdeleted,boolean
+cm_lessonplan,contentown,varchar
+cm_lessonplan,period,double
+cm_lessonplan,periodlesson,double
+cm_lessonplan,_processed_at,integer
+cm_lessonplan,ingest_date,integer
+cm_lessontarget,id,integer
+cm_lessontarget,lessonid,integer
+cm_lessontarget,code,varchar
+cm_lessontarget,name,varchar
+cm_lessontarget,description,varchar
+cm_lessontarget,ordernumber,integer
+cm_lessontarget,status,integer
+cm_lessontarget,createdbyid,varchar
+cm_lessontarget,createdat,timestamp(6) with time zone
+cm_lessontarget,modifiedbyid,varchar
+cm_lessontarget,modifiedat,timestamp(6) with time zone
+cm_lessontarget,isdeleted,boolean
+cm_lessontarget,schoolyearid,varchar
+cm_lessontarget,_processed_at,integer
+cm_lessontarget,ingest_date,integer
+cm_unit,id,integer
+cm_unit,startdate,date
+cm_unit,enddate,date
+cm_unit,color,varchar
+cm_unit,content1,varchar
+cm_unit,content2,varchar
+cm_unit,courseid,integer
+cm_unit,code,varchar
+cm_unit,name,varchar
+cm_unit,description,varchar
+cm_unit,ordernumber,integer
+cm_unit,period,double
+cm_unit,status,integer
+cm_unit,createdbyid,varchar
+cm_unit,createdat,timestamp(6) with time zone
+cm_unit,modifiedbyid,varchar
+cm_unit,modifiedat,timestamp(6) with time zone
+cm_unit,isdeleted,boolean
+cm_unit,schoolyearid,varchar
+cm_unit,_processed_at,integer
+cm_unit,ingest_date,integer

@@ -6,8 +6,6 @@
 GV/HS cụ thể) -> chỉ ADMIN/PRINCIPAL, không cho SUBJECT_HEAD (tránh xung đột lợi ích).
 """
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -30,21 +28,21 @@ _FAIRNESS_ROLES = (UserRole.ADMIN, UserRole.PRINCIPAL)
     dependencies=[Depends(require_roles(*_VALIDITY_READ_ROLES))],
 )
 def get_exam_validity(
-    semester_id: UUID,
+    semester_id: int,
     user: CurrentUser,
-    subject_id: UUID | None = None,
+    subject_id: int | None = None,
     score_category: ScoreCategory | None = None,
-    grade_id: UUID | None = None,
+    grade_id: int | None = None,
     flagged_only: bool = False,
     db: Session = Depends(get_db),
 ):
-    """Bảng tam giác hóa EDI/CDI theo môn/kỳ/khối (lọc theo school_id của user).
+    """Bảng tam giác hóa EDI/CDI theo môn/kỳ/khối (lọc theo so_school_id của user).
 
     Không truyền `subject_id`/`score_category` -> quét TOÀN TRƯỜNG, không cần dò tay từng môn.
     `flagged_only=true` -> chỉ trả dòng có cờ bất thường, sắp theo môn rồi khối (màn cảnh báo mặc định).
     """
     return exam_validity.compute_validity(
-        db, user.school_id, semester_id, subject_id, score_category, grade_id, flagged_only
+        db, user.so_school_id, semester_id, subject_id, score_category, grade_id, flagged_only
     )
 
 
@@ -53,9 +51,9 @@ def get_exam_validity(
     response_model=SchoolValidityOverview,
     dependencies=[Depends(require_roles(*_OVERVIEW_ROLES))],
 )
-def get_exam_validity_overview(semester_id: UUID, user: CurrentUser, db: Session = Depends(get_db)):
+def get_exam_validity_overview(semester_id: int, user: CurrentUser, db: Session = Depends(get_db)):
     """Tổng hợp toàn trường: đếm cờ + danh sách đề đáng rà soát nhất (BGH)."""
-    return exam_validity.school_overview(db, user.school_id, semester_id)
+    return exam_validity.school_overview(db, user.so_school_id, semester_id)
 
 
 @router.get(
@@ -64,15 +62,15 @@ def get_exam_validity_overview(semester_id: UUID, user: CurrentUser, db: Session
     dependencies=[Depends(require_roles(*_OVERVIEW_ROLES))],
 )
 def get_content_adjusted_ranking(
-    grade_id: UUID,
-    semester_id: UUID,
-    subject_id: UUID,
+    grade_id: int,
+    semester_id: int,
+    subject_id: int,
     user: CurrentUser,
     score_category: ScoreCategory = ScoreCategory.FINAL,
     db: Session = Depends(get_db),
 ):
     """Xếp hạng các lớp trong khối theo thực lực neo-nội-dung (độc lập TB cohort)."""
-    return exam_validity.content_adjusted_ranking(db, user.school_id, grade_id, semester_id, subject_id, score_category)
+    return exam_validity.content_adjusted_ranking(db, user.so_school_id, grade_id, semester_id, subject_id, score_category)
 
 
 @router.get(
@@ -81,10 +79,10 @@ def get_content_adjusted_ranking(
     dependencies=[Depends(require_roles(*_FAIRNESS_ROLES))],
 )
 def get_student_fairness(
-    semester_id: UUID,
+    semester_id: int,
     user: CurrentUser,
-    subject_id: UUID | None = None,
-    class_id: UUID | None = None,
+    subject_id: int | None = None,
+    class_id: int | None = None,
     db: Session = Depends(get_db),
 ):
     """Cảnh báo công bằng đánh giá: HS có TX vs GK/CK lệch bất thường so với CDI (chỉ ADMIN/PRINCIPAL).
@@ -93,4 +91,4 @@ def get_student_fairness(
     Mỗi cảnh báo kèm `evidence` — bằng chứng số liệu cụ thể. Đây là tín hiệu rà soát, KHÔNG phải
     kết luận tiêu cực đã xác nhận.
     """
-    return student_fairness.compute_fairness_signals(db, user.school_id, semester_id, subject_id, class_id)
+    return student_fairness.compute_fairness_signals(db, user.so_school_id, semester_id, subject_id, class_id)

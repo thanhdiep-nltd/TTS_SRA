@@ -129,7 +129,7 @@ router.include_router(
         schemas=(s.CurriculumUnitCreate, s.CurriculumUnitUpdate, s.CurriculumUnitRead),
         prefix="/curriculum-units",
         tag="Curriculum Units",
-        write_roles=(enums.UserRole.ADMIN, enums.UserRole.SUBJECT_HEAD),
+        write_roles=(enums.UserRole.ADMIN, enums.UserRole.PRINCIPAL, enums.UserRole.SUBJECT_HEAD),
         tenant=_VIA_SUBJECT,
     )
 )

@@ -43,6 +43,7 @@ data/
 accounts_info.md
 temp/
 catboost_info/
+.playwright-mcp/
 
 # Eval
 eval/eval_text_to_sql/results/
@@ -55,6 +56,7 @@ logs/
 htmlcov/
 .coverage
 coverage.xml
+tests/fixtures/
 
 # Docker
 docker-compose.override.yml
@@ -80,3 +82,4 @@ uploads/
 .roo/
 .gemini/
 *.cbm
+plans/

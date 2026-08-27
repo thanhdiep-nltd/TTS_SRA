@@ -1,166 +1,46 @@
-"""Test offline cho pipeline tự động tính CDI (không gọi OpenAI/Tesseract thật, không chạm Neon)."""
+"""Test offline cho pipeline phân tích nội dung đề thi (M1+M2+M3 — plan_cdi_kg_anchored.md).
 
+Không gọi LLM/VLM thật, không chạm Neon. File tạm cho test OCR/VLM ghi vào temp/ (tránh
+tmp_path của pytest bị chặn trong một số sandbox).
+"""
+
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from uuid import uuid4
 
 import fitz
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from src.models.enums import FileType
-from src.models.tables import CurriculumUnit, ExamPaper, Subject
-from src.schemas.exam_analysis import EvidenceRef
-from src.services import content_difficulty
-from src.services.retrieval import RetrievalUnavailableError
+from src.models.tables import CurriculumUnit
+from src.schemas.exam_analysis import NodeRef
+from src.services import content_difficulty as cd
 
-
-def test_cdi_from_bloom_mix_matches_design_doc_example():
-    # 70% Bloom 1-2, 30% Bloom 3 -> đề dễ-trung bình (xem scripts/seed_exam_validity_demo.py).
-    mix = [(1, 0.40), (2, 0.30), (3, 0.30)]
-    assert content_difficulty.cdi_from_bloom_mix(mix) == 0.317
-
-
-def test_cdi_from_bloom_mix_empty_returns_zero():
-    assert content_difficulty.cdi_from_bloom_mix([]) == 0.0
-
-
-def test_cdi_from_bloom_mix_zero_total_weight_falls_back_to_equal_weights():
-    # LLM trả toàn weight 0 -> không chia cho 0, coi như trọng số đều nhau.
-    mix = [(2, 0.0), (4, 0.0)]
-    assert content_difficulty.cdi_from_bloom_mix(mix) == 0.5
+_TEMP_DIR = Path(__file__).resolve().parents[1] / "temp"
 
 
 def _fake_llm_response(content: str):
     return SimpleNamespace(content=content)
 
 
-def test_classify_competencies_parses_valid_json(monkeypatch):
-    mock_llm = MagicMock()
-    mock_llm.invoke.return_value = _fake_llm_response(
-        '```json\n[{"topic": "Đại số", "bloom_level": 2, "weight": 0.6}, '
-        '{"topic": "Hình học", "bloom_level": 3, "weight": 0.4}]\n```'
+def _unit(unit_id, code, name, grade=6, semester=1, parent_id=None, is_active=True):
+    return CurriculumUnit(
+        id=unit_id,
+        subject_id=106,
+        grade_number=grade,
+        parent_id=parent_id,
+        code=code,
+        name=name,
+        semester_number=semester,
+        is_active=is_active,
     )
-    monkeypatch.setattr(content_difficulty, "get_llm", lambda: mock_llm)
-
-    result = content_difficulty.classify_competencies("Câu 1: ..." * 10)
-
-    assert len(result) == 2
-    assert result[0].topic == "Đại số"
-    assert result[0].bloom_level == 2
-    assert pytest.approx(sum(g.weight for g in result)) == 1.0
-
-
-def test_classify_competencies_returns_empty_on_malformed_json(monkeypatch):
-    mock_llm = MagicMock()
-    mock_llm.invoke.return_value = _fake_llm_response("không phải JSON đâu nha")
-    monkeypatch.setattr(content_difficulty, "get_llm", lambda: mock_llm)
-
-    assert content_difficulty.classify_competencies("Câu 1: ..." * 10) == []
-
-
-def test_classify_competencies_skips_llm_when_text_too_short(monkeypatch):
-    mock_llm = MagicMock()
-    monkeypatch.setattr(content_difficulty, "get_llm", lambda: mock_llm)
-
-    assert content_difficulty.classify_competencies("quá ngắn") == []
-    mock_llm.invoke.assert_not_called()
-
-
-def _unit(code: str, name: str) -> CurriculumUnit:
-    return CurriculumUnit(code=code, name=name, subject_id=uuid4(), grade_number=6)
-
-
-def _catalog_unit(code: str, name: str) -> CurriculumUnit:
-    unit = _unit(code, name)
-    unit.id = uuid4()
-    return unit
-
-
-def test_build_classify_prompt_lists_catalog_codes():
-    catalog = [_unit("TOAN6-TAPHOP", "Tập hợp các số tự nhiên"), _unit("TOAN6-SONGUYEN", "Số nguyên")]
-    prompt = content_difficulty.build_classify_prompt("Câu 1: ...", catalog)
-
-    assert "TOAN6-TAPHOP — Tập hợp các số tự nhiên" in prompt
-    assert "TOAN6-SONGUYEN — Số nguyên" in prompt
-    assert "unit_code" in prompt
-
-
-def test_build_classify_prompt_omits_unit_code_when_catalog_empty():
-    prompt = content_difficulty.build_classify_prompt("Câu 1: ...", [])
-
-    assert "unit_code" not in prompt
-    assert "DANH SÁCH CHỦ ĐỀ" not in prompt
-
-
-def test_classify_competencies_parses_unit_code_and_excerpt(monkeypatch):
-    catalog = [_unit("TOAN6-SONGUYEN", "Số nguyên")]
-    mock_llm = MagicMock()
-    mock_llm.invoke.return_value = _fake_llm_response(
-        '[{"topic": "Số nguyên", "bloom_level": 2, "weight": 1.0, "unit_code": "TOAN6-SONGUYEN", '
-        '"excerpt": "Câu 3: Tính (-12) + 25."}]'
-    )
-    monkeypatch.setattr(content_difficulty, "get_llm", lambda: mock_llm)
-
-    result = content_difficulty.classify_competencies("Câu 1: ..." * 10, catalog)
-
-    assert result[0].unit_code == "TOAN6-SONGUYEN"
-    assert result[0].excerpt == "Câu 3: Tính (-12) + 25."
-
-
-def test_classify_competencies_nullifies_hallucinated_unit_code(monkeypatch):
-    catalog = [_unit("TOAN6-SONGUYEN", "Số nguyên")]
-    mock_llm = MagicMock()
-    mock_llm.invoke.return_value = _fake_llm_response(
-        '[{"topic": "Đại số", "bloom_level": 2, "weight": 1.0, "unit_code": "TOAN6-KHONGTONTAI"}]'
-    )
-    monkeypatch.setattr(content_difficulty, "get_llm", lambda: mock_llm)
-
-    result = content_difficulty.classify_competencies("Câu 1: ..." * 10, catalog)
-
-    assert result[0].unit_code is None
-
-
-def test_extract_exam_text_reads_native_text_layer(tmp_path):
-    doc = fitz.open()
-    page = doc.new_page()
-    page.insert_text((72, 72), "Đề kiểm tra môn Toán - Câu 1: Tính đạo hàm của hàm số.")
-    pdf_path = tmp_path / "exam.pdf"
-    doc.save(pdf_path)
-    doc.close()
-
-    text = content_difficulty.extract_exam_text(pdf_path, FileType.PDF)
-
-    assert "Toán" in text
-
-
-def test_extract_exam_text_falls_back_gracefully_when_ocr_unavailable(tmp_path, monkeypatch):
-    doc = fitz.open()
-    doc.new_page()  # trang trắng -> text-layer rỗng, buộc thử fallback OCR
-    pdf_path = tmp_path / "scanned.pdf"
-    doc.save(pdf_path)
-    doc.close()
-
-    def _boom(*_args, **_kwargs):
-        raise RuntimeError("tesseract binary not found")
-
-    monkeypatch.setattr(
-        content_difficulty,
-        "_pdf_extract",
-        lambda: SimpleNamespace(
-            extract_text_layer=lambda data, **_kw: "",
-            extract_with_tesseract=_boom,
-        ),
-    )
-
-    text = content_difficulty.extract_exam_text(pdf_path, FileType.PDF)
-
-    assert text == ""
 
 
 def _resolved(bloom_level, weight, unit_id=None):
-    return content_difficulty.ResolvedCompetency(
-        topic="Chủ đề",
-        excerpt=None,
+    return cd.ResolvedCompetency(
+        topic="T",
         bloom_level=bloom_level,
         weight=weight,
         unit_id=unit_id,
@@ -170,14 +50,8 @@ def _resolved(bloom_level, weight, unit_id=None):
     )
 
 
-def _analysis_item(
-    unit: CurriculumUnit,
-    weight: float,
-    matched_catalog: bool = True,
-    evidence: EvidenceRef | None = None,
-    off_curriculum: bool | None = None,
-):
-    return content_difficulty.ResolvedCompetency(
+def _analysis_item(unit, weight, off_weight=0.0):
+    return cd.ResolvedCompetency(
         topic=unit.name,
         excerpt="Cau hoi mau",
         bloom_level=2,
@@ -185,273 +59,389 @@ def _analysis_item(
         unit_id=unit.id,
         unit_code=unit.code,
         unit_name=unit.name,
-        matched_catalog=matched_catalog,
-        evidence=evidence,
-        off_curriculum=off_curriculum,
+        matched_catalog=True,
+        off_curriculum=False,
+        off_curriculum_weight=off_weight,
+        chapter=unit.name,
+        lesson=None,
     )
 
 
-def test_resolve_units_uses_catalog_match_without_touching_db():
-    fake_db = MagicMock()
-    unit = _unit("TOAN6-SONGUYEN", "Số nguyên")
-    ctx = content_difficulty.AnalysisContext(
-        subject_id=uuid4(), subject_code="TOAN", grade_number=6, catalog={"TOAN6-SONGUYEN": unit}
+# ---------- CDI ----------
+
+
+def test_cdi_from_bloom_mix_matches_design_doc_example():
+    mix = [(1, 0.40), (2, 0.30), (3, 0.30)]
+    assert cd.cdi_from_bloom_mix(mix) == 0.317
+
+
+def test_cdi_from_bloom_mix_empty_returns_zero():
+    assert cd.cdi_from_bloom_mix([]) == 0.0
+
+
+def test_cdi_from_bloom_mix_zero_total_weight_falls_back_to_equal_weights():
+    mix = [(2, 0.0), (4, 0.0)]
+    assert cd.cdi_from_bloom_mix(mix) == 0.5
+
+
+# ---------- M1: extract_exam_text ----------
+
+
+def _write_temp_pdf(name: str, with_text: bool) -> Path:
+    _TEMP_DIR.mkdir(exist_ok=True)
+    path = _TEMP_DIR / name
+    doc = fitz.open()
+    page = doc.new_page()
+    if with_text:
+        page.insert_text((72, 72), "De kiem tra Toan - Cau 1: Tinh dao ham.")
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def test_extract_exam_text_reads_native_text_layer():
+    pdf = _write_temp_pdf("_test_exam_native.pdf", with_text=True)
+    try:
+        assert "Toan" in cd.extract_exam_text(pdf, FileType.PDF)
+    finally:
+        pdf.unlink(missing_ok=True)
+
+
+def test_extract_exam_text_uses_vlm_for_short_pdf(monkeypatch):
+    pdf = _write_temp_pdf("_test_exam_blank.pdf", with_text=False)
+    try:
+        monkeypatch.setattr(
+            cd,
+            "_pdf_extract",
+            lambda: SimpleNamespace(extract_text_layer=lambda data, **_kw: "", extract_with_tesseract=lambda *a, **k: ""),
+        )
+        monkeypatch.setattr(cd.vlm, "is_configured", lambda *a, **k: True)
+        monkeypatch.setattr(cd.vlm, "read_pdf_pages", lambda *a, **k: "Cau 1: $x^2-4=0$")
+        out = cd.extract_exam_text(pdf, FileType.PDF)
+        assert "x^2-4=0" in out
+    finally:
+        pdf.unlink(missing_ok=True)
+
+
+def test_extract_exam_text_falls_back_when_vlm_unavailable(monkeypatch):
+    pdf = _write_temp_pdf("_test_exam_scanned.pdf", with_text=False)
+    try:
+        def _boom(*_a, **_k):
+            raise RuntimeError("tesseract binary not found")
+
+        monkeypatch.setattr(cd, "_pdf_extract", lambda: SimpleNamespace(extract_text_layer=lambda data, **_kw: "", extract_with_tesseract=_boom))
+        monkeypatch.setattr(cd.vlm, "is_configured", lambda *a, **k: False)
+        assert cd.extract_exam_text(pdf, FileType.PDF) == ""
+    finally:
+        pdf.unlink(missing_ok=True)
+
+
+def test_extract_exam_text_image_prefers_vlm(monkeypatch):
+    p = _TEMP_DIR / "_test_exam.png"
+    _TEMP_DIR.mkdir(exist_ok=True)
+    p.write_bytes(b"\x89PNG fake")
+    try:
+        monkeypatch.setattr(cd.vlm, "read_image_bytes", lambda *a, **k: "Cau 2: $\\lim$")
+        assert "\\lim" in cd.extract_exam_text(p, FileType.IMAGE)
+    finally:
+        p.unlink(missing_ok=True)
+
+
+# ---------- M2: shortlist + mapper ----------
+
+
+@pytest.fixture
+def unit_db():
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE curriculum_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subject_id INTEGER NOT NULL,
+                    grade_number INTEGER NOT NULL,
+                    parent_id INTEGER,
+                    code VARCHAR(50) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    summary TEXT,
+                    keywords TEXT,
+                    sections TEXT,
+                    start_page INTEGER,
+                    end_page INTEGER,
+                    book_id INTEGER,
+                    semester_number INTEGER,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    is_phu BOOLEAN NOT NULL DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO curriculum_units (subject_id, grade_number, code, name, semester_number) "
+                "VALUES (106, 6, 'TOAN6_C1', 'So tu nhien', 1)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO curriculum_units (subject_id, grade_number, code, name, semester_number) "
+                "VALUES (106, 6, 'TOAN6_C4', 'Thong ke', 2)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO curriculum_units (subject_id, grade_number, code, name, semester_number) "
+                "VALUES (106, 7, 'TOAN7_C1', 'So huu ti', 1)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO curriculum_units (subject_id, grade_number, code, name, semester_number) "
+                "VALUES (106, 6, 'TOAN6_HIDDEN', 'An', 1)"
+            )
+        )
+        conn.execute(text("UPDATE curriculum_units SET is_active = 0 WHERE code = 'TOAN6_HIDDEN'"))
+        conn.execute(
+            text(
+                "INSERT INTO curriculum_units (subject_id, grade_number, code, name, semester_number, is_phu) "
+                "VALUES (106, 6, 'TOAN6_PHU', 'On tap chuong II', 1, 1)"
+            )
+        )
+    with Session(engine) as session:
+        yield session
+
+
+def test_build_shortlist_filters_grade_semester_and_active(unit_db):
+    units = cd.build_shortlist(unit_db, subject_id=106, grade_number=6, semester_number=1)
+    assert {u.code for u in units} == {"TOAN6_C1"}
+
+
+def test_build_shortlist_ignores_filters_when_none(unit_db):
+    units = cd.build_shortlist(unit_db, subject_id=106, grade_number=None, semester_number=None)
+    assert {u.code for u in units} == {"TOAN6_C1", "TOAN6_C4", "TOAN7_C1"}
+
+
+def test_build_shortlist_excludes_phu_nodes(unit_db):
+    units = cd.build_shortlist(unit_db, subject_id=106, grade_number=6, semester_number=1)
+    assert "TOAN6_PHU" not in {u.code for u in units}
+
+
+def test_build_map_prompt_lists_shortlist_nodes():
+    units = [_unit(1, "TOAN6_C1", "So tu nhien"), _unit(2, "TOAN6_C2", "So nguyen", semester=None)]
+    prompt = cd.build_map_prompt("Cau 1", units)
+    assert "1: So tu nhien (khối 6, HK1)" in prompt
+    assert "2: So nguyen (khối 6)" in prompt
+    assert "off_curriculum_weight" in prompt
+
+
+def test_parse_mapped_items_drops_hallucinated_node_into_off_weight():
+    raw = (
+        '[{"topic":"A","nodes":[{"node_id":1,"weight":0.3},{"node_id":999,"weight":0.3}],'
+        '"bloom_level":2,"off_curriculum_weight":0.4}]'
     )
-    guess = content_difficulty.CompetencyGuess(
-        topic="Số nguyên", bloom_level=2, weight=1.0, unit_code="TOAN6-SONGUYEN"
+    items = cd.parse_mapped_items(raw, {1, 2})
+    assert len(items) == 1
+    assert [(n.node_id, n.weight) for n in items[0].nodes] == [(1, 0.3)]
+    assert items[0].off_curriculum_weight == pytest.approx(0.7)
+
+
+def test_parse_mapped_items_caps_three_nodes():
+    raw = (
+        '[{"topic":"A","nodes":[{"node_id":1,"weight":0.25},{"node_id":2,"weight":0.25},'
+        '{"node_id":3,"weight":0.25},{"node_id":4,"weight":0.25}],"bloom_level":3,"off_curriculum_weight":0.0}]'
     )
-
-    resolved = content_difficulty._resolve_units(fake_db, ctx, [guess])
-
-    assert resolved[0].matched_catalog is True
-    assert resolved[0].unit_code == "TOAN6-SONGUYEN"
-    assert resolved[0].unit_name == "Số nguyên"
-    fake_db.execute.assert_not_called()
+    items = cd.parse_mapped_items(raw, {1, 2, 3, 4})
+    assert len(items[0].nodes) == 3
+    assert items[0].off_curriculum_weight == pytest.approx(0.25)
 
 
-def test_resolve_units_falls_back_to_topic_when_no_catalog_match():
-    fake_db = MagicMock()
-    fake_db.execute.return_value.scalar_one_or_none.return_value = None
-    ctx = content_difficulty.AnalysisContext(subject_id=uuid4(), subject_code="TOAN", grade_number=6, catalog={})
-    guess = content_difficulty.CompetencyGuess(topic="Đại số", bloom_level=2, weight=1.0)
-
-    resolved = content_difficulty._resolve_units(fake_db, ctx, [guess])
-
-    assert resolved[0].matched_catalog is False
-    assert resolved[0].unit_name == "Đại số"
+def test_parse_mapped_items_normalizes_weights_to_one():
+    raw = '[{"topic":"A","nodes":[{"node_id":1,"weight":0.5}],"bloom_level":2,"off_curriculum_weight":0.0}]'
+    items = cd.parse_mapped_items(raw, {1})
+    assert items[0].nodes[0].weight == pytest.approx(1.0)
 
 
-def test_resolve_units_returns_none_unit_when_grade_unknown():
-    fake_db = MagicMock()
-    ctx = content_difficulty.AnalysisContext(subject_id=uuid4(), subject_code="TOAN", grade_number=None, catalog={})
-    guess = content_difficulty.CompetencyGuess(topic="Đại số", bloom_level=2, weight=1.0)
+def test_parse_mapped_items_returns_empty_on_malformed():
+    assert cd.parse_mapped_items("khong phai json", {1}) == []
 
-    resolved = content_difficulty._resolve_units(fake_db, ctx, [guess])
 
-    assert resolved[0].unit_id is None
-    assert resolved[0].matched_catalog is False
-    fake_db.execute.assert_not_called()
+def test_map_items_retries_on_malformed_json():
+    mock_llm = MagicMock()
+    mock_llm.invoke.side_effect = [
+        _fake_llm_response("khong phai json"),
+        _fake_llm_response(
+            '[{"topic":"A","nodes":[{"node_id":1,"weight":1.0}],"bloom_level":2,"off_curriculum_weight":0.0}]'
+        ),
+    ]
+    units = [_unit(1, "TOAN6_C1", "So tu nhien")]
+    items = cd.map_items("Cau 1: ..." * 10, units, llm=mock_llm)
+    assert len(items) == 1
+    assert mock_llm.invoke.call_count == 2
+
+
+def test_map_items_skips_when_text_too_short():
+    assert cd.map_items("ngan", [_unit(1, "TOAN6_C1", "So tu nhien")], llm=MagicMock()) == []
+
+
+def test_rejudge_null_items_remaps_or_keeps():
+    units = [_unit(1, "TOAN6_C1", "So tu nhien")]
+    items = [
+        cd.MappedItem(topic="Cau A", nodes=[cd.NodeWeight(node_id=1, weight=1.0)], bloom_level=2, off_curriculum_weight=0.0),
+        cd.MappedItem(topic="Cau B", nodes=[], bloom_level=3, off_curriculum_weight=1.0),
+    ]
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = _fake_llm_response(
+        '[{"topic":"Cau B","nodes":[{"node_id":1,"weight":1.0}],"bloom_level":3,"off_curriculum_weight":0.0}]'
+    )
+    out = cd.rejudge_null_items(items, units, llm=mock_llm)
+    assert out[0].nodes
+    assert out[1].nodes
+
+
+def test_rejudge_null_items_sets_candidates_when_still_null():
+    units = [_unit(1, "TOAN6_C1", "So tu nhien"), _unit(2, "TOAN6_C2", "So nguyen")]
+    items = [cd.MappedItem(topic="Cau B", nodes=[], bloom_level=3, off_curriculum_weight=1.0)]
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = _fake_llm_response(
+        '[{"topic":"Cau B","nodes":[],"bloom_level":3,"off_curriculum_weight":1.0}]'
+    )
+    out = cd.rejudge_null_items(items, units, llm=mock_llm)
+    assert out[0].nodes == []
+    assert out[0].candidates == [1, 2]
+
+
+def test_expand_mapped_resolves_chapter_and_lesson():
+    chapter = _unit(1, "TOAN9_C5", "Đường tròn", grade=9)
+    lesson = _unit(2, "TOAN9_C5_U1", "Tiếp tuyến", grade=9, parent_id=1)
+    item = cd.MappedItem(
+        topic="Tiep tuyen",
+        nodes=[cd.NodeWeight(node_id=2, weight=0.6), cd.NodeWeight(node_id=1, weight=0.4)],
+        bloom_level=3,
+        off_curriculum_weight=0.0,
+    )
+    resolved = cd._expand_mapped([item], [chapter, lesson])
+    assert len(resolved) == 2
+    by_unit = {r.unit_id: r for r in resolved}
+    assert by_unit[2].chapter == "Đường tròn"
+    assert by_unit[2].lesson == "Tiếp tuyến"
+    assert by_unit[1].chapter == "Đường tròn"
+    assert by_unit[1].lesson is None
+    assert by_unit[2].off_curriculum is False
+
+
+# ---------- merge + 5 trục ----------
+
+
+def test_normalize_resolved_scales_weights_to_one():
+    items = [
+        cd.MappedItem(topic="A", nodes=[cd.NodeWeight(node_id=1, weight=1.0)], bloom_level=2, off_curriculum_weight=0.0),
+        cd.MappedItem(topic="B", nodes=[cd.NodeWeight(node_id=2, weight=0.8)], bloom_level=3, off_curriculum_weight=0.2),
+    ]
+    resolved = [
+        cd.ResolvedCompetency(topic="A", bloom_level=2, weight=1.0, unit_id=1, unit_code="A", unit_name="A", matched_catalog=True),
+        cd.ResolvedCompetency(topic="B", bloom_level=3, weight=0.8, unit_id=2, unit_code="B", unit_name="B", matched_catalog=True),
+    ]
+    resolved, items = cd._normalize_resolved(resolved, items)
+    total = sum(r.weight for r in resolved) + sum(it.off_curriculum_weight for it in items)
+    assert total == pytest.approx(1.0)
+    assert resolved[0].weight == pytest.approx(0.5)  # 1.0 / 2.0
+    assert items[1].off_curriculum_weight == pytest.approx(0.1)  # 0.2 / 2.0
+    assert resolved[0].weight <= 1.0
+
+
+def test_normalize_resolved_noop_when_already_one():
+    items = [cd.MappedItem(topic="A", nodes=[cd.NodeWeight(node_id=1, weight=1.0)], bloom_level=2, off_curriculum_weight=0.0)]
+    resolved = [cd.ResolvedCompetency(topic="A", bloom_level=2, weight=1.0, unit_id=1, unit_code="A", unit_name="A", matched_catalog=True)]
+    out, _ = cd._normalize_resolved(resolved, items)
+    assert out[0].weight == 1.0
 
 
 def test_merge_by_unit_sums_weight_and_weighted_rounds_bloom():
-    unit_id = uuid4()
-    items = [_resolved(2, 0.3, unit_id), _resolved(4, 0.1, unit_id)]
-
-    bloom, weight = content_difficulty.merge_by_unit(items)[unit_id]
-
-    assert bloom == 3  # (2*0.3 + 4*0.1)/0.4 = 2.5 -> half-up -> 3
+    merged = cd.merge_by_unit([_resolved(2, 0.3, 1), _resolved(4, 0.1, 1)])
+    bloom, weight = merged[1]
+    assert bloom == 3
     assert weight == pytest.approx(0.4)
 
 
 def test_merge_by_unit_zero_total_weight_uses_simple_mean():
-    unit_id = uuid4()
-    items = [_resolved(2, 0.0, unit_id), _resolved(4, 0.0, unit_id)]
-
-    bloom, weight = content_difficulty.merge_by_unit(items)[unit_id]
-
-    assert bloom == 3  # mean(2, 4) = 3, không chia cho 0
+    bloom, weight = cd.merge_by_unit([_resolved(2, 0.0, 1), _resolved(4, 0.0, 1)])[1]
+    assert bloom == 3
     assert weight == 0.0
 
 
 def test_merge_by_unit_skips_items_without_unit_id():
-    items = [_resolved(2, 1.0, unit_id=None)]
-
-    assert content_difficulty.merge_by_unit(items) == {}
-
-
-def test_best_evidence_returns_top_hit_fields(monkeypatch):
-    hits = [
-        {"score": 0.62, "heading": "Chương 2 > Bài 13", "source_md": "toan6.md", "text": "..."},
-        {"score": 0.40, "heading": "Khác", "source_md": "toan6_b.md", "text": "..."},
-    ]
-    monkeypatch.setattr(content_difficulty.retrieval, "search_textbook", lambda *a, **k: hits)
-
-    evidence = content_difficulty._best_evidence("Số nguyên", mon="toan", lop="6")
-
-    assert evidence.score == 0.62
-    assert evidence.heading == "Chương 2 > Bài 13"
-    assert evidence.source_md == "toan6.md"
-
-
-def test_best_evidence_returns_none_when_no_hits(monkeypatch):
-    monkeypatch.setattr(content_difficulty.retrieval, "search_textbook", lambda *a, **k: [])
-
-    assert content_difficulty._best_evidence("Số nguyên", mon="toan", lop="6") is None
-
-
-def test_collect_evidence_fail_soft_when_retrieval_unavailable(monkeypatch):
-    def _boom(*_a, **_k):
-        raise RetrievalUnavailableError("Qdrant down")
-
-    monkeypatch.setattr(content_difficulty.retrieval, "search_textbook", _boom)
-    guesses = [content_difficulty.CompetencyGuess(topic="Số nguyên", bloom_level=2, weight=1.0)]
-
-    evidences, rag_available = content_difficulty._collect_evidence(guesses, mon="toan", lop="6")
-
-    assert evidences == [None]
-    assert rag_available is False
-
-
-def test_collect_evidence_builds_query_from_topic_and_excerpt(monkeypatch):
-    captured_queries = []
-
-    def _fake_search(query, mon, lop):
-        captured_queries.append(query)
-        return []
-
-    monkeypatch.setattr(content_difficulty.retrieval, "search_textbook", _fake_search)
-    guesses = [
-        content_difficulty.CompetencyGuess(topic="Số nguyên", bloom_level=2, weight=1.0, excerpt="Câu 3: (-12)+25."),
-        content_difficulty.CompetencyGuess(topic="Tập hợp", bloom_level=1, weight=1.0),
-    ]
-
-    evidences, rag_available = content_difficulty._collect_evidence(guesses, mon="toan", lop="6")
-
-    assert captured_queries == ["Số nguyên. Câu 3: (-12)+25.", "Tập hợp"]
-    assert evidences == [None, None]
-    assert rag_available is True
-
-
-def test_attach_evidence_marks_on_curriculum_false_when_evidence_found():
-    item = _resolved(2, 1.0, unit_id=uuid4())
-    evidence = EvidenceRef(score=0.7, heading="Bài 1", source_md="toan6.md")
-
-    attached = content_difficulty._attach_evidence([item], [evidence], rag_available=True)
-
-    assert attached[0].evidence == evidence
-    assert attached[0].off_curriculum is False
-
-
-def test_attach_evidence_marks_off_curriculum_true_when_no_evidence_found():
-    item = _resolved(2, 1.0, unit_id=uuid4())
-
-    attached = content_difficulty._attach_evidence([item], [None], rag_available=True)
-
-    assert attached[0].off_curriculum is True
-
-
-def test_attach_evidence_marks_none_when_rag_unavailable():
-    item = _resolved(2, 1.0, unit_id=uuid4())
-
-    attached = content_difficulty._attach_evidence([item], [None], rag_available=False)
-
-    assert attached[0].off_curriculum is None
+    assert cd.merge_by_unit([_resolved(2, 1.0, unit_id=None)]) == {}
 
 
 def test_build_content_analysis_coverage_and_ratio():
-    catalog = [
-        _catalog_unit("TOAN6-A", "Tap hop"),
-        _catalog_unit("TOAN6-B", "So nguyen"),
-        _catalog_unit("TOAN6-C", "Phan so"),
-    ]
+    catalog = [_unit(1, "A", "Tap hop"), _unit(2, "B", "So nguyen"), _unit(3, "C", "Phan so")]
     items = [_analysis_item(catalog[0], 0.25), _analysis_item(catalog[1], 0.5)]
-
-    analysis = content_difficulty.build_content_analysis(
-        content_difficulty.AnalysisBuildInput(items=items, catalog=catalog, rag_available=True, cdi=0.4, model=None)
-    )
-
+    analysis = cd.build_content_analysis(cd.AnalysisBuildInput(items=items, catalog=catalog, cdi=0.4, model=None))
     assert analysis.coverage.catalog_total == 3
     assert analysis.coverage.matched == 2
     assert analysis.coverage.ratio == pytest.approx(2 / 3)
-    assert {unit.unit_code: unit.weight for unit in analysis.coverage_units} == {
-        "TOAN6-A": 0.25,
-        "TOAN6-B": 0.5,
-        "TOAN6-C": 0.0,
+    assert {u.unit_code: u.weight for u in analysis.coverage_units} == {"A": 0.25, "B": 0.5, "C": 0.0}
+
+
+def test_build_content_analysis_off_weight_and_node_ref():
+    catalog = [_unit(1, "A", "Tap hop"), _unit(2, "B", "So nguyen")]
+    items = [
+        cd.ResolvedCompetency(
+            topic="Cau1", bloom_level=2, weight=0.5, unit_id=1, unit_code="A", unit_name="Tap hop",
+            matched_catalog=True, off_curriculum=False, off_curriculum_weight=0.2, chapter="C1", lesson=None,
+        ),
+        cd.ResolvedCompetency(
+            topic="Cau2", bloom_level=3, weight=0.3, unit_id=2, unit_code="B", unit_name="So nguyen",
+            matched_catalog=True, off_curriculum=False, off_curriculum_weight=0.1, chapter="C1", lesson=None,
+        ),
+    ]
+    analysis = cd.build_content_analysis(cd.AnalysisBuildInput(items=items, catalog=catalog, cdi=0.4, model=None))
+    assert analysis.off_curriculum_weight == pytest.approx(0.3)
+    assert analysis.items[0].node_ref == NodeRef(node_id=1, chapter="C1", lesson=None)
+
+
+def test_build_content_analysis_concentration():
+    catalog = [_unit(1, "A", "Tap hop"), _unit(2, "B", "So nguyen")]
+    analysis = cd.build_content_analysis(
+        cd.AnalysisBuildInput(
+            items=[_analysis_item(catalog[0], 0.65), _analysis_item(catalog[1], 0.35)],
+            catalog=catalog,
+            cdi=0.4,
+            model=None,
+        )
+    )
+    assert analysis.concentration.is_concentrated is True
+    assert analysis.concentration.top_share == pytest.approx(0.65)
+
+
+# === roll_chapter_to_lessons: ma trận đề cấp chương → cấp bài (chia đều bảo toàn tổng) ===
+
+
+def test_roll_chapter_lesson_children_even_split_preserves_total():
+    # Chương 1 (0.40) có 3 bài con; bài 2 đã là bài (0.25) giữ nguyên.
+    catalog_by_id = {
+        1: _unit(1, "C1", "Chương 1"),  # chương
+        11: _unit(11, "L1", "Bài 1", parent_id=1),
+        12: _unit(12, "L2", "Bài 2", parent_id=1),
+        13: _unit(13, "L3", "Bài 3", parent_id=1),
+        2: _unit(2, "B2", "Bài X"),  # node bài (parent_id None → coi như có parent riêng nhưng is_chapter bằng parent_id None)
     }
+    # Bài 2 có parent None → coi như chương trong hàm (no children) → giữ nguyên.
+    merged = {1: (3, 0.40), 2: (2, 0.25)}
+    out = cd.roll_chapter_to_lessons(merged, catalog_by_id)
+    # Chương 1 tách 3 bài: 0.40/3 = 0.133/0.133/0.134 (phần dư 0.001 đặt ở phần đầu).
+    assert out[11][1] + out[12][1] + out[13][1] == pytest.approx(0.40, abs=1e-3)
+    assert out[11][1] == pytest.approx(0.134)
+    assert out[12][1] == pytest.approx(0.133)
+    assert out[13][1] == pytest.approx(0.133)
+    # Bài 2 chỉ là node không con → giữ nguyên
+    assert out[2] == (2, 0.25)
 
 
-def test_build_content_analysis_flags_concentration_above_threshold():
-    unit_a = _catalog_unit("TOAN6-A", "Tap hop")
-    unit_b = _catalog_unit("TOAN6-B", "So nguyen")
-
-    concentrated = content_difficulty.build_content_analysis(
-        content_difficulty.AnalysisBuildInput(
-            items=[_analysis_item(unit_a, 0.65), _analysis_item(unit_b, 0.35)],
-            catalog=[unit_a, unit_b],
-            rag_available=True,
-            cdi=0.4,
-            model=None,
-        )
-    )
-    balanced = content_difficulty.build_content_analysis(
-        content_difficulty.AnalysisBuildInput(
-            items=[_analysis_item(unit_a, 0.5), _analysis_item(unit_b, 0.5)],
-            catalog=[unit_a, unit_b],
-            rag_available=True,
-            cdi=0.4,
-            model=None,
-        )
-    )
-
-    assert concentrated.concentration.is_concentrated is True
-    assert concentrated.concentration.top_share == pytest.approx(0.65)
-    assert balanced.concentration.is_concentrated is False
-
-
-def test_build_content_analysis_off_curriculum_weight_none_when_rag_unavailable():
-    unit = _catalog_unit("TOAN6-A", "Tap hop")
-
-    analysis = content_difficulty.build_content_analysis(
-        content_difficulty.AnalysisBuildInput(
-            items=[_analysis_item(unit, 1.0, evidence=None, off_curriculum=True)],
-            catalog=[unit],
-            rag_available=False,
-            cdi=0.4,
-            model=None,
-        )
-    )
-
-    assert analysis.off_curriculum_weight is None
-
-
-def test_analyze_exam_paper_preserves_existing_ai_analysis_keys(monkeypatch):
-    paper = ExamPaper(id=uuid4(), subject_id=uuid4(), file_url="exam.pdf", file_type=FileType.PDF)
-    paper.ai_analysis = {"source": "exam_generation"}
-    subject = Subject(id=paper.subject_id, code="TOAN", name="Toan")
-    catalog_unit = _catalog_unit("TOAN6-A", "Tap hop")
-    fake_session = MagicMock()
-    fake_session.get.side_effect = lambda model, _id: {
-        ExamPaper: paper,
-        Subject: subject,
-    }.get(model)
-    monkeypatch.setattr(content_difficulty, "SessionLocal", lambda: fake_session)
-    monkeypatch.setattr(content_difficulty.storage, "exam_file_path", lambda _url: "exam.pdf")
-    monkeypatch.setattr(content_difficulty, "extract_exam_text", lambda *_args: "Cau 1: " * 20)
-    monkeypatch.setattr(content_difficulty, "_resolve_grade_number", lambda *_args: 6)
-    monkeypatch.setattr(content_difficulty, "_load_catalog", lambda *_args: [catalog_unit])
-    monkeypatch.setattr(
-        content_difficulty,
-        "classify_competencies",
-        lambda *_args: [
-            content_difficulty.CompetencyGuess(
-                topic="Tap hop", bloom_level=2, weight=1.0, unit_code="TOAN6-A", excerpt="Cau 1"
-            )
-        ],
-    )
-    monkeypatch.setattr(content_difficulty.retrieval, "has_rag", lambda _subject_code: True)
-    monkeypatch.setattr(content_difficulty.retrieval, "rag_mon_slug", lambda _subject_code: "toan")
-    monkeypatch.setattr(
-        content_difficulty,
-        "_collect_evidence",
-        lambda *_args: ([EvidenceRef(score=0.7, heading="Bai 1", source_md="toan6.md")], True),
-    )
-
-    content_difficulty.analyze_exam_paper(paper.id)
-
-    assert paper.ai_analysis is not None
-    assert paper.ai_analysis["source"] == "exam_generation"
-    assert paper.ai_analysis["content_analysis"]["version"] == 1
-    assert paper.ai_analysis["content_analysis"]["items"][0]["evidence"]["score"] == 0.7
-    assert paper.ai_analysis["content_analysis"]["items"][0]["off_curriculum"] is False
-    fake_session.commit.assert_called_once()
-
-
-def test_analyze_exam_paper_skips_when_paper_not_found(monkeypatch):
-    fake_session = MagicMock()
-    fake_session.get.return_value = None
-    monkeypatch.setattr(content_difficulty, "SessionLocal", lambda: fake_session)
-
-    content_difficulty.analyze_exam_paper(uuid4())
-
-    fake_session.commit.assert_not_called()
-    fake_session.close.assert_called_once()
+def test_roll_chapter_keeps_lesson_and_chapter_without_children():
+    catalog_by_id = {5: _unit(5, "L5", "Bài 5")}  # node thường, không parent
+    merged = {5: (3, 0.5)}
+    assert cd.roll_chapter_to_lessons(merged, catalog_by_id) == {5: (3, 0.5)}

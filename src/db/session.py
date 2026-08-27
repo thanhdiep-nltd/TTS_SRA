@@ -21,8 +21,8 @@ if "postgresql" in db_url:
     # kết nối bị pooler phía Neon âm thầm đóng khi idle lâu.
     engine = create_engine(
         db_url,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=20,
+        max_overflow=30,
         pool_pre_ping=True,
         pool_recycle=300,
         connect_args={"options": "-c statement_timeout=3000ms"},

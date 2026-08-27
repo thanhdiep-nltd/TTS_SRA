@@ -1,3 +1,4 @@
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -83,4 +84,24 @@ class ReportExportRequest(BaseModel):
     include_charts: bool = True
     include_tables: bool = True
     include_ai_insights: bool = False
+    include_signature: bool = True
+
+
+class ReportExportRequestS360(BaseModel):
+    """Request xuất báo cáo từ schema s360 (score_focused_schema.sql).
+
+    Khác với ReportExportRequest cũ: dùng BIGINT/INTEGER ID thay vì UUID,
+    semester dùng semester_index (1/2) + school_year_id.
+    """
+
+    report_type: Literal["academic_conduct", "subject_quality", "at_risk", "subject_report"]
+    format: Literal["docx", "pdf", "html"]
+    grade_level: str = "all"
+    class_id: Optional[int] = None  # BIGINT — s360.dim_homeroom_class.id
+    semester_index: Optional[int] = None  # 1 hoặc 2
+    subject_id: Optional[int] = None  # INTEGER — s360.dim_subject.id
+    school_year_id: Optional[int] = None  # INTEGER — s360.dim_school_year.id
+    include_charts: bool = True
+    include_tables: bool = True
+    include_ai_insights: bool = True
     include_signature: bool = True

@@ -309,6 +309,8 @@ export interface ExamPaper {
   file_size_bytes: number | null;
   uploaded_by: string;
   created_at: string;
+  content_difficulty?: number | null;
+  content_analyzed_at?: string | null;
 }
 
 // Đề đã map vào một cột (để preview/đổi/gỡ) — khớp ExamRef backend.
@@ -374,9 +376,11 @@ export interface SemesterOption {
 }
 
 export interface SubjectOption {
-  id: string;
+  id: string | number;
   name: string;
   code: string;
+  has_lesson_plans?: boolean;
+  grade_id?: number | null;
 }
 
 export interface AcademicDivergenceRow {
@@ -520,11 +524,17 @@ export interface ExamValidityRow {
   confidence: "HIGH" | "LOW";
 }
 
-// ===== Phân tích nội dung đề (RAG-anchored CDI, ai_analysis.content_analysis v1) =====
-export interface ExamEvidenceRef {
-  score: number;
-  heading: string | null;
-  source_md: string | null;
+export interface SchoolValidityOverview {
+  total_checked: number;
+  flags_count: Record<string, number>;
+  flagged_items: ExamValidityRow[];
+}
+
+// ===== Phân tích nội dung đề (5 trục — KG phẳng, ai_analysis.content_analysis v1) =====
+export interface ExamContentNodeRef {
+  node_id: number;
+  chapter: string | null;
+  lesson: string | null;
 }
 
 export interface ExamAnalysisItem {
@@ -535,8 +545,16 @@ export interface ExamAnalysisItem {
   matched_catalog: boolean;
   bloom_level: number;
   weight: number;
-  evidence: ExamEvidenceRef | null;
+  node_ref: ExamContentNodeRef | null;
   off_curriculum: boolean | null;
+  off_curriculum_weight: number;
+  confidence: number | null;
+  reason: string | null;
+  image_url?: string | null;
+  has_figure?: boolean | null;
+  question_share?: number | null;
+  is_primary?: boolean | null;
+  evidence?: any;
 }
 
 export interface ExamCoverageUnit {
@@ -549,7 +567,6 @@ export interface ExamContentAnalysis {
   version: number;
   model: string | null;
   cdi: number;
-  rag_available: boolean;
   items: ExamAnalysisItem[];
   coverage: { catalog_total: number; matched: number; ratio: number | null };
   coverage_units: ExamCoverageUnit[];
@@ -560,18 +577,40 @@ export interface ExamContentAnalysis {
     is_concentrated: boolean;
   };
   off_curriculum_weight: number | null;
+  bloom_distribution: Record<string, number> | null;
+  bloom_alignment: string | null;
+  rag_available?: boolean;
 }
 
 export interface ExamPaperDetail extends ExamPaper {
   content_difficulty: number | null;
   content_analyzed_at: string | null;
+  raw_text?: string | null;
   ai_analysis: { content_analysis?: ExamContentAnalysis; [k: string]: unknown };
 }
 
-export interface SchoolValidityOverview {
-  total_checked: number;
-  flags_count: Record<string, number>;
-  flagged_items: ExamValidityRow[];
+// ===== Kiểm tra câu hỏi (tab trong trang TEVI) — test 1 câu hỏi thuộc chương/bài nào =====
+export interface ClassifiedItem {
+  topic: string;
+  chapter: string | null;
+  lesson: string | null;
+  unit_code: string | null;
+  unit_name: string | null;
+  bloom_level: number;
+  weight: number;
+  confidence: number | null;
+  reason?: string | null;
+  excerpt: string | null;
+  question_share?: number | null;
+  is_primary?: boolean | null;
+}
+
+export interface QuestionClassifyResult {
+  text: string;
+  matched: boolean;
+  off_curriculum: boolean;
+  items: ClassifiedItem[];
+  candidates: string[];
 }
 
 export interface ContentAdjustedRankRow {
@@ -961,6 +1000,14 @@ export const EWS_RISK_COLORS: Record<EwsRiskLevel, string> = {
   CRITICAL: "#ef4444",
 };
 
+// Top 5 nhân tố tác động AI (CatBoost SHAP) — Signed SHAP, giữ dấu âm/dương.
+export interface ShapDriver {
+  rank: number;
+  feature: string;
+  shap_value: number; // > 0 = tăng rủi ro, < 0 = giảm rủi ro
+  value?: any; // giá trị feature thực tế của học sinh
+}
+
 export interface EwsPredictionRow {
   student_code: string;
   student_name: string | null;
@@ -976,6 +1023,9 @@ export interface EwsPredictionRow {
   risk_level: EwsRiskLevel;
   risk_probability: number | null;
   risk_factors: string[];
+  primary_badge: string[];
+  risk_factor_details: string[];
+  shap_drivers?: ShapDriver[];
   evaluated_at_date: string | null;
   cutoff_date: string | null;
   join_date: string | null;
@@ -1020,6 +1070,19 @@ export interface EwsPredictionRow {
   total_demerit_points: number | null;
   repeat_offense_count: number | null;
   severe_sanction_count: number | null;
+
+  // 5. LLM-based Forecasting (M5) — kết quả phân tích định tính + score điều chỉnh
+  llm_risk_score: number | null;
+  llm_risk_level: EwsRiskLevel | null;
+  llm_narrative_summary: string | null;
+  llm_forecast_trend: string | null;
+  llm_recommended_actions: string[] | null;
+  llm_evaluated_at: string | null;
+  // True nếu LLM nâng mức rủi ro so với CatBoost (rank(llm) > rank(base)); null nếu chưa có đánh giá LLM.
+  llm_risk_escalated: boolean | null;
+  // Audit khi Chạy Lại Phân Tích (re-run): điểm LLM của lần đánh giá trước + lý do thay đổi (null = giữ nguyên).
+  llm_previous_score: number | null;
+  llm_score_change_reason: string | null;
 }
 
 export interface EwsLevelCount {
@@ -1036,7 +1099,44 @@ export interface EwsOverview {
   at_risk_count: number;
   avg_risk_score: number | null;
   levels: EwsLevelCount[];
-  top_risk_subjects: Array<{ subject_name: string; cnt: number; avg_risk: number }>;
+  top_risk_subjects: Array<{
+    subject_name: string;
+    cnt: number;
+    avg_risk: number;
+    low_cnt: number;
+    moderate_cnt: number;
+    high_cnt: number;
+    critical_cnt: number;
+    low_pct: number;
+    moderate_pct: number;
+    high_pct: number;
+    critical_pct: number;
+    ch_pct: number;
+  }>;
+  top_risk_factors: Array<{ code: string; label: string; cnt: number }>;
+}
+
+export interface EwsGoldenSetCase {
+  id: string;
+  description: string;
+  predicted: EwsRiskLevel;
+  expected: EwsRiskLevel;
+  passed: boolean;
+  risk_score: number;
+  score_risk: number | null;
+  lms_risk: number | null;
+  attendance_risk: number | null;
+  behavior_risk: number | null;
+  weight_attendance: number | null;
+  weight_behavior: number | null;
+  features: Record<string, number | string | null>;
+}
+
+export interface EwsGoldenSetResult {
+  total: number;
+  passed: number;
+  accuracy: number;
+  cases: EwsGoldenSetCase[];
 }
 
 export interface EwsWeekOption {
@@ -1084,12 +1184,43 @@ export interface EwsRawScore {
 }
 
 export interface EwsRawLmsItem {
+  assignment_id?: number | null;
   code: string | null;
   fullname: string | null;
   max_grade: number | null;
   due_date: string | null;
   submitted: boolean;
   final_grade: number | null;
+}
+
+export interface EwsAssignmentQuestionItem {
+  question_id: number;
+  question_text: string;
+  options: string[];
+  bloom_level: number;
+  unit_id?: number | null;
+  lesson_name?: string | null;
+  is_correct?: boolean | null;
+  score?: number | null;
+  max_score?: number | null;
+  response_time_seconds?: number | null;
+  attempt_number?: number | null;
+  integrity_flag?: number | null;
+  chosen_option?: string | null;
+  explanation?: string | null;
+}
+
+export interface EwsAssignmentDrilldownResponse {
+  assignment_id: number;
+  assignment_name: string;
+  student_code: string;
+  total_questions: number;
+  correct_count: number;
+  score?: number | null;
+  max_grade?: number | null;
+  submitted: boolean;
+  submitted_at?: string | null;
+  questions: EwsAssignmentQuestionItem[];
 }
 
 export interface EwsRawAttendanceItem {
@@ -1108,6 +1239,31 @@ export interface EwsRawBehaviorItem {
   sanction_name: string | null;
 }
 
+export interface EwsRawLifeEventItem {
+  event_name: string | null;
+  event_type: string | null;
+  event_date: string | null;
+  severity: string | null;
+  description: string | null;
+  // Mô hình thời gian (Temporal Status)
+  time_quantity: number | null;
+  time_unit: string | null;
+  status: string | null;
+}
+
+export interface EwsRawMedicalItem {
+  condition_name: string | null;
+  condition_type: string | null;
+  severity: string | null;
+  is_chronic: boolean | null;
+  diagnosed_date: string | null;
+  notes: string | null;
+  // Mô hình thời gian (Temporal Status)
+  time_quantity: number | null;
+  time_unit: string | null;
+  status: string | null;
+}
+
 export interface EwsRawDetail {
   student_code: string;
   subject_id: number;
@@ -1119,6 +1275,396 @@ export interface EwsRawDetail {
   lms: EwsRawLmsItem[];
   lms_expected: number;
   lms_submitted: number;
+  lms_evidence?: any[];
   attendance: EwsRawAttendanceItem[];
   behavior: EwsRawBehaviorItem[];
+  life_events: EwsRawLifeEventItem[];
+  medical_history: EwsRawMedicalItem[];
 }
+
+export interface EwsRiskBreakdownItem {
+  id?: string | number | null;
+  name: string;
+  total_cnt: number;
+  low_cnt: number;
+  moderate_cnt: number;
+  high_cnt: number;
+  critical_cnt: number;
+  low_pct: number;
+  moderate_pct: number;
+  high_pct: number;
+  critical_pct: number;
+  ch_pct: number;
+}
+
+export interface EwsStudentRiskDetailItem {
+  student_code: string;
+  student_name: string;
+  week_label: string;
+  risk_level: EwsRiskLevel;
+  risk_score: number;
+}
+
+export interface EwsSubjectDrilldownResponse {
+  level: "group" | "subject" | "class" | "student";
+  breadcrumb: string[];
+  items: EwsRiskBreakdownItem[];
+  student_items: EwsStudentRiskDetailItem[];
+  summary?: EwsRiskBreakdownItem | null;
+}
+
+export interface EwsTopClassRiskItem {
+  rank: number;
+  class_name: string;
+  total_cnt: number;
+  low_cnt: number;
+  moderate_cnt: number;
+  high_cnt: number;
+  critical_cnt: number;
+  low_pct: number;
+  moderate_pct: number;
+  high_pct: number;
+  critical_pct: number;
+  ch_pct: number;
+}
+
+// ============================================================================
+// EWS CONTROL PANEL (BGH) — dự đoán theo tuần + tinh chỉnh trọng số
+// ============================================================================
+
+export interface EwsPredictRequest {
+  school_year_id: number;
+  semester_index: number;
+  evaluated_at_week: number;
+  model_version: string;
+}
+
+export interface EwsJob {
+  id: number;
+  so_school_id: number;
+  requested_by: number;
+  school_year_id: number;
+  semester_index: number;
+  evaluated_at_week: number;
+  cutoff_date: string | null;
+  model_version: string;
+  status: "pending" | "processing" | "completed" | "failed" | "cancelled";
+  progress: number;
+  rows_processed: number | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface EwsWeightConfig {
+  weight_score?: number | null;
+  weight_lms?: number | null;
+  weight_attendance?: number | null;
+  weight_behavior?: number | null;
+  alpha_score?: number | null;
+  alpha_lms?: number | null;
+  alpha_attendance?: number | null;
+  alpha_behavior?: number | null;
+  weight_floor?: number | null;
+  worst_factor_beta?: number | null;
+  threshold_low?: number | null;
+  threshold_moderate?: number | null;
+  threshold_high?: number | null;
+  threshold_critical?: number | null;
+}
+
+export interface EwsEffectiveConfig {
+  baseline: {
+    weights: Record<string, number>;
+    alpha: Record<string, number>;
+    weight_floor: number;
+    worst_factor_beta: number;
+    thresholds: Record<string, number>;
+  };
+  override: EwsWeightConfig | null;
+  effective: {
+    weights: Record<string, number>;
+    alpha: Record<string, number>;
+    weight_floor: number;
+    worst_factor_beta: number;
+    thresholds: Record<string, number>;
+  };
+}
+
+export interface EwsValidWeeks {
+  semester_1: number[];
+  semester_2: number[];
+}
+
+// ============================================================================
+// LỖ HỔNG KIẾN THỨC (M2) & DỰ ĐOÁN PASS/FAIL (M4)
+// ============================================================================
+
+export interface LmsEvidencePattern {
+  unit_name: string;
+  pattern: string; // SKIPPED | RUSHED | OFF_TASK | EFFORT_BUT_LOST | WEAK_CHAPTER | MISSING_IN_EXAM
+  explanation: string;
+}
+
+export interface KnowledgeGapItem {
+  unit_id: number;
+  parent_id?: number | null;
+  unit_name: string | null;
+  chapter: string | null;
+  lesson: string | null;
+  is_chapter?: boolean;
+  summary: string | null; // tóm tắt SGK (làm giàu khi nạp sách)
+  keywords: string[] | null; // từ khóa/khái niệm chính
+  gap_score: number; // 0..1, cao = hổng nặng
+  mastery: number; // 0..1
+  confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
+  confidence_score?: number | null; // 0..1, % tin cậy cụ thể (vd 0.885 = 88.5%)
+  confidence_reason?: string | null; // Lời giải trình sư phạm chi tiết
+  coverage?: number | null; // 0..1, độ phủ câu hỏi LMS cho chương
+  integrity_status?: string | null; // OK | LMS_EXCEEDS_EXAM | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
+  evidence_source: string | null; // EXAM | LMS | HYBRID | PRIOR | INSUFFICIENT
+  evidence_detail: Record<string, unknown> | null;
+  // Bằng chứng chi tiết (từ student_unit_mastery) — giải thích "tại sao có kết quả này"
+  raw_mastery?: number | null; // mastery LMS thô (Bloom-weighted)
+  n_items?: number | null; // số câu LMS hợp lệ của chương
+  n_correct?: number | null; // số câu đúng
+  lm_weight?: number | null; // trọng số LMS trong adjusted
+  exam_weight?: number | null; // trọng số điểm thi trong adjusted
+  bloom_breakdown?: BloomStatItem[]; // Phân rã 6 bậc Bloom nhận thức
+  // Cây phân cấp Bài học con (nếu đây là node Chương)
+  lessons?: KnowledgeGapItem[];
+  gap_lessons_count?: number;
+  total_lessons_count?: number;
+}
+
+export interface StudentKnowledgeGaps {
+  student_code: string;
+  subject_id: number;
+  school_year_id: number;
+  semester_index: number;
+  gaps: KnowledgeGapItem[];
+}
+
+export interface ClassKnowledgeGaps {
+  class_id: number;
+  subject_id: number;
+  school_year_id: number;
+  semester_index: number;
+  gaps: KnowledgeGapItem[];
+}
+
+export interface LmsQuestionUnitRef {
+  unit_id: number;
+  unit_name: string | null;
+  chapter: string | null;
+  weight: number; // 0..1
+}
+
+export interface LmsQuestionBankItem {
+  question_id: number;
+  assignment_id: number;
+  subject_id: number;
+  so_school_id: number;
+  unit_id: number | null;
+  unit_name: string | null;
+  chapter: string | null;
+  lesson_id: number | null; // bài con trong chương (khớp pipeline test câu hỏi)
+  lesson_name: string | null;
+  bloom_level: number | null; // 1..6
+  question_type: string | null;
+  question_text: string | null; // nội dung đề bài câu hỏi
+  item_weight: number | null;
+  is_active: number | null;
+  n_responses: number | null; // số HS đã trả lời (best attempt)
+  n_correct: number | null; // số HS trả lời đúng
+  accuracy: number | null; // n_correct / n_responses (0..1)
+  units: LmsQuestionUnitRef[]; // map chương đầy đủ (multi-chapter có weight)
+}
+
+export interface StudentRosterSummary {
+  student_code: string;
+  student_name: string;
+  avg_mastery: number; // 0..1
+  gap_count: number;
+  mastered_count: number;
+  total_units: number;
+  weak_units: string[];
+  integrity_status?: string | null; // OK | LMS_EXCEEDS_EXAM | LOW_ENGAGEMENT | LMS_ONLY | FLAGGED
+  confidence?: string | null; // HIGH | MEDIUM | LOW | INSUFFICIENT
+  confidence_score?: number | null; // 0..1, % tin cậy cụ thể
+  confidence_reason?: string | null; // Lời giải trình sư phạm chi tiết
+  evidence_source: string; // HYBRID | LMS | EXAM | INSUFFICIENT
+  gaps: KnowledgeGapItem[];
+}
+
+export interface ClassRosterResponse {
+  class_id: number;
+  class_name: string;
+  subject_id: number;
+  subject_name: string;
+  school_year_id: number;
+  semester_index: number;
+  total_students: number;
+  mastered_all_count: number;
+  need_support_count: number;
+  cheating_alert_count: number;
+  low_engagement_count: number;
+  students: StudentRosterSummary[];
+}
+
+
+export interface WeakUnitInfo {
+  unit_name: string;
+  ability: number | null;   // 0..10
+  exam_weight: number;      // 0..1
+}
+
+export interface StudentForecastRow {
+  student_code: string;
+  student_name: string | null;
+  class_name: string | null;
+  predicted_score: number | null; // null = INSUFFICIENT (không đủ dữ liệu LMS)
+  verdict: "PASS" | "FAIL" | "BORDERLINE" | "INSUFFICIENT";
+  weak_units: WeakUnitInfo[];     // top 2 bài yếu nhất gây mất điểm
+  unit_abilities?: Record<number, number | null>;
+  integrity_status?: string | null;
+  exam_score?: number | null;
+  lms_score?: number | null;
+  discrepancy_warning?: string | null;
+}
+
+export interface PassFailForecastResult {
+  exam_paper_id: number | null;
+  cdi: number | null;
+  total: number;
+  pass_count: number;
+  fail_count: number;
+  borderline_count: number;
+  insufficient_count: number;
+  fail_rate: number;
+  students: StudentForecastRow[];
+}
+
+// ===== Lesson Plans (Kế hoạch bài dạy) =====
+export interface GradeOption {
+  id: number;
+  name: string;
+  has_lesson_plans: boolean;
+}
+
+export interface LessonTargetItem {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  order_number: number;
+}
+
+export interface LessonPlanBrief {
+  id: number;
+  code: string;
+  name: string;
+  period: number;
+  order_number: number;
+  unit_id: number;
+  curriculum_unit_id: number | null;
+  curriculum_unit_name: string | null;
+  has_plan: boolean;
+  target_count: number;
+  content_length: number;
+}
+
+export interface UnitTreeItem {
+  id: number;
+  code: string;
+  name: string;
+  order_number: number;
+  period: number;
+  lessons: LessonPlanBrief[];
+}
+
+export interface CourseTreeItem {
+  id: number;
+  code: string;
+  name: string;
+  period: number;
+  description: string | null;
+  units: UnitTreeItem[];
+}
+
+export interface CourseSummary {
+  id: number;
+  code: string;
+  name: string;
+  period: number;
+  description: string | null;
+  unit_count: number;
+  lesson_count: number;
+}
+
+export interface LessonPlanDetail {
+  lesson_id: number;
+  lesson_name: string;
+  lesson_code: string;
+  period: number;
+  order_number: number;
+  unit_id: number;
+  unit_name: string;
+  unit_code: string;
+  course_id: number;
+  course_name: string;
+  course_code: string;
+  curriculum_unit_id: number | null;
+  curriculum_unit_name: string | null;
+  curriculum_summary: string | null;
+  curriculum_keywords: string[] | null;
+  plan_id: number | null;
+  plan_name: string | null;
+  content_own: string | null;
+  description: string | null;
+  targets: LessonTargetItem[];
+  related_lms_questions_count: number;
+}
+
+// ===== Knowledge Gaps: Bloom Drilldown & Error Breakdown =====
+export interface BloomStatItem {
+  bloom_level: number;
+  bloom_name: string;
+  total_questions: number;
+  correct_count: number;
+  incorrect_count: number;
+  accuracy_pct: number;
+}
+
+export interface StudentUnitQuestionItem {
+  question_id: number;
+  assignment_id: number | null;
+  assignment_name: string | null;
+  question_text: string;
+  bloom_level: number;
+  is_correct: boolean | null;
+  score_received: number;
+  max_score: number;
+  response_time_seconds: number | null;
+  attempt_number: number | null;
+  integrity_flag: number | null;
+  chosen_option: string | number | null;
+  options: string[] | null;
+  correct_option: number | null;
+  explanation: string | null;
+}
+
+export interface StudentUnitBloomDrilldownResponse {
+  student_code: string;
+  unit_id: number;
+  unit_name: string;
+  chapter_name: string;
+  total_items: number;
+  total_correct: number;
+  raw_mastery: number;
+  bloom_stats: BloomStatItem[];
+  questions: StudentUnitQuestionItem[];
+}
+
+

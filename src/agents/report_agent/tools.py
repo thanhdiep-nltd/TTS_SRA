@@ -6,514 +6,25 @@ from typing import Literal
 import docx
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Inches, Pt, RGBColor
 from langchain_core.tools import tool
 from sqlalchemy import and_, func, select
 
 from src.agents.context import current_user_school_id
-from src.db.session import SessionLocal
-from src.models.tables import (
-    Class,
-    Enrollment,
-    Grade,
-    School,
-    Score,
-    Semester,
-    Student,
-    StudentTermReport,
-    Subject,
-    TeacherAssignment,
+from src.agents.report_agent.chart_generator import generate_chart_for_table
+from src.agents.report_agent.queries import (
+    compute_report_data,
+    is_valid_int,
+    resolve_parameters,
 )
-from src.schemas.analytics import ReportExportRequest
-
-# We can import the actual export logic or recreate a lightweight version of it.
-# To ensure perfect consistency, we will read from reports.py or call it.
-# However, to avoid circular imports, we can implement a clean report compiler helper here.
-
-
-def is_valid_uuid(val) -> bool:
-    if not val:
-        return False
-    try:
-        uuid.UUID(str(val))
-        return True
-    except (ValueError, TypeError):
-        return False
-
-
-def resolve_uuid_parameters(db, school_id, class_id_str, semester_id_str, subject_id_str=None):
-    import re
-
-    from src.models.tables import AcademicYear as DBAcademicYear
-
-    resolved_class_id = None
-    resolved_semester_id = None
-    resolved_subject_id = None
-
-    # 1. Nếu semester_id_str là UUID hợp lệ, truy vấn trực tiếp bảng Semester
-    ay = None
-    if semester_id_str and is_valid_uuid(semester_id_str):
-        sem_row = (
-            db.execute(
-                select(Semester)
-                .join(DBAcademicYear, Semester.academic_year_id == DBAcademicYear.id)
-                .where(DBAcademicYear.school_id == school_id, Semester.id == uuid.UUID(str(semester_id_str)))
-            )
-            .scalars()
-            .first()
-        )
-        if sem_row:
-            resolved_semester_id = str(sem_row.id)
-            # Lấy Academic Year trực tiếp thuộc về Semester này
-            ay = db.get(DBAcademicYear, sem_row.academic_year_id)
-
-    # 2. Nếu semester_id_str là Văn bản (Tên học kỳ)
-    elif semester_id_str:
-        # A. Cố gắng tìm niên khóa thông qua Regex (hỗ trợ cả dạng khoảng và năm đơn lẻ)
-        year_match_range = re.search(r"(\d{4}-\d{4})", str(semester_id_str))
-        year_match_single = re.search(r"\b(\d{4})\b", str(semester_id_str))
-
-        if year_match_range:
-            year_name = year_match_range.group(1)
-            ay = (
-                db.execute(
-                    select(DBAcademicYear).where(
-                        DBAcademicYear.school_id == school_id, DBAcademicYear.name == year_name
-                    )
-                )
-                .scalars()
-                .first()
-            )
-        elif year_match_single:
-            # Nếu chỉ nói năm đơn lẻ, ví dụ: 2025 -> tìm niên khóa chứa chuỗi '2025' (ví dụ: 2025-2026)
-            year_val = year_match_single.group(1)
-            ay = (
-                db.execute(
-                    select(DBAcademicYear).where(
-                        DBAcademicYear.school_id == school_id, DBAcademicYear.name.like(f"%{year_val}%")
-                    )
-                )
-                .scalars()
-                .first()
-            )
-
-        # B. Xác định số học kỳ từ chuỗi
-        sem_num = None
-        sem_str_clean = str(semester_id_str).lower().strip()
-        if "1" in sem_str_clean or "i" in sem_str_clean or "một" in sem_str_clean:
-            if "2" in sem_str_clean or "ii" in sem_str_clean or "hai" in sem_str_clean:
-                sem_num = 2
-            else:
-                sem_num = 1
-        elif "2" in sem_str_clean or "ii" in sem_str_clean or "hai" in sem_str_clean:
-            sem_num = 2
-
-        # C. Nếu tìm thấy ay từ chuỗi niên khóa, tìm Semester tương ứng
-        if ay and sem_num is not None:
-            sem_row = (
-                db.execute(select(Semester).where(Semester.academic_year_id == ay.id, Semester.number == sem_num))
-                .scalars()
-                .first()
-            )
-            if sem_row:
-                resolved_semester_id = str(sem_row.id)
-
-    # 3. Nếu chưa tìm thấy Academic Year (ay), fallback theo thứ tự hiện tại -> mới nhất
-    if not ay:
-        ay = (
-            db.execute(
-                select(DBAcademicYear).where(DBAcademicYear.school_id == school_id, DBAcademicYear.is_current.is_(True))
-            )
-            .scalars()
-            .first()
-        )
-    if not ay:
-        ay = (
-            db.execute(
-                select(DBAcademicYear)
-                .where(DBAcademicYear.school_id == school_id)
-                .order_by(DBAcademicYear.start_date.desc())
-            )
-            .scalars()
-            .first()
-        )
-
-    # Nếu có semester_id_str là chuỗi văn bản (ví dụ chỉ nói "HK1" không kèm năm),
-    # và ta chưa tìm được resolved_semester_id nhưng đã có ay mặc định ở trên:
-    if semester_id_str and not resolved_semester_id and not is_valid_uuid(semester_id_str):
-        sem_num = None
-        sem_str_clean = str(semester_id_str).lower().strip()
-        if "1" in sem_str_clean or "i" in sem_str_clean or "một" in sem_str_clean:
-            if "2" in sem_str_clean or "ii" in sem_str_clean or "hai" in sem_str_clean:
-                sem_num = 2
-            else:
-                sem_num = 1
-        elif "2" in sem_str_clean or "ii" in sem_str_clean or "hai" in sem_str_clean:
-            sem_num = 2
-
-        if ay and sem_num is not None:
-            sem_row = (
-                db.execute(select(Semester).where(Semester.academic_year_id == ay.id, Semester.number == sem_num))
-                .scalars()
-                .first()
-            )
-            if sem_row:
-                resolved_semester_id = str(sem_row.id)
-
-    # Resolve Class ID using resolved Academic Year scope
-    if class_id_str:
-        if is_valid_uuid(class_id_str):
-            class_row = (
-                db.execute(
-                    select(Class)
-                    .join(Grade, Class.grade_id == Grade.id)
-                    .where(Grade.school_id == school_id, Class.id == uuid.UUID(str(class_id_str)))
-                )
-                .scalars()
-                .first()
-            )
-            if class_row:
-                resolved_class_id = str(class_row.id)
-        else:
-            # Query class filtering by grade, school_id, and academic_year_id
-            stmt = (
-                select(Class)
-                .join(Grade, Class.grade_id == Grade.id)
-                .where(Grade.school_id == school_id, func.lower(Class.name) == str(class_id_str).lower().strip())
-            )
-            if ay:
-                stmt = stmt.where(Class.academic_year_id == ay.id)
-
-            class_row = db.execute(stmt).scalars().first()
-            if class_row:
-                resolved_class_id = str(class_row.id)
-            else:
-                stmt_like = (
-                    select(Class)
-                    .join(Grade, Class.grade_id == Grade.id)
-                    .where(Grade.school_id == school_id, Class.name.ilike(f"%{str(class_id_str).strip()}%"))
-                )
-                if ay:
-                    stmt_like = stmt_like.where(Class.academic_year_id == ay.id)
-
-                class_row_like = db.execute(stmt_like).scalars().first()
-                if class_row_like:
-                    resolved_class_id = str(class_row_like.id)
-
-    # Resolve Subject ID
-    if subject_id_str:
-        if is_valid_uuid(subject_id_str):
-            sub_row = (
-                db.execute(
-                    select(Subject).where(Subject.school_id == school_id, Subject.id == uuid.UUID(str(subject_id_str)))
-                )
-                .scalars()
-                .first()
-            )
-            if sub_row:
-                resolved_subject_id = str(sub_row.id)
-        else:
-            # 1. Exact match by name (case-insensitive)
-            sub_row = (
-                db.execute(
-                    select(Subject).where(
-                        Subject.school_id == school_id, func.lower(Subject.name) == str(subject_id_str).lower().strip()
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            if sub_row:
-                resolved_subject_id = str(sub_row.id)
-            else:
-                # 2. Exact match by code (case-insensitive)
-                sub_row_code = (
-                    db.execute(
-                        select(Subject).where(
-                            Subject.school_id == school_id,
-                            func.lower(Subject.code) == str(subject_id_str).lower().strip(),
-                        )
-                    )
-                    .scalars()
-                    .first()
-                )
-                if sub_row_code:
-                    resolved_subject_id = str(sub_row_code.id)
-                else:
-                    # 3. Partial match (case-insensitive, searching keyword in name or code)
-                    stmt = select(Subject).where(Subject.school_id == school_id)
-                    all_school_subs = db.execute(stmt).scalars().all()
-
-                    search_term = str(subject_id_str).lower().strip()
-                    matched_subs = []
-                    for sub in all_school_subs:
-                        s_name = sub.name.lower()
-                        s_code = sub.code.lower()
-                        if search_term in s_name or search_term in s_code:
-                            matched_subs.append(sub)
-
-                    if matched_subs:
-                        # Prioritize exact/closer matches by sorting by name length (e.g. "Vật lý" vs "Lịch sử và Địa lý" when searching for "Lý")
-                        matched_subs.sort(key=lambda s: len(s.name))
-                        resolved_subject_id = str(matched_subs[0].id)
-
-    return resolved_class_id, resolved_semester_id, resolved_subject_id
-
-
-def compute_report_data(db, school_id, report_type, grade_level, class_id=None, semester_id=None, subject_id=None):
-    # Resolve dynamic names or text to UUIDs
-    resolved_class_id, resolved_semester_id, resolved_subject_id = resolve_uuid_parameters(
-        db, school_id, class_id, semester_id, subject_id
-    )
-    class_id = resolved_class_id or class_id
-    semester_id = resolved_semester_id or semester_id
-    subject_id = resolved_subject_id or subject_id
-
-    # Resolve semester
-    sem = None
-    if semester_id and is_valid_uuid(semester_id):
-        sem = db.get(Semester, uuid.UUID(str(semester_id)))
-    if not sem:
-        sem = db.execute(select(Semester).where(Semester.is_current.is_(True))).scalars().first()
-        if not sem:
-            sem = db.execute(select(Semester)).scalars().first()
-
-    semester_id = sem.id if sem else None
-    sem_name = sem.name if sem else "Học Kỳ 2"
-    academic_year_id = sem.academic_year_id if sem else None
-
-    # Resolve academic year name
-    year_name = "2025-2026"
-    if academic_year_id:
-        from src.models.tables import AcademicYear as DBAcademicYear
-
-        ay = db.get(DBAcademicYear, academic_year_id)
-        if ay:
-            year_name = ay.name
-
-    selected_grade_name = "Toàn trường"
-    if grade_level != "all":
-        selected_grade_name = f"Khối {grade_level}"
-
-    selected_class_name = ""
-    if class_id and is_valid_uuid(class_id):
-        cls_row = db.get(Class, uuid.UUID(str(class_id)) if isinstance(class_id, str) else class_id)
-        if cls_row:
-            selected_class_name = f" - Lớp {cls_row.name}"
-
-    # Filters
-    filters = []
-    if semester_id:
-        if is_valid_uuid(semester_id):
-            filters.append(Score.semester_id == semester_id)
-        else:
-            raise ValueError(f"Không tìm thấy học kỳ '{semester_id}' trong cơ sở dữ liệu.")
-    if class_id:
-        if is_valid_uuid(class_id):
-            filters.append(Score.class_id == class_id)
-        else:
-            raise ValueError(f"Không tìm thấy lớp học '{class_id}' trong cơ sở dữ liệu.")
-    elif grade_level != "all":
-        try:
-            grade_num = int(grade_level)
-            filters.append(
-                Score.class_id.in_(
-                    select(Class.id).join(Grade).where(Grade.grade_number == grade_num, Grade.school_id == school_id)
-                )
-            )
-        except ValueError:
-            pass
-    final_scope = and_(*filters) if filters else None
-
-    # Stats
-    gpa = _average_gpa(db, final_scope)
-    at_risk = _at_risk_classes(db, final_scope)
-
-    if academic_year_id:
-        if class_id is None and grade_level == "all":
-            total_students_stmt = (
-                select(func.count(Student.id.distinct()))
-                .select_from(Student)
-                .where(Student.is_active.is_(True), Student.school_id == school_id)
-            )
-        else:
-            total_students_stmt = (
-                select(func.count(Student.id.distinct()))
-                .select_from(Student)
-                .join(Enrollment, Student.id == Enrollment.student_id)
-                .where(
-                    Student.is_active.is_(True),
-                    Student.school_id == school_id,
-                    Enrollment.academic_year_id == academic_year_id,
-                )
-            )
-            if class_id:
-                total_students_stmt = total_students_stmt.where(Enrollment.class_id == class_id)
-            elif grade_level != "all":
-                try:
-                    grade_num = int(grade_level)
-                    total_students_stmt = (
-                        total_students_stmt.join(Class, Enrollment.class_id == Class.id)
-                        .join(Grade, Class.grade_id == Grade.id)
-                        .where(Grade.grade_number == grade_num)
-                    )
-                except ValueError:
-                    pass
-        total_students = db.scalar(total_students_stmt) or 0
-
-        total_classes_stmt = (
-            select(func.count())
-            .select_from(Class)
-            .join(Grade, Class.grade_id == Grade.id)
-            .where(Grade.school_id == school_id, Class.academic_year_id == academic_year_id)
-        )
-        if class_id:
-            total_classes_stmt = total_classes_stmt.where(Class.id == class_id)
-        elif grade_level != "all":
-            try:
-                grade_num = int(grade_level)
-                total_classes_stmt = total_classes_stmt.where(Grade.grade_number == grade_num)
-            except ValueError:
-                pass
-        total_classes = db.scalar(total_classes_stmt) or 0
-    else:
-        total_students_stmt = (
-            select(func.count(Student.id.distinct()))
-            .select_from(Student)
-            .where(Student.is_active.is_(True), Student.school_id == school_id)
-        )
-        if class_id or grade_level != "all":
-            total_students_stmt = total_students_stmt.join(Enrollment, Student.id == Enrollment.student_id)
-            if class_id:
-                total_students_stmt = total_students_stmt.where(Enrollment.class_id == class_id)
-            elif grade_level != "all":
-                try:
-                    grade_num = int(grade_level)
-                    total_students_stmt = (
-                        total_students_stmt.join(Class, Enrollment.class_id == Class.id)
-                        .join(Grade, Class.grade_id == Grade.id)
-                        .where(Grade.grade_number == grade_num)
-                    )
-                except ValueError:
-                    pass
-        total_students = db.scalar(total_students_stmt) or 0
-
-        total_classes_stmt = (
-            select(func.count())
-            .select_from(Class)
-            .join(Grade, Class.grade_id == Grade.id)
-            .where(Grade.school_id == school_id)
-        )
-        if class_id:
-            total_classes_stmt = total_classes_stmt.where(Class.id == class_id)
-        elif grade_level != "all":
-            try:
-                grade_num = int(grade_level)
-                total_classes_stmt = total_classes_stmt.where(Grade.grade_number == grade_num)
-            except ValueError:
-                pass
-        total_classes = db.scalar(total_classes_stmt) or 0
-
-    # Subject Averages
-    subject_averages = []
-    if semester_id:
-        stmt_sub_avg = (
-            select(Subject.name, func.avg(Score.value))
-            .select_from(Score)
-            .join(Subject, Score.subject_id == Subject.id)
-            .join(Class, Score.class_id == Class.id)
-            .join(Grade, Class.grade_id == Grade.id)
-            .where(
-                Grade.school_id == school_id,
-                Score.semester_id == semester_id,
-                Score.status == "APPROVED",
-                Score.score_category == "FINAL",
-            )
-        )
-        if class_id:
-            stmt_sub_avg = stmt_sub_avg.where(Score.class_id == class_id)
-        elif grade_level != "all":
-            try:
-                grade_num = int(grade_level)
-                stmt_sub_avg = stmt_sub_avg.where(Grade.grade_number == grade_num)
-            except ValueError:
-                pass
-        for s_name, val in db.execute(stmt_sub_avg.group_by(Subject.name)).all():
-            if val is not None:
-                subject_averages.append({"Môn học": s_name, "ĐTB": round(float(val), 2)})
-
-    # Conduct
-    conduct_stats = {"TOT": 0, "KHA": 0, "TRUNG_BINH": 0, "YEU": 0}
-    if semester_id:
-        stmt_conduct = (
-            select(StudentTermReport.conduct, func.count(StudentTermReport.id))
-            .join(Class, StudentTermReport.class_id == Class.id)
-            .join(Grade, Class.grade_id == Grade.id)
-            .where(Grade.school_id == school_id, StudentTermReport.semester_id == semester_id)
-        )
-        if class_id:
-            stmt_conduct = stmt_conduct.where(StudentTermReport.class_id == class_id)
-        elif grade_level != "all":
-            try:
-                grade_num = int(grade_level)
-                stmt_conduct = stmt_conduct.where(Grade.grade_number == grade_num)
-            except ValueError:
-                pass
-        for c_enum, count in db.execute(stmt_conduct.group_by(StudentTermReport.conduct)).all():
-            if c_enum:
-                conduct_stats[c_enum.name] = count
-
-    # Staff
-    active_teachers_count = 0
-    homeroom_count = 0
-    subject_teacher_count = 0
-    if academic_year_id:
-        active_teachers_count = (
-            db.scalar(
-                select(func.count(TeacherAssignment.user_id.distinct())).where(
-                    TeacherAssignment.academic_year_id == academic_year_id, TeacherAssignment.is_active.is_(True)
-                )
-            )
-            or 0
-        )
-        homeroom_count = (
-            db.scalar(
-                select(func.count(TeacherAssignment.id)).where(
-                    TeacherAssignment.academic_year_id == academic_year_id,
-                    TeacherAssignment.role_context.in_(["HOMEROOM_PRIMARY", "HOMEROOM_SECONDARY"]),
-                    TeacherAssignment.is_active.is_(True),
-                )
-            )
-            or 0
-        )
-        subject_teacher_count = (
-            db.scalar(
-                select(func.count(TeacherAssignment.id)).where(
-                    TeacherAssignment.academic_year_id == academic_year_id,
-                    TeacherAssignment.role_context == "SUBJECT_TEACHER",
-                    TeacherAssignment.is_active.is_(True),
-                )
-            )
-            or 0
-        )
-
-    return {
-        "semester_id": semester_id,
-        "sem_name": sem_name,
-        "year_name": year_name,
-        "selected_grade_name": selected_grade_name,
-        "selected_class_name": selected_class_name,
-        "total_students": total_students,
-        "total_classes": total_classes,
-        "gpa": gpa,
-        "at_risk": at_risk,
-        "subject_averages": subject_averages,
-        "conduct_stats": conduct_stats,
-        "active_teachers_count": active_teachers_count,
-        "homeroom_count": homeroom_count,
-        "subject_teacher_count": subject_teacher_count,
-    }
-
+from src.agents.report_agent.visual_contracts import (
+    ColumnAlignment,
+    detect_cell_alignment,
+    sanitize_delta_value,
+)
+from src.db.session import SessionLocal
+from src.models.tables import User as DBUser
+from src.schemas.analytics import ReportExportRequestS360
 
 @tool
 def get_report_data_summary(
@@ -522,6 +33,7 @@ def get_report_data_summary(
     class_id: str = None,
     semester_id: str = None,
     subject_id: str = None,
+    school_year_id: str = None,
 ) -> str:
     """Tra cứu và tổng hợp số liệu báo cáo thống kê phục vụ cho việc hiển thị bảng số liệu trực tiếp.
 
@@ -531,17 +43,14 @@ def get_report_data_summary(
         class_id: ID hoặc Tên lớp học cụ thể (tùy chọn, ví dụ: '10A1', '8B').
         semester_id: ID hoặc Tên học kỳ/Số học kỳ (tùy chọn, ví dụ: 'Học kỳ 1', 'HK1', '1', 'Học kỳ 2', 'HK2', '2').
         subject_id: ID hoặc Tên/Mã môn học cụ thể (tùy chọn, ví dụ: 'Toán', 'Ngữ văn', 'Tiếng Anh').
+        school_year_id: ID hoặc Tên niên khóa (tùy chọn, ví dụ: '2025-2026').
     """
     school_id = current_user_school_id.get()
     if not school_id:
         return "Lỗi: Không xác định được trường học. Vui lòng đăng nhập."
 
     with SessionLocal() as db:
-        # Fetch school name
-        school = db.get(School, school_id)
-        school_name = school.name if school else "Trường học"
-
-        data = compute_report_data(db, school_id, report_type, grade_level, class_id, semester_id, subject_id)
+        data = compute_report_data(db, school_id, report_type, grade_level, class_id, semester_id, subject_id, school_year_id)
 
         report_titles = {
             "academic_conduct": "BÁO CÁO TỔNG KẾT KẾT QUẢ HỌC TẬP VÀ RÈN LUYỆN",
@@ -551,7 +60,7 @@ def get_report_data_summary(
         }
         title_text = report_titles.get(report_type, f"BÁO CÁO THỐNG KÊ {report_type.upper()}")
 
-        summary = f"### {title_text} - {school_name.upper()}\n"
+        summary = f"### {title_text}\n"
         summary += f"- **Phạm vi**: {data['selected_grade_name']}{data['selected_class_name']}\n"
         summary += f"- **Niên khóa**: {data['year_name']} / **Học kỳ**: {data['sem_name']}\n\n"
 
@@ -582,7 +91,7 @@ def get_report_data_summary(
 
         elif report_type == "at_risk":
             summary += "\n#### Thống kê nhóm học sinh cần hỗ trợ sư phạm:\n"
-            summary += f"- **Số lượng học sinh nguy cơ**: {data['at_risk']} lớp học cảnh báo có ĐTB < 5.0\n"
+            summary += f"- **Số lượng lớp cảnh báo có ĐTB < 5.0**: {data['at_risk']} lớp\n"
 
         elif report_type == "subject_report":
             summary += "\n#### Báo cáo chuyên sâu môn học:\n"
@@ -600,6 +109,7 @@ async def generate_report_download_link(
     class_id: str = None,
     semester_id: str = None,
     subject_id: str = None,
+    school_year_id: str = None,
     include_ai_insights: bool = True,
     include_tables: bool = True,
     include_signature: bool = True,
@@ -611,11 +121,12 @@ async def generate_report_download_link(
 
     Args:
         report_type: Loại báo cáo ('academic_conduct', 'subject_quality', 'at_risk', 'subject_report').
-        format: Định dạng tệp ('docx', 'pdf', 'html'). Bạn có thể chọn bất kỳ định dạng nào (ví dụ 'docx'), cả 3 định dạng đều sẽ được tạo ra tự động dưới cùng một UUID.
+        format: Định dạng tệp ('docx', 'pdf', 'html').
         grade_level: Khối lớp học ('all' hoặc số khối ví dụ: '7', '8', '10', '11', '12').
         class_id: ID hoặc Tên lớp học cụ thể (tùy chọn, ví dụ: '10A1', '8B').
         semester_id: ID hoặc Tên học kỳ/Số học kỳ (tùy chọn, ví dụ: 'Học kỳ 1', 'HK1', '1', 'Học kỳ 2', 'HK2', '2').
         subject_id: ID hoặc tên môn học cụ thể (tùy chọn).
+        school_year_id: ID hoặc Tên niên khóa (tùy chọn, ví dụ: '2025-2026').
         include_ai_insights: Bao gồm nhận xét phân tích từ AI.
         include_tables: Bao gồm bảng dữ liệu chi tiết.
         include_signature: Bao gồm khung chữ ký phê duyệt.
@@ -630,31 +141,15 @@ async def generate_report_download_link(
         os.makedirs(temp_dir)
 
     try:
-        from src.api.v1.reports import export_analytics_report
+        from src.api.v1.reports import export_analytics_report_s360
 
-        user_id = None
         with SessionLocal() as db:
-            db.get(School, school_id)
-
-            from src.models.tables import User as DBUser
-
-            user_row = (
-                db.execute(select(DBUser).where(DBUser.so_school_id == school_id, DBUser.is_active.is_(True)))
-                .scalars()
-                .first()
-            )
-
-            if not user_row:
-                return "Lỗi: Không tìm thấy tài khoản người dùng hợp lệ để xuất báo cáo."
-
-            user_id = user_row.id
-
-            # Resolve dynamic names or text to UUIDs
-            resolved_class_id, resolved_semester_id, resolved_subject_id = resolve_uuid_parameters(
-                db, school_id, class_id, semester_id, subject_id
+            resolved_class_id, resolved_school_year_id, resolved_semester_index, resolved_subject_id = resolve_parameters(
+                db, school_id, class_id, semester_id, subject_id, school_year_id
             )
             class_id = resolved_class_id or class_id
-            semester_id = resolved_semester_id or semester_id
+            school_year_id = resolved_school_year_id or school_year_id
+            semester_index = resolved_semester_index or 1
             subject_id = resolved_subject_id or subject_id
 
         formats_to_generate = ["docx", "html", "pdf"]
@@ -663,25 +158,29 @@ async def generate_report_download_link(
         for fmt in formats_to_generate:
             try:
                 with SessionLocal() as db:
-                    from src.models.tables import User as DBUser
-                    user = db.get(DBUser, user_id)
-                    if not user:
+                    user_row = (
+                        db.execute(select(DBUser).where(DBUser.so_school_id == school_id, DBUser.is_active.is_(True)))
+                        .scalars()
+                        .first()
+                    )
+                    if not user_row:
                         continue
 
-                    payload = ReportExportRequest(
+                    payload = ReportExportRequestS360(
                         report_type=report_type,
                         format=fmt,
                         grade_level=grade_level,
-                        class_id=class_id,
-                        semester_id=uuid.UUID(semester_id) if semester_id and is_valid_uuid(semester_id) else None,
-                        subject_id=uuid.UUID(subject_id) if subject_id and is_valid_uuid(subject_id) else None,
+                        class_id=int(str(class_id)) if class_id and is_valid_int(class_id) else None,
+                        semester_index=semester_index,
+                        subject_id=int(str(subject_id)) if subject_id and is_valid_int(subject_id) else None,
+                        school_year_id=int(str(school_year_id)) if school_year_id and is_valid_int(school_year_id) else None,
                         include_charts=True,
                         include_tables=include_tables,
                         include_ai_insights=include_ai_insights,
                         include_signature=include_signature,
                     )
 
-                    response = export_analytics_report(payload=payload, user=user, db=db)
+                    response = export_analytics_report_s360(payload=payload, user=user_row, db=db)
 
                 fmt_filepath = os.path.join(temp_dir, f"bao_cao_{report_type}_{file_uuid}.{fmt}")
                 if hasattr(response, "body"):
@@ -693,7 +192,6 @@ async def generate_report_download_link(
                             f.write(chunk)
                 generated_formats.append(fmt)
             except Exception as e:
-                # Log error for a specific format but allow others to succeed
                 print(f"Error generating format {fmt}: {str(e)}")
 
         if not generated_formats:
@@ -720,7 +218,6 @@ async def generate_report_download_link(
 
     except Exception as e:
         return f"Lỗi trong quá trình tạo tệp báo cáo: {str(e)}"
-
 
 def render_markdown_to_docx(title: str, content_markdown: str) -> docx.Document:
     doc = docx.Document()
@@ -791,6 +288,7 @@ def render_markdown_to_docx(title: str, content_markdown: str) -> docx.Document:
             table.style = "Table Grid"
             table.alignment = 1  # Center
 
+            headers = parsed_rows[0] if parsed_rows else []
             for r_idx, row_data in enumerate(parsed_rows):
                 row = table.rows[r_idx]
                 is_header = r_idx == 0
@@ -804,13 +302,50 @@ def render_markdown_to_docx(title: str, content_markdown: str) -> docx.Document:
                         if is_header:
                             p.alignment = 1  # Center
                             add_formatted_text(p, val, is_bold_default=True)
-                            shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F2F2F2"/>')
+                            shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="F2F4F7"/>')
                             cell._tc.get_or_add_tcPr().append(shading_elm)
                         else:
-                            p.alignment = 0  # Left
+                            header_name = headers[c_idx] if c_idx < len(headers) else ""
+                            align = detect_cell_alignment(header_name, val)
+                            if align == ColumnAlignment.RIGHT:
+                                p.alignment = 2  # Right
+                            elif align == ColumnAlignment.CENTER:
+                                p.alignment = 1  # Center
+                            else:
+                                p.alignment = 0  # Left
+
+                            # Sanitize delta if in delta column
+                            if "chênh lệch" in header_name.lower() or "(δ)" in header_name.lower() or "(delta)" in header_name.lower():
+                                val = sanitize_delta_value(val)
+
                             add_formatted_text(p, val)
 
-            doc.add_paragraph().paragraph_format.space_after = Pt(6)
+            doc.add_paragraph().paragraph_format.space_after = Pt(4)
+
+            # Tự động sinh và nhúng biểu đồ trực quan dưới bảng (nếu bảng có số liệu)
+            if len(parsed_rows) >= 2:
+                data_rows = parsed_rows[1:]
+                chart_res = generate_chart_for_table(headers, data_rows, report_title=title)
+                if chart_res:
+                    chart_path, _ = chart_res
+                    try:
+                        p_img = doc.add_paragraph()
+                        p_img.alignment = 1  # Center
+                        p_img.paragraph_format.space_before = Pt(8)
+                        p_img.paragraph_format.space_after = Pt(2)
+                        p_img.paragraph_format.keep_with_next = True
+                        doc.add_picture(chart_path, width=Inches(6.0))
+
+                        p_cap = doc.add_paragraph()
+                        p_cap.alignment = 1  # Center
+                        p_cap.paragraph_format.space_after = Pt(12)
+                        r_cap = p_cap.add_run("Hình: Biểu đồ trực quan hóa dữ liệu thống kê")
+                        r_cap.font.italic = True
+                        r_cap.font.size = Pt(10)
+                        r_cap.font.name = "Times New Roman"
+                        r_cap.font.color.rgb = RGBColor(100, 116, 139)
+                    except Exception as img_err:
+                        print(f"[DOCX Renderer] Lỗi khi nhúng ảnh biểu đồ: {img_err}")
 
         table_rows = []
         in_table = False
@@ -948,16 +483,38 @@ def render_markdown_to_html(title: str, content_markdown: str) -> str:
                 parsed_rows.append(cols)
 
         if parsed_rows:
+            headers = parsed_rows[0] if parsed_rows else []
             html_body.append('<table class="report-table">')
             for r_idx, row_data in enumerate(parsed_rows):
                 is_header = r_idx == 0
                 html_body.append("<tr>")
-                for val in row_data:
-                    cell_tag = "th" if is_header else "td"
-                    val_html = parse_inline_markdown(val)
-                    html_body.append(f"<{cell_tag}>{val_html}</{cell_tag}>")
+                for c_idx, val in enumerate(row_data):
+                    if is_header:
+                        val_html = parse_inline_markdown(val)
+                        html_body.append(f'<th style="text-align: center;">{val_html}</th>')
+                    else:
+                        header_name = headers[c_idx] if c_idx < len(headers) else ""
+                        align = detect_cell_alignment(header_name, val)
+                        if "chênh lệch" in header_name.lower() or "(δ)" in header_name.lower() or "(delta)" in header_name.lower():
+                            val = sanitize_delta_value(val)
+                        val_html = parse_inline_markdown(val)
+                        html_body.append(f'<td style="text-align: {align.value};">{val_html}</td>')
                 html_body.append("</tr>")
             html_body.append("</table>")
+
+            # Tự động sinh và nhúng biểu đồ trực quan dưới bảng (nếu bảng có số liệu)
+            if len(parsed_rows) >= 2:
+                data_rows = parsed_rows[1:]
+                chart_res = generate_chart_for_table(headers, data_rows, report_title=title)
+                if chart_res:
+                    _, data_uri = chart_res
+                    html_body.append(
+                        f'<div style="text-align: center; margin: 20px 0;">'
+                        f'<img src="{data_uri}" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #E2E8F0; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" />'
+                        f'<p style="font-size: 10pt; color: #64748B; font-style: italic; margin-top: 6px; text-align: center;">Hình: Biểu đồ trực quan hóa dữ liệu thống kê</p>'
+                        f'</div>'
+                    )
+
         table_rows = []
         in_table = False
 

@@ -12,7 +12,6 @@ import {
   ChevronUp,
   Loader2,
   Clock,
-  ListChecks,
 } from "lucide-react";
 
 export type StepCategory =
@@ -76,25 +75,52 @@ export const AgentStepTimeline: React.FC<AgentStepTimelineProps> = ({
   steps,
   isLiveLoading = false,
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null);
 
   if (!steps || steps.length === 0) return null;
 
+  // Bước đang chạy hiện tại (bước cuối có status "running" khi live loading)
+  const runningStep = steps[steps.length - 1];
+
+  // Icon + màu của bước đang chạy (fallback sang màu brand nếu không xác định)
+  const runningConfig = runningStep
+    ? CATEGORY_CONFIG[runningStep.category] || {
+      icon: Search,
+      colorClass: "text-brand-600 dark:text-brand-400",
+    }
+    : { icon: Search, colorClass: "text-brand-600 dark:text-brand-400" };
+  const RunningIcon = runningConfig.icon;
+
+  const isLive = isLiveLoading && !!runningStep && runningStep.status === "running";
+
   return (
     <div className="mt-0.5 mb-3.5 text-xs select-none">
-      {/* Header Bar: Icons + Đã thực hiện N bước + Toggle */}
+      {/* Header Bar (1 dòng duy nhất): spinner + trạng thái live hoặc "Đã thực hiện N bước" + Toggle */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 text-xs py-1 font-normal transition-colors cursor-pointer"
       >
-        <ListChecks className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
-        <span className="font-medium text-xs">Đã thực hiện {steps.length} bước</span>
-        {expanded ? (
-          <ChevronUp className="w-3 h-3 text-slate-400" />
+        {/* Chỉ 1 icon duy nhất chính giữa: spinner khi live, còn lại icon phân loại bước */}
+        {isLive ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 shrink-0" />
         ) : (
-          <ChevronDown className="w-3 h-3 text-slate-400" />
+          <RunningIcon className={`w-3.5 h-3.5 ${runningConfig.colorClass} shrink-0`} />
+        )}
+        <span className="font-medium text-xs truncate">
+          {/* key theo steps.length để khi chuyển bước → re-mount → animation chạy lại */}
+          <span
+            key={`status-${steps.length}-${runningStep.id}`}
+            className="step-transition"
+          >
+            {isLive ? `Đang thực hiện: ${runningStep.title}` : `Đã thực hiện: ${runningStep.title}`}
+          </span>
+        </span>
+        {expanded ? (
+          <ChevronUp className="w-3 h-3 text-slate-400 shrink-0" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
         )}
       </button>
 

@@ -86,29 +86,75 @@ def embed_query(text: str, settings: Settings | None = None) -> list[float]:
         raise RetrievalUnavailableError(f"Lỗi gọi embedding service ({s.embedding_provider}): {exc}") from exc
 
 
-def _build_filter(mon: str | None, lop: str | None) -> dict | None:
+def _build_filter(mon: str | None, lop: str | None, include_lesson_plans: bool = False) -> dict | None:
     """Dựng filter payload Qdrant theo môn/lớp (lop lưu dạng chuỗi trong payload)."""
     must = []
+    must_not = []
     if mon:
         must.append({"key": "mon", "match": {"value": mon}})
     if lop:
         must.append({"key": "lop", "match": {"value": str(lop)}})
-    return {"must": must} if must else None
+    if not include_lesson_plans:
+        must_not.append({"key": "source", "match": {"value": "giao_an"}})
+    res = {}
+    if must:
+        res["must"] = must
+    if must_not:
+        res["must_not"] = must_not
+    return res if res else None
 
 
-def search_textbook(query: str, mon: str | None = None, lop: str | None = None) -> list[dict]:
-    """Tìm các đoạn SGK liên quan nhất. Trả list payload kèm `score` (đã lọc theo score_floor)."""
+def search_textbook(
+    query: str,
+    mon: str | None = None,
+    lop: str | None = None,
+    include_lesson_plans: bool = False,
+) -> list[dict]:
+    """Tìm các đoạn SGK liên quan nhất (hoặc cả SGK + giáo án). Trả list payload kèm `score`."""
     s = get_settings()
     vector = embed_query(query, s)
     body: dict = {
         "vector": vector,
         "limit": s.retrieval_top_k,
-        "with_payload": ["mon", "lop", "chuong", "heading", "source_md", "text"],
+        "with_payload": ["mon", "lop", "chuong", "heading", "source_md", "text", "source", "unit_name", "lesson_name"],
         "score_threshold": s.retrieval_score_floor,
     }
-    flt = _build_filter(mon, lop)
+    flt = _build_filter(mon, lop, include_lesson_plans=include_lesson_plans)
     if flt:
         body["filter"] = flt
+    headers = {"api-key": s.qdrant_api_key} if s.qdrant_api_key else {}
+    try:
+        resp = httpx.post(
+            f"{s.qdrant_url.rstrip('/')}/collections/{s.qdrant_collection}/points/search",
+            json=body,
+            headers=headers,
+            timeout=s.retrieval_timeout_s,
+        )
+        resp.raise_for_status()
+        hits = resp.json()["result"]
+    except (httpx.HTTPError, KeyError) as exc:
+        logger.warning("rag_qdrant_unavailable", error=str(exc), mon=mon, lop=lop)
+        raise RetrievalUnavailableError(f"Lỗi truy vấn Qdrant: {exc}") from exc
+
+    return [{"score": h["score"], **h.get("payload", {})} for h in hits]
+
+
+def search_lesson_plan(query: str, mon: str | None = None, lop: str | None = None) -> list[dict]:
+    """Tìm kiếm chuyên biệt trong kho Giáo án (source = 'giao_an')."""
+    s = get_settings()
+    vector = embed_query(query, s)
+    must = [{"key": "source", "match": {"value": "giao_an"}}]
+    if mon:
+        must.append({"key": "mon", "match": {"value": mon}})
+    if lop:
+        must.append({"key": "lop", "match": {"value": str(lop)}})
+    body: dict = {
+        "vector": vector,
+        "limit": s.retrieval_top_k,
+        "with_payload": ["mon", "lop", "chuong", "heading", "source_md", "text", "source", "unit_name", "lesson_name"],
+        "score_threshold": s.retrieval_score_floor,
+        "filter": {"must": must},
+    }
     headers = {"api-key": s.qdrant_api_key} if s.qdrant_api_key else {}
     try:
         resp = httpx.post(

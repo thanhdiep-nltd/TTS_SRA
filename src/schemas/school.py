@@ -192,3 +192,7 @@ class CurriculumUnitRead(ORMBase):
     semester_number: int | None
     is_active: bool
     created_at: datetime
+    # Làm giàu nội dung khi nạp sách giáo khoa (quét toàn cuốn) — picker không bắt buộc dùng.
+    summary: str | None = None
+    keywords: list[str] | None = None
+    sections: list[dict] | None = None

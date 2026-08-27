@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from pydantic import BaseModel
 
 from src.models import enums
@@ -8,12 +6,12 @@ from src.models import enums
 class ExamValidityRead(BaseModel):
     """Một dòng tam giác hóa độ khó: EDI (thực nghiệm, từ điểm số) vs CDI (nội dung đề)."""
 
-    exam_paper_id: UUID
-    subject_id: UUID
+    exam_paper_id: int
+    subject_id: int
     subject_name: str
-    semester_id: UUID
+    semester_id: int
     score_category: enums.ScoreCategory
-    grade_id: UUID | None
+    grade_id: int | None
     grade_name: str
     n: int
     mean_score: float
@@ -36,7 +34,7 @@ class SchoolValidityOverview(BaseModel):
 class ContentAdjustedRankRow(BaseModel):
     """Xếp hạng lớp theo thực lực neo-nội-dung (content_adjusted_ability)."""
 
-    class_id: UUID
+    class_id: int
     class_name: str
     raw_average: float
     content_adjusted_ability: float

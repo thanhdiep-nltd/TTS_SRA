@@ -337,6 +337,190 @@ def get_class_grades(
 
 
 @tool
+def get_knowledge_gap_report(student_code: str, subject: str, year: int = 0, semester: int = 1) -> str:
+    """Phát hiện lỗ hổng kiến thức (học sinh hổng chương/bài nào) của 1 học sinh theo môn.
+
+    Dùng khi người dùng hỏi "học sinh X hổng kiến thức gì", "yếu chương nào", "cần ôn phần nào".
+    Dựa trên đề thi đã map chuẩn chương trình (exam_competencies) + điểm tổng của học sinh.
+
+    Args:
+        student_code: Mã học sinh (ví dụ: 'HS25091332').
+        subject: Tên môn học (ví dụ: 'Toán học').
+        year: Năm học bắt đầu (0 để tự lấy năm hiện hành, ví dụ: 2025).
+        semester: Học kỳ (1 hoặc 2).
+    """
+    from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
+
+    with SessionLocal() as session:
+        if not year or year <= 0:
+            cur_sy = session.execute(text("SELECT id FROM s360.dim_school_year WHERE is_current = 1 LIMIT 1")).fetchone()
+            year = int(cur_sy.id) if cur_sy and cur_sy.id else 2025
+
+        subj = session.execute(
+            text("SELECT id FROM s360.dim_subject WHERE name ILIKE :n LIMIT 1"),
+            {"n": f"%{subject.strip()}%"},
+        ).fetchone()
+        if not subj:
+            return f"Không tìm thấy môn học '{subject}'."
+
+        units_rows = session.execute(
+            text("""
+                SELECT ec.unit_id, ec.weight, ec.bloom_level
+                FROM public.exam_competencies ec
+                JOIN public.exam_papers ep ON ep.id = ec.exam_paper_id
+                WHERE ep.subject_id = :sid AND ep.semester_id = :sem
+                ORDER BY CASE ep.score_category WHEN 'FINAL' THEN 0 WHEN 'MIDTERM' THEN 1 ELSE 2 END
+                LIMIT 100
+            """),
+            {"sid": subj.id, "sem": semester},
+        ).fetchall()
+        if not units_rows:
+            return "Chưa có đề thi nào được map chuẩn chương trình cho môn này — chưa thể phát hiện lỗ hổng kiến thức."
+
+        units = [
+            UnitWeight(unit_id=r.unit_id, weight=float(r.weight or 0), bloom_level=r.bloom_level or 3)
+            for r in units_rows
+        ]
+
+        score = session.execute(
+            text("""
+                SELECT final_grade, max_grade FROM s360.fact_gradebooks
+                WHERE student_code = :sc AND subject_id = :sid
+                  AND school_year_id = :sy AND semester_index = :sem AND is_locked = 1
+                ORDER BY created_at DESC LIMIT 1
+            """),
+            {"sc": student_code, "sid": subj.id, "sy": year, "sem": semester},
+        ).fetchone()
+        if not score or score.final_grade is None:
+            return f"Không tìm thấy điểm của học sinh '{student_code}' môn '{subject}'."
+
+        mastery = compute_unit_mastery(float(score.final_grade), float(score.max_grade or 10), units)
+
+        names = {
+            r.id: r.name
+            for r in session.execute(
+                text("SELECT id, name FROM public.curriculum_units WHERE id = ANY(:ids)"),
+                {"ids": [m.unit_id for m in mastery]},
+            ).fetchall()
+        }
+
+        # Nội dung làm giàu (tóm tắt/từ khóa khi nạp sách) — giúp giải thích "hổng khái niệm/mục nào".
+        enriched = {
+            r.id: (r.summary, list(r.keywords) if r.keywords else None)
+            for r in session.execute(
+                text("SELECT id, summary, keywords FROM public.curriculum_units WHERE id = ANY(:ids)"),
+                {"ids": [m.unit_id for m in mastery]},
+            ).fetchall()
+        }
+
+        gaps = [
+            {
+                "Chương/Bài": names.get(m.unit_id, f"Unit {m.unit_id}"),
+                "Mức hổng (0-1)": m.gap_score,
+                "Mức thành thạo (0-1)": m.mastery,
+                "Nội dung bài": (enriched.get(m.unit_id) or (None, None))[0],
+                "Từ khóa": (enriched.get(m.unit_id) or (None, None))[1],
+            }
+            for m in mastery
+            if m.is_gap
+        ]
+        if not gaps:
+            return f"Học sinh '{student_code}' không có lỗ hổng kiến thức đáng kể ở môn '{subject}'."
+        return json.dumps(gaps, ensure_ascii=False, indent=2)
+
+
+@tool
+def get_pass_fail_forecast(subject: str, grade_level: int, year: int = 0, semester: int = 1) -> str:
+    """Dự đoán bao nhiêu học sinh trượt/pass đề cuối kỳ của một môn + khối.
+
+    Dùng khi người dùng hỏi "mấy em trượt môn X", "dự đoán tỉ lệ đậu/rớt", "bao nhiêu học sinh pass".
+    Dựa trên đề cuối kỳ đã map chuẩn chương trình + điểm hiện tại của học sinh.
+
+    Args:
+        subject: Tên môn học (ví dụ: 'Toán học').
+        grade_level: Khối học (6, 7, 8, 9, 10, 11, 12).
+        year: Năm học bắt đầu (0 để tự lấy năm hiện hành, ví dụ: 2025).
+        semester: Học kỳ (1 hoặc 2).
+    """
+    from src.services.pass_fail_forecast import ExamUnit, StudentAbility, forecast_exam, summarize
+
+    with SessionLocal() as session:
+        if not year or year <= 0:
+            cur_sy = session.execute(text("SELECT id FROM s360.dim_school_year WHERE is_current = 1 LIMIT 1")).fetchone()
+            year = int(cur_sy.id) if cur_sy and cur_sy.id else 2025
+
+        subj = session.execute(
+            text("SELECT id FROM s360.dim_subject WHERE name ILIKE :n LIMIT 1"),
+            {"n": f"%{subject.strip()}%"},
+        ).fetchone()
+        if not subj:
+            return f"Không tìm thấy môn học '{subject}'."
+
+        exam = session.execute(
+            text("""
+                SELECT ep.id, ep.content_difficulty
+                FROM public.exam_papers ep
+                WHERE ep.subject_id = :sid AND ep.semester_id = :sem
+                  AND ep.score_category = 'FINAL'
+                ORDER BY ep.created_at DESC LIMIT 1
+            """),
+            {"sid": subj.id, "sem": semester},
+        ).fetchone()
+        if not exam:
+            return "Chưa có đề cuối kỳ nào được map chuẩn chương trình — chưa thể dự đoán pass/fail."
+
+        units_rows = session.execute(
+            text("SELECT unit_id, weight FROM public.exam_competencies WHERE exam_paper_id = :eid"),
+            {"eid": exam.id},
+        ).fetchall()
+        if not units_rows:
+            return "Đề cuối kỳ chưa được phân tích chuẩn chương trình (chưa có exam_competencies)."
+
+        units = [ExamUnit(unit_id=r.unit_id, weight=float(r.weight or 0)) for r in units_rows]
+
+        rows = session.execute(
+            text("""
+                SELECT fg.student_code, fg.final_grade
+                FROM s360.fact_gradebooks fg
+                JOIN s360.dim_homeroom_class_student st ON fg.student_code = st.student_code
+                WHERE fg.subject_id = :sid AND fg.school_year_id = :sy
+                  AND fg.semester_index = :sem AND fg.is_locked = 1
+                  AND st.grade_id = :gid
+            """),
+            {"sid": subj.id, "sy": year, "sem": semester, "gid": grade_level},
+        ).fetchall()
+        if not rows:
+            return f"Không tìm thấy điểm của học sinh khối {grade_level} môn '{subject}'."
+
+        students = [
+            StudentAbility(
+                student_code=r.student_code,
+                ability={u.unit_id: float(r.final_grade or 0) for u in units},
+            )
+            for r in rows
+        ]
+
+        cdi = float(exam.content_difficulty) if exam.content_difficulty is not None else None
+        forecasts = forecast_exam(students, units, cdi)
+        summary = summarize(forecasts)
+
+        return json.dumps(
+            {
+                "Môn": subject,
+                "Khối": grade_level,
+                "Độ khó nội dung (CDI)": cdi,
+                "Tổng học sinh": summary["total"],
+                "Dự kiến ĐẬU": summary["pass"],
+                "Dự kiến TRƯỢT": summary["fail"],
+                "Ranh giới (4.5-5.5)": summary["borderline"],
+                "Tỉ lệ trượt": summary["fail_rate"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+
+@tool
 def execute_read_only_query(sql_query: str) -> str:
     """Thực thi câu lệnh SQL SELECT an toàn để lấy dữ liệu thô dạng JSON phục vụ cho việc phân tích dữ liệu.
 

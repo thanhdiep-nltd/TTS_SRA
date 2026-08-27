@@ -1,22 +1,18 @@
-"""Schema phân tích nội dung đề thi (RAG-anchored CDI) — dùng chung service + API.
+"""Schema phân tích nội dung đề thi (5 trục — M3 trong docs_vsf/plan_cdi_kg_anchored.md).
 
-Xem src/services/content_difficulty.py (dựng dữ liệu) và src/api/v1/exam_papers.py (expose qua
-`exam_papers.ai_analysis.content_analysis`).
+Dùng chung service + API. Xem src/services/content_difficulty.py (dựng dữ liệu) và
+src/api/v1/exam_papers.py (expose qua `exam_papers.ai_analysis.content_analysis`).
 """
 
 from pydantic import BaseModel
 
 
-class EvidenceRef(BaseModel):
-    """Bằng chứng SGK tốt nhất cho 1 ý của đề (từ Qdrant, đã qua ngưỡng retrieval_score_floor).
+class NodeRef(BaseModel):
+    """Trích dẫn tĩnh từ cây chuẩn chương trình (không RAG, không OCR sách)."""
 
-    `heading` CHỈ mô tả nguồn cho người duyệt (đường dẫn heading OCR, khá nhiễu) — KHÔNG dùng để
-    xác định chủ đề (xem _resolve_units trong content_difficulty.py, taxonomy neo theo unit_code).
-    """
-
-    score: float
-    heading: str | None = None
-    source_md: str | None = None
+    node_id: int
+    chapter: str | None = None
+    lesson: str | None = None
 
 
 class AnalysisItemRead(BaseModel):
@@ -27,8 +23,15 @@ class AnalysisItemRead(BaseModel):
     matched_catalog: bool
     bloom_level: int
     weight: float
-    evidence: EvidenceRef | None
-    off_curriculum: bool | None
+    node_ref: NodeRef | None = None
+    off_curriculum: bool | None = None
+    off_curriculum_weight: float = 0.0
+    confidence: float | None = None
+    reason: str | None = None
+    image_url: str | None = None
+    has_figure: bool | None = None
+    question_share: float | None = None
+    is_primary: bool | None = None
 
 
 class CoverageUnitRead(BaseModel):
@@ -54,9 +57,10 @@ class ExamContentAnalysis(BaseModel):
     version: int = 1
     model: str | None
     cdi: float
-    rag_available: bool
     items: list[AnalysisItemRead]
     coverage: CoverageRead
     coverage_units: list[CoverageUnitRead]
     concentration: ConcentrationRead
     off_curriculum_weight: float | None
+    bloom_distribution: dict[str, float] | None = None
+    bloom_alignment: str | None = None

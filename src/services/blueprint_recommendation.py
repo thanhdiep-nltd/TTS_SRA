@@ -401,7 +401,7 @@ def _uncovered_units(
         select(ExamCompetency.unit_id)
         .join(ExamPaper, ExamPaper.id == ExamCompetency.exam_paper_id)
         .where(
-            ExamPaper.school_id == school_id,
+            ExamPaper.so_school_id == school_id,
             ExamPaper.subject_id == subject_id,
             ExamPaper.grade_id == grade_id,
             ExamPaper.semester_id == semester_id,

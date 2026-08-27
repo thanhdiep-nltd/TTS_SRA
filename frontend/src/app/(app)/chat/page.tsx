@@ -157,9 +157,11 @@ const parseReportFiles = (content: string): ReportFileGroup[] => {
   const groups: Record<string, ReportFileGroup> = {};
   const mdLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+\/reports\/download\/([a-zA-Z0-9_\-\.]+))\)/g;
   let match;
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   while ((match = mdLinkRegex.exec(content)) !== null) {
-    const [_, text, url, filename] = match;
+    const [_, text, rawUrl, filename] = match;
+    const url = rawUrl.replace("http://localhost:8000", baseUrl);
     const fileId = filename.replace(/\.(docx|pdf|html)$/, "");
 
     let title = "Báo cáo học đường";
@@ -402,8 +404,10 @@ function ChatContent() {
   }, []);
 
   const handleOpenPreview = async (url: string) => {
-    setPreviewModalUrl(url);
-    const filename = url.substring(url.lastIndexOf("/") + 1).replace(/\.html$/, ".docx");
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const resolvedUrl = url.replace("http://localhost:8000", baseUrl);
+    setPreviewModalUrl(resolvedUrl);
+    const filename = resolvedUrl.substring(resolvedUrl.lastIndexOf("/") + 1).replace(/\.html$/, ".docx");
     setPreviewFileName(filename);
     setLoadingPreview(true);
     setPreviewHtml(null);
@@ -413,7 +417,7 @@ function ChatContent() {
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      const response = await fetch(url, { headers });
+      const response = await fetch(resolvedUrl, { headers });
       if (!response.ok) {
         throw new Error(`Failed to load preview: ${response.statusText}`);
       }

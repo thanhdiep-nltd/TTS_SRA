@@ -45,6 +45,8 @@ ALLOWED_TABLES = {
     "fact_absent_logs",
     "fact_so_class_attendance_statistics",
     "fact_course_attendences",
+    # EWS (Early Warning System) — dự đoán rủi ro học tập (chỉ kết quả dự đoán, KHÔNG cho truy cập dữ liệu train)
+    "fact_student_subject_risk_predictions",
     # Legacy support
     "academic_years",
     "semesters",
@@ -82,6 +84,7 @@ SO_SCHOOL_ID_TABLES = {
     "fact_absent_logs",
     "fact_so_class_attendance_statistics",
     "fact_course_attendences",
+    "fact_student_subject_risk_predictions",
     "metadata_index",
 }
 

@@ -33,7 +33,6 @@ _BUCKET = case(
     else_="yeu",
 )
 
-
 def _average_gpa(db: Session, scope) -> float | None:
     stmt = select(func.avg(Score.value)).where(Score.status == _APPROVED, Score.score_category == _FINAL)
     if scope is not None:

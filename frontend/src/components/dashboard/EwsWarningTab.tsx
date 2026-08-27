@@ -1,17 +1,25 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   AlertTriangle,
   Award,
+  BookOpen,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock,
   Filter,
+  HeartPulse,
+  Home,
   Info,
+  Laptop,
   Loader2,
-  RefreshCw,
   Search,
   ShieldAlert,
+  Sparkles,
   TrendingDown,
   TrendingUp,
   UserX,
@@ -31,6 +39,9 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { LoadingState } from "@/components/Loading";
 import EwsDetailDrawer from "@/components/dashboard/EwsDetailDrawer";
+import EwsRiskFactorPieCard from "@/components/dashboard/EwsRiskFactorPieCard";
+import EwsTopRiskClassesCard from "@/components/dashboard/EwsTopRiskClassesCard";
+import EwsTopSubjectsCard from "@/components/dashboard/EwsTopSubjectsCard";
 import {
   EWS_RISK_COLORS,
   EWS_RISK_LABELS,
@@ -42,29 +53,33 @@ import {
   type EwsRiskLevel,
 } from "@/lib/types";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
-const FACTOR_VI: Record<string, { label: string; icon: string; color: string }> = {
-  // Điểm số
-  SLOPE_DOWN: { label: "Tụt dốc điểm", icon: "📉", color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
-  LAST_SCORE_LOW: { label: "Bài thi gần nhất rớt", icon: "⚠️", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-  SCORE_VOLATILE: { label: "Điểm biến động mạnh", icon: "🎢", color: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20" },
-  MAX_DROP_HIGH: { label: "Tụt điểm lớn", icon: "📉", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
-  HIGH_WEIGHT_FAIL: { label: "Trượt bài hệ số cao", icon: "🧮", color: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/20" },
-  // LMS
-  LMS_LOW_SUBMISSION: { label: "Nộp bài LMS thấp", icon: "📤", color: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20" },
-  LMS_LOW_SCORE: { label: "Điểm LMS thấp", icon: "💻", color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20" },
-  LMS_DROP: { label: "Điểm LMS suy giảm", icon: "📉", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
-  LMS_GAP: { label: "Lệch điểm LMS", icon: "⚖️", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" },
-  // Chuyên cần
-  ABSENTEEISM: { label: "Vắng học nhiều", icon: "🚫", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20" },
-  UNEXCUSED_ABSENT: { label: "Nghỉ không phép", icon: "🏃", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-  LATE_MANY: { label: "Đi muộn nhiều", icon: "⏰", color: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20" },
-  // Hạnh kiểm
-  DEMERIT_HIGH: { label: "Nhiều điểm trừ hạnh kiểm", icon: "📛", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
-  REPEAT_OFFENSE: { label: "Tái phạm nhiều lần", icon: "🔁", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20" },
-  SEVERE_SANCTION: { label: "Kỷ luật nặng", icon: "⛔", color: "bg-red-600/10 text-red-700 dark:text-red-400 border-red-600/20" },
+const FACTOR_VI: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+  // 4 Cờ Nhóm Nguyên Nhân (4 Domain Badges) sử dụng Lucide Icons
+  RISK_SCORE: {
+    label: "Rủi ro Điểm số",
+    icon: <BookOpen className="w-3 h-3 shrink-0 text-rose-500" />,
+    color: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25",
+  },
+  RISK_LMS: {
+    label: "Rủi ro Học tập LMS",
+    icon: <Laptop className="w-3 h-3 shrink-0 text-sky-500" />,
+    color: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25",
+  },
+  RISK_ATTENDANCE: {
+    label: "Rủi ro Chuyên cần",
+    icon: <Clock className="w-3 h-3 shrink-0 text-purple-500" />,
+    color: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/25",
+  },
+  RISK_BEHAVIOR: {
+    label: "Rủi ro Hạnh kiểm",
+    icon: <ShieldAlert className="w-3 h-3 shrink-0 text-amber-500" />,
+    color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25",
+  },
 };
+
+import CustomDropdownSelect, { type CustomSelectOption } from "@/components/dashboard/CustomDropdownSelect";
 
 // Ngày bắt đầu học kỳ (khớp backend feature_extractor.base_start):
 //   HK1: 05/09/năm, HK2: 20/01/năm sau. Trả về chuỗi 'YYYY-MM-DD' để so sánh string (ISO-safe).
@@ -80,7 +95,15 @@ const fmtDate = (d: string | null): string => {
   return dt.toLocaleDateString("vi-VN");
 };
 
-export default function EwsWarningTab() {
+interface EwsWarningTabProps {
+  modelVersion: string;
+  refreshKey: number;
+  schoolYearId: number;
+  semesterIndex: number;
+  week: number;
+}
+
+export default function EwsWarningTab({ modelVersion, refreshKey, schoolYearId, semesterIndex, week }: EwsWarningTabProps) {
   const [meta, setMeta] = useState<EwsMeta | null>(null);
   const [overview, setOverview] = useState<EwsOverview | null>(null);
   const [predictions, setPredictions] = useState<EwsPagedResult | null>(null);
@@ -92,18 +115,94 @@ export default function EwsWarningTab() {
   const [error, setError] = useState<string | null>(null);
 
   // Filter States
-  const [schoolYearId, setSchoolYearId] = useState<number>(2025);
-  const [semesterIndex, setSemesterIndex] = useState<number>(1);
-  const [week, setWeek] = useState<number>(8);
   const [riskLevel, setRiskLevel] = useState<string>("ALL");
   const [subjectId, setSubjectId] = useState<string>("ALL");
   const [gradeId, setGradeId] = useState<string>("ALL");
   const [className, setClassName] = useState<string>("ALL");
   const [riskFactor, setRiskFactor] = useState<string>("ALL");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  // Bộ lọc mới: học sinh có biến cố gia đình / bệnh lý (has_life_event, has_medical)
+  const [lifeEventFilter, setLifeEventFilter] = useState<string>("ALL");
+  const [medicalFilter, setMedicalFilter] = useState<string>("ALL");
+  // Bộ lọc nâng rủi ro do LLM (llm_escalated): true / false / ALL
+  const [llmEscalated, setLlmEscalated] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const RISK_LEVEL_OPTIONS = useMemo(
+    () => [
+      { value: "ALL", label: "Tất cả (All Levels)" },
+      {
+        value: "CRITICAL",
+        label: "CRITICAL (Nghiêm trọng)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 shadow-xs" />,
+      },
+      {
+        value: "HIGH",
+        label: "HIGH (Rủi ro cao)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 shadow-xs" />,
+      },
+      {
+        value: "MODERATE",
+        label: "MODERATE (Trung bình)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0 shadow-xs" />,
+      },
+      {
+        value: "LOW",
+        label: "LOW (An toàn)",
+        icon: <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 shadow-xs" />,
+      },
+    ],
+    []
+  );
+
+  const riskFactorOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả cờ nguyên nhân" }];
+    if (meta?.risk_factors) {
+      meta.risk_factors.forEach((rf) => {
+        const f = FACTOR_VI[rf.code];
+        opts.push({
+          value: rf.code,
+          label: rf.label,
+          icon: f?.icon,
+        });
+      });
+    }
+    return opts;
+  }, [meta]);
+
+  const subjectOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả môn học" }];
+    if (meta?.subjects) {
+      meta.subjects.forEach((sub) => {
+        opts.push({
+          value: String(sub.id),
+          label: `${sub.name} (${sub.code})`,
+        });
+      });
+    }
+    return opts;
+  }, [meta]);
+
+  const gradeOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả khối lớp" }];
+    if (meta?.grades) {
+      meta.grades.forEach((g) => {
+        opts.push({
+          value: String(g.grade_id),
+          label: g.grade_name,
+        });
+      });
+    }
+    return opts;
+  }, [meta]);
+
+
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
   const [page, setPage] = useState<number>(1);
-  const [modelVersion, setModelVersion] = useState<string>("v1_single");
+  const [jumpPage, setJumpPage] = useState<string>("1");
+
+  useEffect(() => {
+    setJumpPage(String(page));
+  }, [page]);
 
   // 1. Fetch Metadata on Mount
   useEffect(() => {
@@ -116,12 +215,6 @@ export default function EwsWarningTab() {
       .then((res) => {
         if (!isMounted) return;
         setMeta(res);
-        if (res.weeks && res.weeks.length > 0) {
-          const first = res.weeks[0];
-          setSchoolYearId(first.school_year_id);
-          setSemesterIndex(first.semester_index);
-          setWeek(first.evaluated_at_week);
-        }
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -166,7 +259,7 @@ export default function EwsWarningTab() {
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, modelVersion, loadingMeta]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, loadingMeta, refreshKey]);
 
   // 3. Fetch Predictions List when Filter/Page Changes
   useEffect(() => {
@@ -190,6 +283,15 @@ export default function EwsWarningTab() {
     if (gradeId !== "ALL") predParams.set("grade_id", gradeId);
     if (className !== "ALL") predParams.set("class_name", className);
     if (riskFactor !== "ALL") predParams.set("risk_factor", riskFactor);
+    if (lifeEventFilter !== "ALL") {
+      predParams.set("has_life_event", "true");
+      predParams.set("life_event_filter", lifeEventFilter);
+    }
+    if (medicalFilter !== "ALL") {
+      predParams.set("has_medical", "true");
+      predParams.set("medical_filter", medicalFilter);
+    }
+    if (llmEscalated !== "ALL") predParams.set("llm_escalated", llmEscalated);
     if (debouncedQuery) predParams.set("q", debouncedQuery);
 
     api
@@ -207,7 +309,7 @@ export default function EwsWarningTab() {
     return () => {
       isMounted = false;
     };
-  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, debouncedQuery, page, loadingMeta]);
+  }, [schoolYearId, semesterIndex, week, modelVersion, riskLevel, subjectId, gradeId, className, riskFactor, lifeEventFilter, medicalFilter, llmEscalated, debouncedQuery, page, loadingMeta, refreshKey]);
 
   // Debounce từ khóa tìm kiếm (300ms) → tìm kiếm server-side qua param q
   useEffect(() => {
@@ -240,12 +342,31 @@ export default function EwsWarningTab() {
     };
   }, [schoolYearId, semesterIndex, week, loadingMeta]);
 
+  // Khi đổi Mốc Đánh Giá (từ header) → reset bộ lọc phụ thuộc (Môn/Khối/Lớp) + về trang 1
+  useEffect(() => {
+    setSubjectId("ALL");
+    setGradeId("ALL");
+    setClassName("ALL");
+    setPage(1);
+  }, [schoolYearId, semesterIndex, week]);
+
   // Tùy chọn Lớp được lọc theo Khối đang chọn (Khối → Lớp liên kết đúng)
   const classOptions = useMemo(() => {
     if (!meta) return [];
     const gid = gradeId === "ALL" ? null : Number(gradeId);
     return gid === null ? meta.classes : meta.classes.filter((c) => c.grade_id === gid);
   }, [meta, gradeId]);
+
+  const classDropdownOptions = useMemo(() => {
+    const opts: CustomSelectOption[] = [{ value: "ALL", label: "Tất cả các lớp" }];
+    classOptions.forEach((cls) => {
+      opts.push({
+        value: cls.class_name,
+        label: cls.class_name,
+      });
+    });
+    return opts;
+  }, [classOptions]);
 
   // Danh sách dự báo trên trang hiện tại (tìm kiếm đã chuyển sang server-side qua param q)
   const predictionItems = predictions?.items || [];
@@ -258,46 +379,6 @@ export default function EwsWarningTab() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER SECTION */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-lg border border-indigo-500/20">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-7 h-7 text-rose-400 animate-pulse" />
-            <h2 className="text-2xl font-bold tracking-tight">Hệ Thống Cảnh Báo Rủi Ro Học Tập (CatBoost EWS)</h2>
-          </div>
-          <p className="text-sm text-slate-300">
-            Dự báo sớm 4 mức độ rủi ro (`LOW`, `MODERATE`, `HIGH`, `CRITICAL`) từ mô hình GBDT dựa trên 22 chỉ số tiến trình học tập, LMS và nếp sống kỷ luật.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Phiên bản Model */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-300 whitespace-nowrap">Phiên bản Model</label>
-            <select
-              value={modelVersion}
-              onChange={(e) => {
-                setModelVersion(e.target.value);
-                setPage(1);
-              }}
-              className="text-xs bg-slate-800/80 border border-slate-600/60 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              <option value="v1_single">v1 — Model đơn (hiện tại)</option>
-              <option value="v2_ensemble">v2 — Factor-Ensemble (mới)</option>
-            </select>
-          </div>
-          <button
-            onClick={() => {
-              setLoadingOverview(true);
-              setLoadingPreds(true);
-              setPage(1);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white font-medium text-sm rounded-xl transition-all shadow-sm"
-          >
-            <RefreshCw className="w-4 h-4" /> Làm mới
-          </button>
-        </div>
-      </div>
-
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-sm flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
@@ -412,34 +493,19 @@ export default function EwsWarningTab() {
           </div>
         </div>
 
-        {/* Chart 2: Top Môn Học Nguy Cơ Cao Nhất */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Top 5 Môn Học Rủi Ro Cao Nhất
-          </h4>
-          <div className="space-y-3">
-            {loadingOverview ? (
-              <div className="py-12 flex justify-center text-slate-400">
-                <Loader2 className="w-6 h-6 animate-spin" />
-              </div>
-            ) : overview?.top_risk_subjects && overview.top_risk_subjects.length > 0 ? (
-              overview.top_risk_subjects.slice(0, 5).map((sub, idx) => (
-                <div key={idx} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{sub.subject_name}</p>
-                    <p className="text-[11px] text-slate-400">{sub.cnt} lượt dự báo</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-rose-600 dark:text-rose-400">{sub.avg_risk}</span>
-                    <span className="text-[10px] text-slate-400 block">Risk Score</span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 py-6 text-center">Không có dữ liệu môn rủi ro</p>
-            )}
-          </div>
-        </div>
+        {/* Chart 2: Yếu Tố Gây Rủi Ro Cao Nhất (biểu đồ tròn) */}
+        <EwsRiskFactorPieCard factors={overview?.top_risk_factors || []} loading={loadingOverview} />
+      </div>
+
+      {/* TOP 5 MÔN HỌC + TOP 5 LỚP — CÙNG 1 GRID */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <EwsTopSubjectsCard subjects={overview?.top_risk_subjects || []} loading={loadingOverview} />
+        <EwsTopRiskClassesCard
+          schoolYearId={schoolYearId}
+          semesterIndex={semesterIndex}
+          week={week}
+          modelVersion={modelVersion}
+        />
       </div>
 
       {/* FILTER BAR SECTION */}
@@ -450,130 +516,129 @@ export default function EwsWarningTab() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          {/* 1. Mốc Tuần / Học Kỳ */}
-          <div className="col-span-1 lg:col-span-2 space-y-1">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mốc Đánh Giá (Tuần / Kỳ)</label>
-            <select
-              value={`${schoolYearId}-${semesterIndex}-${week}`}
-              onChange={(e) => {
-                const [sy, sem, wk] = e.target.value.split("-").map(Number);
-                setSchoolYearId(sy);
-                setSemesterIndex(sem);
-                setWeek(wk);
-                // Danh sách Môn/Khối/Lớp thay đổi theo mốc → reset bộ lọc phụ thuộc
-                setSubjectId("ALL");
-                setGradeId("ALL");
-                setClassName("ALL");
-                setPage(1);
-              }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              {meta?.weeks.map((w, idx) => (
-                <option key={idx} value={`${w.school_year_id}-${w.semester_index}-${w.evaluated_at_week}`}>
-                  {w.school_year_name || `Năm ${w.school_year_id}`} - Học kỳ {w.semester_index} (Mốc Tuần {w.evaluated_at_week})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 2. Mức Rủi Ro */}
+          {/* 1. Mức Rủi Ro */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Mức Rủi Ro</label>
-            <select
+            <CustomDropdownSelect
               value={riskLevel}
-              onChange={(e) => {
-                setRiskLevel(e.target.value);
+              onChange={(v) => {
+                setRiskLevel(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 font-medium"
-            >
-              <option value="ALL">Tất cả (All Levels)</option>
-              <option value="CRITICAL">🔴 CRITICAL (Nghiêm trọng)</option>
-              <option value="HIGH">🟠 HIGH (Rủi ro cao)</option>
-              <option value="MODERATE">🟡 MODERATE (Trung bình)</option>
-              <option value="LOW">🟢 LOW (An toàn)</option>
-            </select>
+              options={RISK_LEVEL_OPTIONS}
+              placeholder="Tất cả mức rủi ro"
+            />
           </div>
 
           {/* 3. Môn Học */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Môn Học</label>
-            <select
+            <CustomDropdownSelect
               value={subjectId}
-              onChange={(e) => {
-                setSubjectId(e.target.value);
+              onChange={(v) => {
+                setSubjectId(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả môn học</option>
-              {meta?.subjects.map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.name} ({sub.code})
-                </option>
-              ))}
-            </select>
+              options={subjectOptions}
+              placeholder="Tất cả môn học"
+            />
           </div>
 
           {/* 4. Khối Lớp */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Khối Lớp</label>
-            <select
+            <CustomDropdownSelect
               value={gradeId}
-              onChange={(e) => {
-                setGradeId(e.target.value);
+              onChange={(v) => {
+                setGradeId(v);
                 setClassName("ALL"); // lớp cũ có thể không thuộc khối mới
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả khối lớp</option>
-              {meta?.grades.map((g) => (
-                <option key={g.grade_id} value={g.grade_id}>
-                  {g.grade_name}
-                </option>
-              ))}
-            </select>
+              options={gradeOptions}
+              placeholder="Tất cả khối lớp"
+            />
           </div>
 
           {/* 5. Tên Lớp */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Lớp Học</label>
-            <select
+            <CustomDropdownSelect
               value={className}
-              onChange={(e) => {
-                setClassName(e.target.value);
+              onChange={(v) => {
+                setClassName(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả các lớp</option>
-              {classOptions.map((cls, idx) => (
-                <option key={idx} value={cls.class_name}>
-                  {cls.class_name}
-                </option>
-              ))}
-            </select>
+              options={classDropdownOptions}
+              placeholder="Tất cả các lớp"
+            />
           </div>
 
           {/* 6. Cờ Nguyên Nhân (Risk Badge) */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Cờ Nguyên Nhân</label>
-            <select
+            <CustomDropdownSelect
               value={riskFactor}
-              onChange={(e) => {
-                setRiskFactor(e.target.value);
+              onChange={(v) => {
+                setRiskFactor(v);
                 setPage(1);
               }}
-              className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="ALL">Tất cả cờ nguyên nhân</option>
-              {meta?.risk_factors.map((rf) => (
-                <option key={rf.code} value={rf.code}>
-                  {FACTOR_VI[rf.code]?.icon ?? "🏷️"} {rf.label}
-                </option>
-              ))}
-            </select>
+              options={riskFactorOptions}
+              placeholder="Tất cả cờ nguyên nhân"
+            />
+          </div>
+
+          {/* 6a. Nâng Rủi Ro (LLM) */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Nâng Rủi Ro (LLM)</label>
+            <CustomDropdownSelect
+              value={llmEscalated}
+              onChange={(v) => {
+                setLlmEscalated(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "ALL", label: "Tất cả" },
+                { value: "true", label: "Có — LLM nâng mức", icon: <TrendingUp className="w-3 h-3 text-rose-500" /> },
+                { value: "false", label: "Không nâng", icon: <TrendingDown className="w-3 h-3 text-slate-400" /> },
+              ]}
+              placeholder="Tất cả"
+            />
+          </div>
+
+          {/* 6b. Biến Cố Gia Đình */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Biến Cố Gia Đình</label>
+            <CustomDropdownSelect
+              value={lifeEventFilter}
+              onChange={(v) => {
+                setLifeEventFilter(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "ALL", label: "Tất cả" },
+                { value: "ONGOING", label: "Đang diễn ra (Ongoing)" },
+                { value: "RESOLVED", label: "Không diễn ra / Đã kết thúc" },
+              ]}
+              placeholder="Tất cả biến cố"
+            />
+          </div>
+
+          {/* 6c. Bệnh Lý */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Bệnh Lý / Tiền Sử</label>
+            <CustomDropdownSelect
+              value={medicalFilter}
+              onChange={(v) => {
+                setMedicalFilter(v);
+                setPage(1);
+              }}
+              options={[
+                { value: "ALL", label: "Tất cả" },
+                { value: "ONGOING", label: "Đang diễn ra (Ongoing)" },
+                { value: "RESOLVED", label: "Không diễn ra / Đã khỏi" },
+              ]}
+              placeholder="Tất cả bệnh lý"
+            />
           </div>
 
           {/* 7. Tìm kiếm Mã/Tên HS */}
@@ -613,23 +678,18 @@ export default function EwsWarningTab() {
             <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="py-3.5 px-4">Học Sinh</th>
-                <th className="py-3.5 px-4">Khối / Lớp</th>
+                <th className="py-3.5 px-4">Lớp</th>
                 <th className="py-3.5 px-4">Môn Học</th>
-                <th className="py-3.5 px-4 text-center">Điểm Rủi Ro (0-100)</th>
-                <th className="py-3.5 px-4 text-center">Mức Rủi Ro</th>
+                <th className="py-3.5 px-4 text-center">Đánh Giá Rủi Ro</th>
                 <th className="py-3.5 px-4">Cờ Nguyên Nhân (Risk Badges)</th>
-                <th className="py-3.5 px-4 text-right">Điểm Thi Gần Nhất</th>
-                <th className="py-3.5 px-4 text-right">ĐTB Nửa Đầu</th>
-                <th className="py-3.5 px-4 text-right">ĐTB Nửa Sau</th>
-                <th className="py-3.5 px-4 text-right">Xu Hướng (Slope)</th>
-                <th className="py-3.5 px-4 text-right">ĐTB LMS</th>
-                <th className="py-3.5 px-4 text-right">Tỷ Lệ Nộp LMS</th>
+                <th className="py-3.5 px-4 text-right">Chỉ Số Nổi Bật</th>
+                <th className="py-3.5 px-3 text-right"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loadingPreds ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="flex justify-center items-center gap-2">
                       <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
                       <span>Đang tải danh sách dự báo rủi ro...</span>
@@ -638,32 +698,51 @@ export default function EwsWarningTab() {
                 </tr>
               ) : predictionItems.length > 0 ? (
                 predictionItems.map((item, idx) => {
-                  const riskColor = EWS_RISK_COLORS[item.risk_level] || "#94a3b8";
+                  const hasLlm = item.llm_risk_score !== null && !!item.llm_risk_level;
+                  // Sparkles chỉ hiện khi LLM thực sự thay đổi điểm/mức so với CatBoost
+                  const llmChanged =
+                    hasLlm &&
+                    (item.llm_risk_score !== item.risk_score || item.llm_risk_level !== item.risk_level);
+                  const displayLevel = hasLlm ? item.llm_risk_level! : item.risk_level;
+                  const displayScore = hasLlm ? item.llm_risk_score! : item.risk_score;
+                  const riskColor = EWS_RISK_COLORS[displayLevel] || "#94a3b8";
                   return (
                     <tr
                       key={idx}
                       onClick={() => setSelectedItem(item)}
                       title="Bấm để xem chi tiết 24 chỉ số EWS"
-                      className="cursor-pointer hover:bg-indigo-50/60 dark:hover:bg-slate-800/80 transition-colors"
+                      className="group cursor-pointer hover:bg-indigo-50/60 dark:hover:bg-slate-800/80 transition-colors"
                     >
                       {/* Học sinh */}
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900 dark:text-slate-100">
-                          {item.student_name || item.student_code}
+                        <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
+                          <span>{item.student_name || item.student_code}</span>
+                          {item.llm_risk_level && (
+                            <span title={`Đã có phân tích chuyên sâu từ AI (Mức LLM: ${item.llm_risk_level}${item.llm_risk_score !== null ? ` - Điểm: ${item.llm_risk_score.toFixed(2)}` : ""})`}>
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400/30 shrink-0" />
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-400 font-mono">{item.student_code}</div>
-                        {item.join_date && item.join_date > semesterStartStr(schoolYearId, semesterIndex) && (
-                          <div className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5">
-                            <span>🏫</span>
-                            <span>Chuyển tới từ {fmtDate(item.join_date)}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-mono font-medium text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
+                            {item.student_code}
+                          </span>
+                          {item.join_date && item.join_date > semesterStartStr(schoolYearId, semesterIndex) && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5" title={`Chuyển tới từ ${fmtDate(item.join_date)}`}>
+                              <span>🏫</span>
+                              <span>Mới chuyển tới</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* Khối / Lớp */}
-                      <td className="py-3 px-4">
-                        <div className="text-slate-800 dark:text-slate-200 font-medium">{item.class_name || "—"}</div>
-                        <div className="text-[11px] text-slate-400">{item.grade_name || "—"}</div>
+                      {/* Lớp */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {item.class_name
+                            ? item.class_name.replace(/\s*-\s*Trường\s*\d+/gi, "").replace(/^Lớp\s+/i, "")
+                            : "—"}
+                        </span>
                       </td>
 
                       {/* Môn Học */}
@@ -678,41 +757,54 @@ export default function EwsWarningTab() {
                         )}
                       </td>
 
-                      {/* Điểm Rủi Ro (0-100) */}
-                      <td className="py-3 px-4 text-center">
-                        <div className="inline-flex items-center gap-1.5 font-bold text-sm" style={{ color: riskColor }}>
-                          {item.risk_score.toFixed(1)}
-                        </div>
-                        <div className="w-16 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 mx-auto mt-1 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${Math.min(item.risk_score, 100)}%`, backgroundColor: riskColor }}
-                          />
-                        </div>
-                      </td>
-
-                      {/* Mức Rủi Ro Badge */}
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className="px-2.5 py-1 rounded-full text-[11px] font-bold text-white shadow-sm inline-block"
-                          style={{ backgroundColor: riskColor }}
+                      {/* Đánh Giá Rủi Ro (2-tone Badge Điểm + Mức) — dùng điểm/mức LLM nếu có, kèm Sparkles */}
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <div
+                          className="inline-flex items-stretch rounded-full border overflow-hidden shadow-2xs"
+                          style={{
+                            borderColor: `${riskColor}60`,
+                          }}
                         >
-                          {item.risk_level}
-                        </span>
+                          <span
+                            className="px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider flex items-center justify-center gap-1 leading-normal"
+                            style={{ backgroundColor: riskColor }}
+                          >
+                            {llmChanged && <Sparkles className="w-3 h-3" />}
+                            {displayLevel}
+                          </span>
+                          <span
+                            className="px-2.5 py-0.5 font-mono font-bold text-xs flex items-center justify-center leading-normal"
+                            style={{
+                              backgroundColor: `${riskColor}18`,
+                              color: riskColor,
+                            }}
+                          >
+                            {displayScore.toFixed(2)}
+                          </span>
+                        </div>
+                        {item.llm_risk_escalated && (
+                          <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 mt-1 flex items-center justify-center gap-0.5">
+                            <span>⬆ LLM nâng</span>
+                          </div>
+                        )}
                       </td>
 
-                      {/* Risk Factors Badges */}
+                      {/* Risk Factors Badges (dùng primary_badge, fallback risk_factors) */}
                       <td className="py-3 px-4">
-                        <div className="flex flex-wrap gap-1">
-                          {item.risk_factors && item.risk_factors.length > 0 ? (
-                            item.risk_factors.map((f, fIdx) => {
-                              const metaF = FACTOR_VI[f] || { label: f, icon: "⚠️", color: "bg-slate-100 text-slate-600" };
+                        <div className="flex flex-wrap gap-1.5 max-w-xs">
+                          {(item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).length > 0 ? (
+                            (item.primary_badge?.length ? item.primary_badge : item.risk_factors || []).map((f, fIdx) => {
+                              const metaF = FACTOR_VI[f] || {
+                                label: f,
+                                icon: <AlertTriangle className="w-3 h-3 shrink-0 text-amber-500" />,
+                                color: "bg-slate-100 text-slate-700 border-slate-200",
+                              };
                               return (
                                 <span
                                   key={fIdx}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border ${metaF.color}`}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border shadow-2xs transition-all ${metaF.color}`}
                                 >
-                                  <span>{metaF.icon}</span>
+                                  {metaF.icon}
                                   <span>{metaF.label}</span>
                                 </span>
                               );
@@ -723,61 +815,74 @@ export default function EwsWarningTab() {
                         </div>
                       </td>
 
-                      {/* Điểm thi gần nhất */}
-                      <td className="py-3 px-4 text-right font-medium text-slate-800 dark:text-slate-200">
-                        {item.last_score !== null ? item.last_score.toFixed(1) : "—"}
+                      {/* Chỉ Số Nổi Bật (Điểm thi gần nhất & Slope) */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="font-medium text-slate-700 dark:text-slate-300">
+                          <span>Điểm thi: </span>
+                          {item.last_score !== null ? (
+                            <span
+                              className={`font-bold ${item.last_score < 3.5
+                                ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-1 py-0.5 rounded"
+                                : item.last_score < 5.0
+                                  ? "text-rose-500 dark:text-rose-400 font-semibold"
+                                  : item.last_score < 6.5
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-slate-900 dark:text-slate-100"
+                                }`}
+                            >
+                              {item.last_score.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] mt-0.5">
+                          {item.score_slope !== null ? (
+                            <span
+                              className={`inline-flex items-center gap-0.5 font-medium ${item.score_slope < 0
+                                ? "text-rose-500 dark:text-rose-400 font-semibold"
+                                : item.score_slope > 0 && (item.last_score ?? 0) >= 5.0
+                                  ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                                  : "text-slate-500 dark:text-slate-400"
+                                }`}
+                              title={
+                                item.score_slope > 0 && (item.last_score ?? 0) < 5.0
+                                  ? "Điểm có xu hướng tăng nhẹ nhưng vẫn ở mức dưới trung bình (<5.0)"
+                                  : undefined
+                              }
+                            >
+                              {item.score_slope > 0 ? (
+                                <TrendingUp
+                                  className={`w-3 h-3 ${item.last_score !== null && item.last_score < 5.0
+                                    ? "text-slate-400"
+                                    : "text-emerald-500"
+                                    }`}
+                                />
+                              ) : item.score_slope < 0 ? (
+                                <TrendingDown className="w-3 h-3 text-rose-500" />
+                              ) : null}
+                              <span>
+                                {item.score_slope > 0 ? `+${item.score_slope.toFixed(2)}` : item.score_slope.toFixed(2)}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">Xu hướng: —</span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* ĐTB sớm */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.weighted_early_avg !== null ? item.weighted_early_avg.toFixed(1) : "—"}
-                      </td>
-
-                      {/* ĐTB muộn (hiển thị giá trị thật; gạch ngang nếu bị impute) */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.weighted_late_avg_imputed || item.weighted_late_avg === null ? (
-                          <span className="text-slate-300 dark:text-slate-600" title="Chưa có điểm nửa sau kỳ thật (giá trị giả định chỉ dùng cho mô hình)">
-                            —
-                          </span>
-                        ) : (
-                          item.weighted_late_avg.toFixed(1)
-                        )}
-                      </td>
-
-                      {/* Slope */}
-                      <td className="py-3 px-4 text-right">
-                        {item.score_slope !== null ? (
-                          <span
-                            className={`font-semibold ${
-                              item.score_slope < 0
-                                ? "text-rose-500"
-                                : item.score_slope > 0
-                                ? "text-emerald-500"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            {item.score_slope > 0 ? `+${item.score_slope.toFixed(2)}` : item.score_slope.toFixed(2)}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-
-                      {/* ĐTB LMS */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.lms_avg_score !== null ? item.lms_avg_score.toFixed(1) : "—"}
-                      </td>
-
-                      {/* Tỷ lệ nộp LMS */}
-                      <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                        {item.lms_submission_rate !== null ? `${(item.lms_submission_rate * 100).toFixed(1)}%` : "—"}
+                      {/* Nút Xem chi tiết */}
+                      <td className="py-3 px-3 text-right">
+                        <div className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 group-hover:text-indigo-600 group-hover:bg-indigo-100/60 dark:group-hover:bg-indigo-950/50 transition-all">
+                          <ChevronRight className="w-4 h-4" />
+                        </div>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     Không tìm thấy dữ liệu dự báo rủi ro phù hợp với bộ lọc.
                   </td>
                 </tr>
@@ -792,25 +897,78 @@ export default function EwsWarningTab() {
             Hiển thị {predictionItems.length} trên tổng số {predictions?.total.toLocaleString() || 0} bản ghi
           </span>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            {/* Trang đầu tiên */}
+            <button
+              disabled={page <= 1 || loadingPreds}
+              onClick={() => setPage(1)}
+              title="Về trang đầu tiên (Trang 1)"
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
+            {/* Trang trước */}
             <button
               disabled={page <= 1 || loadingPreds}
               onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              title="Trang trước"
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <span className="text-xs font-semibold px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300">
-              {page} / {totalPages || 1}
-            </span>
+            {/* Ô nhập số trang trực tiếp */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300">
+              <span className="text-slate-400 font-normal">Trang</span>
+              <input
+                type="number"
+                min={1}
+                max={totalPages || 1}
+                value={jumpPage}
+                onChange={(e) => setJumpPage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const p = parseInt(jumpPage, 10);
+                    if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                      setPage(p);
+                    } else {
+                      setJumpPage(String(page));
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  const p = parseInt(jumpPage, 10);
+                  if (!isNaN(p) && p >= 1 && p <= totalPages) {
+                    setPage(p);
+                  } else {
+                    setJumpPage(String(page));
+                  }
+                }}
+                className="w-12 text-center py-0.5 px-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                title="Nhập số trang và nhấn Enter để chuyển nhanh"
+              />
+              <span>/ {totalPages || 1}</span>
+            </div>
 
+            {/* Trang sau */}
             <button
               disabled={page >= totalPages || loadingPreds}
               onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              title="Trang sau"
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* Trang cuối cùng */}
+            <button
+              disabled={page >= totalPages || loadingPreds}
+              onClick={() => setPage(totalPages)}
+              title={`Tới trang cuối cùng (Trang ${totalPages || 1})`}
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <ChevronsRight className="w-4 h-4" />
             </button>
           </div>
         </div>

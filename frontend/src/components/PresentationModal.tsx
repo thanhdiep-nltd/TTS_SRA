@@ -620,8 +620,119 @@ export default function PresentationModal({ isOpen, onClose, theme }: Presentati
   const isDark = theme === "dark";
 
   const slides = [
-    // SLIDE 1: TIÊU ĐỀ & MỞ ĐẦU
-    // SLIDE 1: TIÊU ĐỀ & MỞ ĐẦU
+    // SLIDE 1: EWS - TRỌNG SỐ ĐỘNG SOFTMAX (VÍ DỤ MINH HỌA)
+    {
+      title: "Tính Năng 3.6: Cảnh Báo Sớm Rủi Ro Học Tập (EWS)",
+      subtitle: "Trọng số động Softmax — ví dụ minh họa cách hệ thống phát hiện học sinh nguy cơ",
+      type: "ews_softmax",
+      content: (
+        <div className="w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start text-left w-full">
+            {/* Left: concept + formula */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788] border-[#2d6a4f]/40" : "bg-[#f0f4f0] text-[#2d6a4f] border-[#cbdcd0]"} border`}>
+                <ShieldAlert className="w-3 h-3 text-[#2d6a4f] dark:text-[#52b788]" /> Cảnh báo sớm rủi ro
+              </div>
+              <h2 className={`text-2xl md:text-3xl font-extrabold tracking-tight leading-tight ${isDark ? "text-white" : "text-[#0f1e36]"}`}>
+                Trọng Số Động Softmax
+              </h2>
+              <p className={`leading-relaxed text-xs md:text-sm ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                Thay vì dùng trọng số cố định cho mọi học sinh, hệ thống tự điều chỉnh trọng số theo từng học sinh: yếu tố nào đang rủi ro cao sẽ được "phóng đại" để ảnh hưởng mạnh hơn đến điểm rủi ro cuối cùng.
+              </p>
+
+              <div className={`p-3 rounded-xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <strong className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Công thức Softmax động</strong>
+                </div>
+                <p className={`text-[10px] md:text-[11.5px] leading-relaxed font-mono ${isDark ? "text-slate-300" : "text-[#0f1e36]"}`}>
+                  w<sub>k</sub> = base<sub>k</sub>·e<sup>α<sub>k</sub>·S<sub>k</sub></sup> / Σ base<sub>j</sub>·e<sup>α<sub>j</sub>·S<sub>j</sub></sup>
+                </p>
+                <p className={`text-[9.5px] md:text-[10.5px] leading-relaxed mt-1.5 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  S<sub>k</sub>: điểm rủi ro yếu tố k · α<sub>k</sub>: độ nhạy riêng từng yếu tố · base<sub>k</sub>: trọng số gốc
+                </p>
+              </div>
+
+              <div className={`p-3 rounded-xl border ${isDark ? "bg-[#8c763e]/5 border-[#8c763e]/15" : "bg-[#faf6e8] border-[#ebdcb0]/80 shadow-xs"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <strong className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Điểm rủi ro cuối</strong>
+                </div>
+                <p className={`text-[10px] md:text-[11.5px] leading-relaxed font-mono ${isDark ? "text-slate-300" : "text-[#0f1e36]"}`}>
+                  final = (1−β)·Σ(w·S) + β·max(S)
+                </p>
+                <p className={`text-[9.5px] md:text-[10.5px] leading-relaxed mt-1.5 ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  β = worst_factor_beta (mặc định 0 → chỉ dùng trung bình có trọng số động).
+                </p>
+              </div>
+            </div>
+
+            {/* Right: worked example */}
+            <div className="lg:col-span-7 space-y-3">
+              <div className={`p-3 rounded-2xl border ${isDark ? "bg-[#070e1a]/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-md"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <strong className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>Ví dụ: học sinh nghỉ học nhiều</strong>
+                  <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full ${isDark ? "bg-red-500/20 text-[#c97575]" : "bg-[#fdf2f2] text-red-700"}`}>Kết quả: HIGH</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[10px] md:text-[11px]">
+                    <thead>
+                      <tr className={`border-b ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
+                        <th className="py-1.5 pr-2 font-semibold">Yếu tố</th>
+                        <th className="py-1.5 pr-2 font-semibold">Rủi ro S</th>
+                        <th className="py-1.5 pr-2 font-semibold">Trọng số gốc</th>
+                        <th className="py-1.5 pr-2 font-semibold">Trọng số động</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
+                        <td className="py-1.5 pr-2">Điểm</td>
+                        <td className="py-1.5 pr-2">30</td>
+                        <td className="py-1.5 pr-2">0.55</td>
+                        <td className="py-1.5 pr-2">0.29</td>
+                      </tr>
+                      <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
+                        <td className="py-1.5 pr-2">Học tập (LMS)</td>
+                        <td className="py-1.5 pr-2">70</td>
+                        <td className="py-1.5 pr-2">0.15</td>
+                        <td className="py-1.5 pr-2">0.21</td>
+                      </tr>
+                      <tr className={`border-b ${isDark ? "border-[#1a2740]" : "border-[#f0ece0]"}`}>
+                        <td className="py-1.5 pr-2">Chuyên cần</td>
+                        <td className="py-1.5 pr-2 font-bold text-red-500">90</td>
+                        <td className="py-1.5 pr-2">0.15</td>
+                        <td className="py-1.5 pr-2 font-bold text-red-500">0.42</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 pr-2">Hạnh kiểm</td>
+                        <td className="py-1.5 pr-2">20</td>
+                        <td className="py-1.5 pr-2">0.15</td>
+                        <td className="py-1.5 pr-2">0.08</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className={`mt-2.5 pt-2.5 border-t text-[10px] md:text-[11px] leading-relaxed ${isDark ? "border-[#263750] text-slate-400" : "border-[#dcd7cc] text-[#4a5568]"}`}>
+                  <strong className={isDark ? "text-slate-200" : "text-[#0f1e36]"}>Điểm cuối = 62.7 → HIGH.</strong> Yếu tố "Chuyên cần" rủi ro cao (90) được nâng từ 0.15 lên 0.42, giúp hệ thống bắt đúng học sinh nguy cơ thực sự.
+                </div>
+              </div>
+
+              <div className={`p-3 rounded-2xl border ${isDark ? "bg-slate-900/50 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-xs"}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                  <strong className={`text-xs md:text-[13px] font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>So sánh: tắt trọng số động</strong>
+                </div>
+                <p className={`text-[10px] md:text-[11.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  Cùng học sinh, nếu dùng trọng số tĩnh: <span className="font-mono">0.55×30 + 0.15×70 + 0.15×90 + 0.15×20 = 43.5 → MODERATE</span>. Trọng số động giúp phát hiện sớm hơn một bậc rủi ro.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    // SLIDE 2: TIÊU ĐỀ & MỞ ĐẦU
+    // SLIDE 2: TIÊU ĐỀ & MỞ ĐẦU
     {
       title: "AI Trợ Lý Phân Tích Kết Quả Học Tập Toàn Trường Cho Ban Giám Hiệu",
       subtitle: "Giải pháp quản trị chất lượng giáo dục dựa trên dữ liệu dành cho Ban Giám Hiệu",

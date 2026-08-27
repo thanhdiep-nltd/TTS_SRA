@@ -1,8 +1,8 @@
 {
   "score": {
     "factor": "score",
-    "accuracy": 0.8774,
-    "f1_macro": 0.8576
+    "accuracy": 0.8797,
+    "f1_macro": 0.8602
   },
   "lms": {
     "factor": "lms",

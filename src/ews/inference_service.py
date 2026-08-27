@@ -21,7 +21,13 @@ from pathlib import Path
 import catboost as cb
 import numpy as np
 import pandas as pd
-import shap
+
+try:
+    import shap
+except ImportError:
+    shap = None
+
+from src.ews.risk_config import RiskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +35,15 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # ============================================================================
 
-MODEL_PATH = Path("src/models/gbdt/saved/catboost_ews_model.cbm")
-SHAP_PATH = Path("src/models/gbdt/saved/shap_feature_importance.json")
+# Đường dẫn TUYỆT ĐỐI dựa trên vị trí file này (không phụ thuộc CWD của process).
+# Trước đây dùng đường dẫn tương đối "src/models/gbdt/saved/..." — nếu server chạy
+# với working directory khác project root (vd. uvicorn --reload từ nơi khác) thì
+# load_ensemble() sẽ FileNotFoundError -> API /ews/golden-set trả 500.
+_SRC_DIR = Path(__file__).resolve().parent.parent  # .../src
+_SAVED_DIR = _SRC_DIR / "models" / "gbdt" / "saved"
+
+MODEL_PATH = _SAVED_DIR / "catboost_ews_model.cbm"
+SHAP_PATH = _SAVED_DIR / "shap_feature_importance.json"
 CAT_FEATURES = ["subject_id", "subject_category", "grade_level"]  # same as training
 
 # Nhóm feature theo 4 yếu tố quyết định (khớp FEATURE_COLS trong training).
@@ -59,8 +72,9 @@ FACTOR_GROUP_FEATURES: dict[str, list[str]] = {
 RISK_SCORE_WEIGHTS = np.array([0.00, 0.35, 0.70, 1.00], dtype=np.float64)
 RISK_LEVELS = ["LOW", "MODERATE", "HIGH", "CRITICAL"]
 
-# SHAP: số lượng mẫu tối đa để tính SHAP (tránh O(n²))
-SHAP_MAX_SAMPLES = 100
+# SHAP: số lượng mẫu tối đa để tính SHAP (tránh O(n²)).
+# None = không giới hạn (tính cho toàn bộ học sinh) — theo quyết định cover toàn bộ.
+SHAP_MAX_SAMPLES = None
 
 
 # ============================================================================
@@ -147,7 +161,7 @@ def compute_shap_drivers(
     n_samples: int = SHAP_MAX_SAMPLES,
 ) -> list[list[dict[str, float | int | str]]]:
     """
-    Tính SHAP TreeExplainer, trả về top 3 features có |SHAP| lớn nhất mỗi row.
+    Tính SHAP TreeExplainer, trả về top 5 features có |SHAP| lớn nhất mỗi row.
 
     Args:
         model: CatBoost model đã load
@@ -155,15 +169,16 @@ def compute_shap_drivers(
         n_samples: Subsample nếu batch quá lớn (SHAP O(n²))
 
     Returns:
-        list[list[dict]]: Mỗi phần tử là list top 3 drivers:
-            [{"rank": 1, "feature": "...", "shap_value": ...}, ...]
+        list[list[dict]]: Mỗi phần tử là list top 5 drivers (Signed SHAP, giữ dấu):
+            [{"rank": 1, "feature": "...", "shap_value": ..., "value": ...}, ...]
+            shap_value > 0 = lực kéo tăng rủi ro; < 0 = lực kéo giảm rủi ro.
     """
     # Subsample nếu batch quá lớn (SHAP O(n²) — chỉ tính trên mẫu con).
     # Giữ sample_idx để sau đó trải driver về đúng độ dài của X, tránh lỗi
     # "Length of values (100) does not match length of index (7151)" khi
     # run_inference gán result["shap_drivers"].
     sample_idx = None
-    if len(X) > n_samples:
+    if n_samples is not None and len(X) > n_samples:
         rng = np.random.default_rng(42)
         sample_idx = rng.choice(len(X), n_samples, replace=False)
         X_shap = X.iloc[sample_idx].reset_index(drop=True)
@@ -180,34 +195,60 @@ def compute_shap_drivers(
     feature_cols = [c for c in X_shap.columns if c not in meta_cols]
     X_features = X_shap[feature_cols]
 
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_features)
+    # Tính SHAP siêu tốc bằng C++ Native của CatBoost (nhanh hơn 100x so với Python shap.TreeExplainer)
+    try:
+        cols = [c for c in getattr(model, "feature_names_", feature_cols) if c in X_features.columns]
+        cats = [c for c in CAT_FEATURES if c in cols]
+        pool = cb.Pool(X_features[cols], cat_features=cats)
+        sv = model.get_feature_importance(pool, type="ShapValues")
+        if sv.ndim == 3:
+            if sv.shape[1] == 4:
+                signed_shap = sv[:, 3, :len(feature_cols)].copy()
+            else:
+                signed_shap = sv[:, :len(feature_cols), 3].copy()
+        else:
+            signed_shap = sv[:, :len(feature_cols)].copy()
+    except Exception as exc:
+        logger.warning("Native CatBoost SHAP failed (%s), fallback to shap.TreeExplainer", exc)
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_features)
+        n_classes = len(RISK_LEVELS)
+        if isinstance(shap_values, list):
+            shap_by_class = shap_values
+        elif shap_values.ndim == 3 and shap_values.shape[2] == n_classes:
+            shap_by_class = [shap_values[:, :, i] for i in range(n_classes)]
+        else:
+            shap_by_class = [shap_values]
+        signed_shap = shap_by_class[3].copy()  # (N, F)
 
-    # Xử lý SHAP output format
-    n_classes = len(RISK_LEVELS)
+    # 🛡️ LỌC NGUYÊN NHÂN ẢO: Nếu học sinh chưa có bài thi hệ số lớn nào (high_weight_score_count == 0)
+    # -> Triệt hạ SHAP value của last_high_weight_score về 0.0 để KHÔNG bị trừ điểm oan & KHÔNG bị lọt vào Top 5 Drivers!
+    if "high_weight_score_count" in X_shap.columns and "last_high_weight_score" in feature_cols:
+        no_hw_mask = (X_shap["high_weight_score_count"].fillna(0) == 0).to_numpy()
+        hw_idx = feature_cols.index("last_high_weight_score")
+        signed_shap[no_hw_mask, hw_idx] = 0.0
 
-    if isinstance(shap_values, list):
-        shap_by_class = shap_values
-    elif shap_values.ndim == 3 and shap_values.shape[2] == n_classes:
-        shap_by_class = [shap_values[:, :, i] for i in range(n_classes)]
-    else:
-        shap_by_class = [shap_values]
-
-    # Mean |SHAP| across classes
-    mean_shap = np.mean([np.abs(sv) for sv in shap_by_class], axis=0)  # (N, F)
-
-    # Top 3 features per row
-    top3_idx = np.argsort(-mean_shap, axis=1)[:, :3]  # (N, 3)
+    # Lấy HẾT nhân tố tác động (không giới hạn Top 5), sắp theo |SHAP| giảm dần, giữ nguyên dấu.
+    # Loại bỏ các feature có shap_value == 0.0 (đã bị triệt hạ do high_weight_score_count=0)
+    # để không hiển thị nhân tố "ảo" lên UI.
+    sorted_idx = np.argsort(-np.abs(signed_shap), axis=1)  # (N, F) — toàn bộ feature
 
     drivers: list[list[dict[str, float | int | str]]] = []
     for i in range(len(X_shap)):
         row_drivers: list[dict[str, float | int | str]] = []
-        for rank, fidx in enumerate(top3_idx[i]):
+        rank = 1
+        for fidx in sorted_idx[i]:
+            _val = X_features.iloc[i][feature_cols[fidx]]
+            _sv = float(signed_shap[i, fidx])
+            if abs(_sv) <= 1e-12:  # bỏ feature bị triệt hạ (0.0)
+                continue
             row_drivers.append({
-                "rank": rank + 1,
+                "rank": rank,
                 "feature": feature_cols[fidx],
-                "shap_value": float(mean_shap[i, fidx]),
+                "shap_value": _sv,  # Signed SHAP (giữ dấu)
+                "value": None if pd.isna(_val) else _val,  # giá trị feature thực tế (NaN → None để JSON hợp lệ)
             })
+            rank += 1
         drivers.append(row_drivers)
 
     # Khôi phục đúng độ dài của X: dòng ngoài subsample → driver rỗng [].
@@ -243,8 +284,8 @@ def run_inference(
         - shap_drivers (JSON string, optional)
     """
     # Xác định feature columns — CHỈ loại metadata; KHÔNG loại subject_id (nó là feature của model)
-    # join_date là metadata (chỉ để persist/hiển thị, KHÔNG đưa vào model)
-    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
+    # join_date & so_school_id là metadata (chỉ để persist/hiển thị/tenant isolation, KHÔNG đưa vào model)
+    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date", "so_school_id"]
     feature_cols = [c for c in X.columns if c not in meta_cols]
 
     # Step 1: Predict probabilities
@@ -268,7 +309,7 @@ def run_inference(
     # Gộp kết quả: metadata + toàn bộ feature cols (đủ bind params cho UPSERT) + risk outputs
     result_cols = ["student_code", "evaluated_at_week"] + (
         ["join_date"] if "join_date" in X.columns else []
-    ) + feature_cols
+    ) + (["so_school_id"] if "so_school_id" in X.columns else []) + feature_cols
     result = X[result_cols].copy()
     result["risk_score"] = risk_scores
     result["risk_level"] = risk_levels
@@ -309,10 +350,10 @@ ENSEMBLE_FACTOR_GROUPS = {
 }
 
 ENSEMBLE_MODEL_PATHS = {
-    "score": Path("src/models/gbdt/saved/catboost_ews_score.cbm"),
-    "lms": Path("src/models/gbdt/saved/catboost_ews_lms.cbm"),
-    "attendance": Path("src/models/gbdt/saved/catboost_ews_attendance.cbm"),
-    "behavior": Path("src/models/gbdt/saved/catboost_ews_behavior.cbm"),
+    "score": _SAVED_DIR / "catboost_ews_score.cbm",
+    "lms": _SAVED_DIR / "catboost_ews_lms.cbm",
+    "attendance": _SAVED_DIR / "catboost_ews_attendance.cbm",
+    "behavior": _SAVED_DIR / "catboost_ews_behavior.cbm",
 }
 
 
@@ -330,14 +371,145 @@ def load_ensemble(paths: dict | None = None) -> dict:
     return models
 
 
+def compute_ensemble_shap_drivers(
+    models: dict,
+    X: pd.DataFrame,
+    weight_matrix: np.ndarray,
+    n_samples: int = SHAP_MAX_SAMPLES,
+) -> list[list[dict[str, float | int | str]]]:
+    """
+    Tính Signed SHAP cho v2_ensemble (4 sub-model), gộp có trọng số động.
+
+    Với mỗi sub-model (score/lms/attendance/behavior):
+      - Lấy SHAP của class 0 (giữ dấu âm/dương thực tế).
+      - Gộp feature theo nhóm ENSEMBLE_FACTOR_GROUPS, nhân với weight_{factor}
+        (trọng số động đã dùng cho final risk) rồi cộng dồn.
+
+    Args:
+        models: dict {factor: CatBoostClassifier}
+        X: DataFrame features (có metadata student_code, evaluated_at_week...)
+        weight_matrix: (N, 4) trọng số động [score, lms, attendance, behavior] mỗi dòng
+        n_samples: Subsample nếu batch quá lớn (SHAP O(n²))
+
+    Returns:
+        list[list[dict]]: Top 5 drivers mỗi row (Signed SHAP, giữ dấu):
+            [{"rank", "feature", "shap_value", "value"}, ...]
+    """
+    from src.ews.risk_config import FACTOR_KEYS
+
+    meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
+    feature_cols = [c for c in X.columns if c not in meta_cols]
+    X_features = X[feature_cols]
+
+    # Subsample nếu batch quá lớn (None = không giới hạn)
+    sample_idx = None
+    if n_samples is not None and len(X) > n_samples:
+        rng = np.random.default_rng(42)
+        sample_idx = rng.choice(len(X), n_samples, replace=False)
+        X_shap = X_features.iloc[sample_idx].reset_index(drop=True)
+        w_shap = weight_matrix[sample_idx]
+        logger.info("Ensemble SHAP subsample: %d → %d rows", len(X), n_samples)
+    else:
+        X_shap = X_features.copy()
+        w_shap = weight_matrix
+
+    # signed_shap_combined: dict feature -> (N,) signed SHAP có trọng số
+    combined: dict[str, np.ndarray] = {}
+    for fi, factor in enumerate(FACTOR_KEYS):
+        sub_model = models[factor]
+        default_cols = [c for c in CAT_FEATURES + ENSEMBLE_FACTOR_GROUPS[factor] if c in X_shap.columns]
+        model_cols = [c for c in getattr(sub_model, "feature_names_", default_cols) if c in X_shap.columns]
+        if not model_cols:
+            continue
+        cats = [c for c in CAT_FEATURES if c in model_cols]
+
+        try:
+            pool = cb.Pool(X_shap[model_cols], cat_features=cats)
+            sv = sub_model.get_feature_importance(pool, type="ShapValues")
+            if sv.ndim == 3:
+                if sv.shape[1] == 4:
+                    signed = sv[:, 3, :len(model_cols)]
+                else:
+                    signed = sv[:, :len(model_cols), 3]
+            else:
+                signed = sv[:, :len(model_cols)]
+        except Exception as exc:
+            logger.warning("Native CatBoost SHAP failed on %s (%s), fallback to shap.TreeExplainer", factor, exc)
+            explainer = shap.TreeExplainer(sub_model)
+            sv = explainer.shap_values(X_shap[model_cols])
+            if isinstance(sv, list):
+                signed = sv[3]
+            elif sv.ndim == 3:
+                signed = sv[:, :, 3]
+            else:
+                signed = sv
+
+        w = w_shap[:, fi]  # (N,) trọng số động của factor này
+        for ci, col in enumerate(model_cols):
+            if col in combined:
+                combined[col] = combined[col] + w * signed[:, ci]
+            else:
+                combined[col] = w * signed[:, ci]
+
+    # Chuyển thành matrix (N, F) theo feature_cols
+    feat_list = [c for c in feature_cols if c in combined]
+    signed_matrix = np.stack([combined[c] for c in feat_list], axis=1)  # (N, F)
+
+    # 🛡️ LỌC NGUYÊN NHÂN ẢO: Nếu học sinh chưa có bài thi hệ số lớn nào (high_weight_score_count == 0)
+    # -> Triệt hạ SHAP value của last_high_weight_score về 0.0 để KHÔNG bị trừ điểm oan & KHÔNG bị lọt vào Top 5 Drivers!
+    if "high_weight_score_count" in X_shap.columns and "last_high_weight_score" in feat_list:
+        no_hw_mask = (X_shap["high_weight_score_count"].fillna(0) == 0).to_numpy()
+        hw_idx = feat_list.index("last_high_weight_score")
+        signed_matrix[no_hw_mask, hw_idx] = 0.0
+
+    # Lấy HẾT nhân tố tác động (không giới hạn Top 5), sắp theo |SHAP| giảm dần, giữ nguyên dấu.
+    # Loại bỏ các feature có shap_value == 0.0 (đã bị triệt hạ do high_weight_score_count=0)
+    sorted_idx = np.argsort(-np.abs(signed_matrix), axis=1)  # (N, F)
+    drivers: list[list[dict[str, float | int | str]]] = []
+    for i in range(len(X_shap)):
+        row_drivers: list[dict[str, float | int | str]] = []
+        rank = 1
+        for fidx in sorted_idx[i]:
+            _val = X_shap.iloc[i][feat_list[fidx]]
+            _sv = float(signed_matrix[i, fidx])
+            if abs(_sv) <= 1e-12:  # bỏ feature bị triệt hạ (0.0)
+                continue
+            row_drivers.append({
+                "rank": rank,
+                "feature": feat_list[fidx],
+                "shap_value": _sv,
+                "value": None if pd.isna(_val) else _val,  # NaN → None để JSON hợp lệ
+            })
+            rank += 1
+        drivers.append(row_drivers)
+
+    # Khôi phục độ dài X
+    if sample_idx is not None:
+        full_drivers: list[list[dict[str, float | int | str]]] = [[] for _ in range(len(X))]
+        for pos, orig_idx in enumerate(sample_idx):
+            full_drivers[int(orig_idx)] = drivers[pos]
+        drivers = full_drivers
+
+    logger.info("Ensemble SHAP drivers computed: %d rows", len(drivers))
+    return drivers
+
+
 def run_ensemble_inference(
     models: dict,
     X: pd.DataFrame,
-    return_shap: bool = False,
+    return_shap: bool = True,
+    cfg: RiskConfig | None = None,
 ) -> pd.DataFrame:
     """
     Inference factor-ensemble: mỗi sub-model xuất risk_score riêng, rồi kết hợp
     bằng trọng số động (risk_config.combine_risk_scores).
+
+    Args:
+        models: dict {factor: CatBoostClassifier}
+        X: DataFrame features
+        return_shap: giữ API cũ (ensemble không dùng SHAP)
+        cfg: RiskConfig hiệu lực (mặc định load_risk_config()). Cho phép truyền
+            config đã merge theo trường (BGH override) mà không đụng cache toàn cục.
 
     Output DataFrame gồm:
       - metadata + toàn bộ feature cols (đủ bind UPSERT)
@@ -346,7 +518,7 @@ def run_ensemble_inference(
       - risk_score (final), risk_level (final), risk_probability
     """
     from src.ews.risk_config import FACTOR_KEYS, combine_risk_scores, load_risk_config
-    cfg = load_risk_config()
+    cfg = cfg or load_risk_config()
 
     meta_cols = ["student_code", "evaluated_at_week", "semester_index", "join_date"]
     feature_cols = [c for c in X.columns if c not in meta_cols]
@@ -380,7 +552,7 @@ def run_ensemble_inference(
             and not X.iloc[i][factor_feat_cols[f]].isna().all()
         ]
         row = {f: float(sub_scores[f][i]) for f in FACTOR_KEYS}
-        comb = combine_risk_scores(row, available=available)
+        comb = combine_risk_scores(row, available=available, cfg=cfg)
         final_scores.append(comb["final_risk_score"])
         final_levels.append(comb["final_risk_level"])
         for f in FACTOR_KEYS:
@@ -400,6 +572,14 @@ def run_ensemble_inference(
     result["risk_probability"] = models["score"].predict_proba(
         X[[c for c in CAT_FEATURES + ENSEMBLE_FACTOR_GROUPS["score"] if c in X.columns]]
     ).max(axis=1).round(4)
+
+    # SHAP (optional): Signed SHAP gộp có trọng số động theo weight_{factor}
+    if return_shap:
+        weight_matrix = np.stack(
+            [np.array(weight_cols[f]) for f in FACTOR_KEYS], axis=1
+        )  # (N, 4) [score, lms, attendance, behavior]
+        shap_drivers = compute_ensemble_shap_drivers(models, X, weight_matrix)
+        result["shap_drivers"] = [json.dumps(d, ensure_ascii=False) for d in shap_drivers]
 
     logger.info(
         "Ensemble inference complete: %d rows, final risk_score range [%.2f, %.2f]",

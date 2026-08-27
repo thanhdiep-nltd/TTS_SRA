@@ -1,4 +1,3 @@
-import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,6 +22,7 @@ def mock_get_llm_reports():
 @pytest.fixture(autouse=True)
 def mock_db_and_functions():
     mock_data = {
+        "semester_id": "2025-1",
         "total_students": 100,
         "total_classes": 5,
         "gpa": 8.0,
@@ -45,14 +45,10 @@ def mock_db_and_functions():
 
     mock_db = MagicMock()
 
-    mock_school = MagicMock()
-    mock_school.name = "Trường THCS Test"
-
     mock_user = MagicMock()
-    mock_user.school_id = uuid.UUID("cedf3fb6-564e-402c-9304-6ae485495301")
+    mock_user.so_school_id = 1
     mock_user.is_active = True
 
-    mock_db.get.return_value = mock_school
     mock_db.execute.return_value.scalars.return_value.first.return_value = mock_user
 
     mock_session_local = MagicMock()
@@ -64,23 +60,20 @@ def mock_db_and_functions():
     with (
         patch("src.agents.report_agent.tools.compute_report_data", return_value=mock_data),
         patch("src.agents.report_agent.tools.SessionLocal", mock_session_local),
-        patch("src.agents.report_agent.tools.resolve_uuid_parameters", return_value=(None, None, None)),
-        patch("src.api.v1.reports.export_analytics_report", return_value=mock_response),
+        patch("src.agents.report_agent.tools.resolve_parameters", return_value=(None, None, 1, None)),
+        patch("src.api.v1.reports.export_analytics_report_s360", return_value=mock_response),
     ):
         yield mock_db
 
 
-@pytest.mark.asyncio
-async def test_get_report_data_summary_no_context():
+def test_get_report_data_summary_no_context():
     current_user_school_id.set(None)
     res = get_report_data_summary.invoke({"report_type": "academic_conduct", "grade_level": "all"})
     assert "Lỗi" in res
 
 
-@pytest.mark.asyncio
-async def test_get_report_data_summary_with_context():
-    mock_school_id = uuid.UUID("cedf3fb6-564e-402c-9304-6ae485495301")
-    current_user_school_id.set(mock_school_id)
+def test_get_report_data_summary_with_context():
+    current_user_school_id.set(1)
 
     res = get_report_data_summary.invoke({"report_type": "academic_conduct", "grade_level": "all"})
 
@@ -90,22 +83,20 @@ async def test_get_report_data_summary_with_context():
 
 @pytest.mark.asyncio
 async def test_generate_report_download_link():
-    mock_school_id = uuid.UUID("cedf3fb6-564e-402c-9304-6ae485495301")
-    current_user_school_id.set(mock_school_id)
+    current_user_school_id.set(1)
 
     res = await generate_report_download_link.ainvoke(
         {"report_type": "academic_conduct", "format": "docx", "grade_level": "all", "include_ai_insights": False}
     )
 
-    assert "tải trực tiếp" in res or "Tải Báo Cáo Tại Đây" in res
+    assert "Tệp báo cáo đã được tạo thành công" in res
     assert "bao_cao_academic_conduct_" in res
     assert ".docx" in res
 
 
 @pytest.mark.asyncio
 async def test_generate_custom_report_docx():
-    mock_school_id = uuid.UUID("cedf3fb6-564e-402c-9304-6ae485495301")
-    current_user_school_id.set(mock_school_id)
+    current_user_school_id.set(1)
 
     res = await generate_custom_report_docx.ainvoke(
         {

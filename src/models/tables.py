@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -23,6 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB, UUID
+from pgvector.sqlalchemy import Vector
 
 from src.db.base import Base
 from src.models import enums
@@ -185,7 +187,7 @@ class Subject(Base):
     assessment_type = Column(
         pg_enum(enums.AssessmentType, "assessment_type_enum"), nullable=False, server_default=text("'SCORED'")
     )
-    subject_head_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    subject_head_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -291,11 +293,11 @@ class ExamPaper(Base):
         Index("idx_exam_type", "score_type"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False)
-    semester_id = Column(UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="RESTRICT"), nullable=False)
-    grade_id = Column(UUID(as_uuid=True), ForeignKey("grades.id"))
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    semester_id = Column(Integer, nullable=False)
+    grade_id = Column(Integer)
     score_type = Column(
         pg_enum(enums.ScoreType, "score_type_enum")
     )  # (legacy, nullable) — binding thật ở exam_column_mappings
@@ -312,7 +314,7 @@ class ExamPaper(Base):
     ai_analysis = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     # NOTE: tên cột là "metadata"; thuộc tính ORM đổi thành "meta" vì "metadata" bị Declarative chiếm dụng.
     meta = Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    uploaded_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     # Tam giác hóa độ khó (TEVI): CDI tính từ exam_competencies (Bloom), NULL = chưa phân tích nội dung.
     content_difficulty = Column(Numeric(4, 3))
     content_analyzed_at = Column(DateTime(timezone=True))
@@ -331,18 +333,164 @@ class CurriculumUnit(Base):
         Index("idx_curri_parent", "parent_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
-    subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    subject_id = Column(Integer, nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
-    parent_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="CASCADE"))
+    parent_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"))
     code = Column(String(50), nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
+    # Làm giàu nội dung khi nạp sách giáo khoa (quét toàn cuốn): tóm tắt, từ khóa, mục con.
+    # Phục vụ map đề chính xác (CDI/độ khó) và giải thích lỗ hổng kiến thức chi tiết hơn.
+    summary = Column(Text)
+    keywords = Column(ARRAY(Text))
+    sections = Column(JSONB)
+    start_page = Column(Integer, nullable=True)  # Trang PDF bắt đầu bài học (0-indexed)
+    end_page = Column(Integer, nullable=True)    # Trang PDF kết thúc bài học (0-indexed)
     # NULL = SGK không tách tập (dạy cả năm, vd KHTN); 1/2 = chỉ thuộc học kỳ đó (SGK tập 1/tập 2).
     semester_number = Column(SmallInteger)
     # False = ẩn khỏi picker (rác phân mảnh taxonomy cũ, còn bị exam_competencies tham chiếu
     # nên không xóa được) — KHÔNG liên quan quyền hạn, chỉ là cờ hiển thị.
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    # True = node phụ (Ôn tập chương, Kiểm tra chương, Hoạt động thực hành...) — giữ trong cây
+    # điều hướng nhưng LOẠI khỏi shortlist map đề thi (build_shortlist lọc is_phu = false).
+    is_phu = Column(Boolean, nullable=False, server_default=text("false"))
+    # NULL = node sinh từ upload mục lục cũ / chưa gắn cuốn; set khi nạp qua 'Nạp sách giáo khoa'.
+    book_id = Column(BigInteger, ForeignKey("curriculum_books.id", ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class CurriculumBook(Base):
+    """Cuốn sách giáo khoa đã nạp (qua 'Nạp sách giáo khoa') — nguồn gốc của các node chương/bài."""
+
+    __tablename__ = "curriculum_books"
+    __table_args__ = (
+        Index("idx_curri_book_subject_grade", "subject_id", "grade_number"),
+        Index("idx_curri_book_school_year", "school_year_id"),
+        UniqueConstraint(
+            "subject_id",
+            "grade_number",
+            "semester_number",
+            "title",
+            name="uq_curri_book_subject_grade_sem_title",
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # title = text "Chương/Tập/Mô tả" người dùng nhập (vd "Tập 1 - Chương 1 Số học");
+    # dùng làm khóa phân biệt cuốn (cùng môn/khối/semester, title khác = cuốn khác).
+    title = Column(String(255), nullable=False)
+    subject_code = Column(String(10), nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    grade_number = Column(SmallInteger, nullable=False)
+    semester_number = Column(SmallInteger)
+    volume = Column(String(50), nullable=True)  # Tập sách (vd "Tập 1", "Tập 2", "Cả năm")
+    school_year_id = Column(Integer, nullable=True)  # Năm học áp dụng cuốn sách (s360.dim_school_year.id)
+    is_locked = Column(Boolean, nullable=False, server_default=text("false"))
+    filename = Column(String(255))
+    source = Column(String(30))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class TeachingSchedule(Base):
+    """Phân phối chương trình giảng dạy 35 tuần theo năm học (kế hoạch dạy học)."""
+
+    __tablename__ = "teaching_schedules"
+    __table_args__ = (
+        CheckConstraint("grade_number BETWEEN 1 AND 12", name="ts_grade_number_valid"),
+        CheckConstraint("semester_number IN (1, 2)", name="ts_semester_number_valid"),
+        CheckConstraint("week_number BETWEEN 1 AND 52", name="ts_week_number_valid"),
+        CheckConstraint("num_periods > 0", name="ts_num_periods_valid"),
+        UniqueConstraint(
+            "school_year_id",
+            "subject_id",
+            "grade_number",
+            "semester_number",
+            "week_number",
+            "unit_id",
+            name="uq_teaching_schedule",
+        ),
+        Index("idx_ts_lookup", "school_year_id", "subject_id", "grade_number", "week_number"),
+        Index("idx_ts_unit", "unit_id"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    school_year_id = Column(Integer, nullable=False)  # Tham chiếu s360.dim_school_year.id
+    subject_id = Column(Integer, nullable=False)  # Tham chiếu s360.dim_subject.id
+    grade_number = Column(SmallInteger, nullable=False)
+    semester_number = Column(SmallInteger, nullable=False)
+    week_number = Column(SmallInteger, nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="SET NULL"), nullable=True)
+    topic = Column(String(255), nullable=True)
+    num_periods = Column(SmallInteger, nullable=False, server_default=text("2"))
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class CurriculumChunk(Base):
+    """Đoạn văn bản trích xuất từ SGK kèm vector embedding để phục vụ RAG (Hierarchical RAG)."""
+
+    __tablename__ = "curriculum_chunks"
+    __table_args__ = (
+        Index("idx_curri_chunk_book", "book_id"),
+        Index("idx_curri_chunk_unit", "unit_id"),
+        Index("idx_curri_chunk_page", "page_number"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    book_id = Column(BigInteger, ForeignKey("curriculum_books.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"), nullable=True)
+    page_number = Column(Integer, nullable=False)
+    heading = Column(String(255), nullable=True)
+    context_path = Column(String(500), nullable=True)
+    chunk_text = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class CurriculumIngestJob(Base):
+    """Job nạp sách giáo khoa bất đồng bộ — hàng đợi DB-backed (giống ews_pipeline_jobs).
+
+    Status: pending -> processing -> completed | failed. Mỗi job lưu file tạm (source_filepath)
+    để worker đọc; kết quả preview trích xuất nằm result_json (bền qua restart, frontend poll).
+    """
+
+    __tablename__ = "curriculum_ingest_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed')",
+            name="curri_ingest_job_status_valid",
+        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="curri_ingest_job_progress_valid"),
+        Index("idx_curri_job_status", "status"),
+        Index("idx_curri_job_created", "created_at"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    requested_by = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    subject_code = Column(String(10), nullable=False)
+    grade_number = Column(SmallInteger, nullable=False)
+    semester_number = Column(SmallInteger)
+    volume = Column(String(50), nullable=True)  # Tập sách (vd "Tập 1", "Tập 2", "Cả năm")
+    include_lessons = Column(Boolean, nullable=False, server_default=text("false"))
+    # Làm giàu nội dung (tóm tắt + từ khóa + mục con) khi nạp — mặc định bật; tắt để preview nhanh.
+    enrich = Column(Boolean, nullable=False, server_default=text("true"))
+    dry_run = Column(Boolean, nullable=False, server_default=text("true"))
+    filename = Column(String(255))
+    book_title = Column(String(255))
+    vlm_model = Column(String(100), nullable=True)
+    source_filepath = Column(Text)
+    status = Column(String(20), nullable=False, server_default=text("'pending'"))
+    progress = Column(Integer, nullable=False, server_default=text("0"))
+    result_json = Column(Text)
+    inserted = Column(Integer, nullable=False, server_default=text("0"))
+    updated = Column(Integer, nullable=False, server_default=text("0"))
+    hidden_placeholders = Column(Integer, nullable=False, server_default=text("0"))
+    error_message = Column(Text)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
@@ -354,10 +502,92 @@ class ExamCompetency(Base):
         Index("idx_examcomp_unit", "unit_id"),
     )
 
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), primary_key=True)
-    unit_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="CASCADE"), primary_key=True)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
     weight = Column(Numeric(4, 3), nullable=False, server_default=text("0"))
     bloom_level = Column(SmallInteger)
+
+
+class AssignmentCompetency(Base):
+    """Map bài LMS (dim_so_assignment.assignment_id) vào chuẩn chương trình (curriculum_units).
+
+    Tương tự ExamCompetency nhưng cho bài tập LMS — cầu nối để M2/M3 biết bài LMS thuộc chương nào.
+    """
+
+    __tablename__ = "assignment_competencies"
+    __table_args__ = (
+        CheckConstraint("weight BETWEEN 0 AND 1", name="ac_weight_range"),
+        CheckConstraint("bloom_level BETWEEN 1 AND 6", name="ac_bloom_level_range"),
+        Index("idx_ac_unit", "unit_id"),
+    )
+
+    assignment_id = Column(BigInteger, primary_key=True)  # s360.dim_so_assignment.assignment_id
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), primary_key=True)
+    weight = Column(Numeric(4, 3), nullable=False, server_default=text("0"))
+    bloom_level = Column(SmallInteger)
+
+
+class StudentKnowledgeGap(Base):
+    """Kết quả phát hiện lỗ hổng kiến thức của học sinh theo unit (M2)."""
+
+    __tablename__ = "student_knowledge_gaps"
+    __table_args__ = (
+        UniqueConstraint(
+            "so_school_id", "student_code", "subject_id", "school_year_id", "semester_index", "unit_id",
+            name="uq_student_knowledge_gap",
+        ),
+        Index("idx_skg_student", "student_code", "subject_id"),
+        Index("idx_skg_unit", "unit_id"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    student_code = Column(String(50), nullable=False)
+    subject_id = Column(Integer, nullable=False)  # s360.dim_subject.id
+    school_year_id = Column(Integer, nullable=False)
+    semester_index = Column(Integer, nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), nullable=False)
+    gap_score = Column(Numeric(5, 2))  # 0..1, cao = hổng nặng
+    evidence_source = Column(String(20))  # 'EXAM' | 'LMS' | 'HYBRID' | 'PRIOR'
+    evidence_detail = Column(JSONB)
+    status = Column(String(20), nullable=False, server_default=text("'active'"))
+    detected_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class LmsQuestionBank(Base):
+    """Danh mục câu hỏi LMS item-level."""
+
+    __tablename__ = "lms_question_bank"
+    __table_args__ = (
+        Index("idx_lqb_subject", "subject_id", "unit_id"),
+        Index("idx_lqb_lesson", "lesson_id"),
+    )
+
+    question_id = Column(BigInteger, primary_key=True)
+    assignment_id = Column(BigInteger, nullable=False)
+    so_school_id = Column(Integer, nullable=False)
+    subject_id = Column(Integer, nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="SET NULL"), nullable=True)
+    lesson_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="SET NULL"), nullable=True)
+    bloom_level = Column(SmallInteger, nullable=True)
+    question_type = Column(String(20), server_default=text("'MCQ'"))
+    question_text = Column(Text, nullable=True)
+    item_weight = Column(Numeric(5, 2), nullable=True)
+    is_active = Column(Integer, server_default=text("1"))
+    created_at = Column(DateTime(timezone=True), server_default=_NOW)
+
+
+class LmsQuestionUnit(Base):
+    """Map câu hỏi LMS ↔ nhiều bài học, có trọng số (weight)."""
+
+    __tablename__ = "lms_question_unit"
+    __table_args__ = (
+        Index("idx_lqu_unit", "unit_id"),
+    )
+
+    question_id = Column(BigInteger, ForeignKey("lms_question_bank.question_id", ondelete="CASCADE"), primary_key=True)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"), primary_key=True)
+    weight = Column(Numeric(5, 3), nullable=False, server_default=text("1.0"))
 
 
 # ============================================================
@@ -381,7 +611,7 @@ class QuestionItem(Base):
     school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"), nullable=False)
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
-    unit_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="RESTRICT"), nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="RESTRICT"), nullable=False)
     bloom_level = Column(SmallInteger, nullable=False)
     question_type = Column(pg_enum(enums.QuestionType, "question_type_enum"), nullable=False)
     stem = Column(Text, nullable=False)  # đề bài (Markdown/LaTeX)
@@ -399,8 +629,8 @@ class QuestionItem(Base):
     p_value = Column(Numeric(4, 3))  # facility 0..1 (tỉ lệ làm đúng)
     discrimination = Column(Numeric(4, 3))
     exposure_at = Column(DateTime(timezone=True))  # lần cuối xuất hiện trong đề (chống lộ)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    reviewed_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     reviewed_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
@@ -419,7 +649,7 @@ class Misconception(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=_UUID_PK)
     school_id = Column(UUID(as_uuid=True), ForeignKey("schools.id", ondelete="CASCADE"))
     subject_id = Column(UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False)
-    unit_id = Column(UUID(as_uuid=True), ForeignKey("curriculum_units.id", ondelete="CASCADE"), nullable=False)
+    unit_id = Column(BigInteger, ForeignKey("curriculum_units.id", ondelete="CASCADE"), nullable=False)
     grade_number = Column(SmallInteger, nullable=False)
     description = Column(Text, nullable=False)  # mô tả lỗi sai, vd "cộng tử với tử, mẫu với mẫu"
     example_wrong = Column(Text)  # ví dụ bài làm sai điển hình
@@ -449,7 +679,7 @@ class ExamBlueprint(Base):
     cells = Column(JSONB, nullable=False)
     # Suy ra từ cells (question_type dùng) mỗi lần create/update — không nhận trực tiếp từ client.
     exam_format = Column(pg_enum(enums.ExamFormat, "exam_format_enum"))
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
@@ -471,8 +701,8 @@ class GeneratedExam(Base):
         pg_enum(enums.GenExamStatus, "gen_exam_status_enum"), nullable=False, server_default=text("'DRAFT'")
     )
     # Bản ghi đề chính thức sinh ra khi FINALIZE (nối vào luồng chấm hiện có).
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="SET NULL"))
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="SET NULL"))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
 
@@ -529,11 +759,11 @@ class Score(Base):
     score_category = Column(pg_enum(enums.ScoreCategory, "score_category_enum"), nullable=False)
     column_index = Column(SmallInteger, nullable=False)
     value = Column(Numeric(4, 2), nullable=False)
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="SET NULL"))
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="SET NULL"))
     status = Column(pg_enum(enums.ScoreStatus, "score_status_enum"), nullable=False, server_default=text("'DRAFT'"))
     note = Column(Text)
-    entered_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    entered_by = Column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     approved_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
@@ -576,8 +806,8 @@ class ExamColumnMapping(Base):
     column_index = Column(SmallInteger, nullable=False)
     class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"))
     grade_id = Column(UUID(as_uuid=True), ForeignKey("grades.id", ondelete="CASCADE"))
-    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
-    mapped_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    exam_paper_id = Column(BigInteger, ForeignKey("exam_papers.id", ondelete="CASCADE"), nullable=False)
+    mapped_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -604,7 +834,7 @@ class SubjectEvaluation(Base):
     semester_id = Column(UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="CASCADE"), nullable=False)
     result = Column(pg_enum(enums.PassFail, "pass_fail_enum"))  # cho môn REMARK
     comment = Column(Text)  # đánh giá học tập (môn SCORED)
-    evaluated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    evaluated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -628,7 +858,7 @@ class StudentTermReport(Base):
     conduct = Column(pg_enum(enums.Conduct, "conduct_enum"))  # hạnh kiểm
     general_comment = Column(Text)  # đánh giá chung của chủ nhiệm
     absent_days = Column(Integer, server_default=text("0"), default=0)  # số ngày nghỉ
-    evaluated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    evaluated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
 
@@ -651,7 +881,7 @@ class AuditLog(Base):
     table_name = Column(String(100), nullable=False)
     record_id = Column(UUID(as_uuid=True), nullable=False)
     action = Column(String(10), nullable=False)
-    changed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    changed_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     old_values = Column(JSONB)
     new_values = Column(JSONB)
     ip_address = Column(INET)
@@ -876,3 +1106,64 @@ class MetadataIndex(Base):
     exact_id = Column(BigInteger, nullable=False)
     extra_metadata = Column(JSONB)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+# ============================================================
+# EWS CONTROL PANEL (BGH) — job dự đoán + override trọng số
+# ============================================================
+
+
+class EwsPipelineJob(Base):
+    """Lịch chạy dự đoán EWS do BGH yêu cầu, theo từng trường (so_school_id)."""
+
+    __tablename__ = "ews_pipeline_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')",
+            name="ews_job_status_valid",
+        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="ews_job_progress_valid"),
+        Index("idx_ews_jobs_school_created", "so_school_id", "created_at"),
+        Index("idx_ews_jobs_status", "status"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False)
+    requested_by = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    school_year_id = Column(Integer, nullable=False)
+    semester_index = Column(Integer, nullable=False)
+    evaluated_at_week = Column(Integer, nullable=False)
+    cutoff_date = Column(Date)
+    model_version = Column(String(20), nullable=False, server_default=text("'v2_ensemble'"))
+    status = Column(String(20), nullable=False, server_default=text("'pending'"))
+    progress = Column(Integer, nullable=False, server_default=text("0"))
+    rows_processed = Column(Integer)
+    error_message = Column(Text)
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)
+
+
+class EwsWeightOverride(Base):
+    """Override trọng số/phân loại rủi ro EWS theo từng trường; NULL = dùng baseline YAML."""
+
+    __tablename__ = "ews_weight_overrides"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    so_school_id = Column(Integer, nullable=False, unique=True)
+    weight_score = Column(Float)
+    weight_lms = Column(Float)
+    weight_attendance = Column(Float)
+    weight_behavior = Column(Float)
+    alpha_score = Column(Float)
+    alpha_lms = Column(Float)
+    alpha_attendance = Column(Float)
+    alpha_behavior = Column(Float)
+    weight_floor = Column(Float)
+    worst_factor_beta = Column(Float)
+    threshold_low = Column(Float)
+    threshold_moderate = Column(Float)
+    threshold_high = Column(Float)
+    threshold_critical = Column(Float)
+    updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=_NOW)

@@ -29,11 +29,17 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model_name: str = "deepseek-v4-flash"
     deepseek_api_base: str = "https://api.deepseek.com"
-    llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    llm_temperature: float = Field(default=0.4, ge=0.0, le=2.0)
     # SDK OpenAI mặc định timeout ~600s nếu không đặt -> 1 lần API chậm/treo sẽ "ngốn" cả task nền
     # (chat, item_generation, content_difficulty đều dùng chung get_llm()). 60s đủ rộng cho prompt
     # lớn (RAG/self-consistency) nhưng vẫn giảm 10x so với mặc định SDK.
     llm_timeout_s: float = Field(default=60.0, gt=0.0)
+
+    # LLM-based Forecasting (EWS) — giới hạn concurrency & retry để tránh HTTP 429.
+    # run_llm_forecasting_batch() dùng ThreadPoolExecutor(max_workers=llm_max_concurrency).
+    # _call_llm_with_retry() retry exponential backoff (2s→4s→8s) tối đa llm_max_retries lần.
+    llm_max_concurrency: int = Field(default=20, ge=1, le=50)
+    llm_max_retries: int = Field(default=3, ge=0, le=10)
 
     # Judge LLM (Eval-as-a-Metric, xem services/eval.py) — TÙY CHỌN, mặc định "same" nghĩa là
     # judge dùng chung get_llm() với agent đang được chấm (rẻ, không cần cấu hình thêm, nhưng
@@ -41,6 +47,43 @@ class Settings(BaseSettings):
     # cách trả lời của nó). Đặt "openai"/"deepseek" khác với llm_provider để có judge độc lập
     # thật sự (cần cấu hình API key tương ứng).
     judge_llm_provider: Literal["same", "openai", "deepseek"] = "same"
+
+    # VLM đọc đề thi & nạp SGK (M1 — plan_cdi_kg_anchored): Hỗ trợ đa nhà cung cấp qua API OpenAI-compatible.
+    # User có thể chuyển đổi nhanh qua VLM_PROVIDER: "openrouter" | "qwen" | "openai" | "custom".
+    vlm_provider: Literal["openrouter", "qwen", "openai", "custom"] = Field(
+        default="qwen", validation_alias="VLM_PROVIDER"
+    )
+
+    # 1. OpenRouter (Gemini 2.0 Flash, Xiaomi Mimo, Qwen 2.5 VL...)
+    openrouter_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
+    openrouter_vlm_model: str = Field(
+        default="google/gemini-3.7-flash", validation_alias="OPENROUTER_VLM_MODEL"
+    )
+    openrouter_api_base: str = Field(
+        default="https://openrouter.ai/api/v1", validation_alias="OPENROUTER_API_BASE"
+    )
+
+    # 2. Qwen (ShopAIKey / DashScope)
+    qwen_vlm_api_key: str = Field(default="", validation_alias="QWEN_VLM_API_KEY")
+    qwen_vlm_api_base: str = Field(
+        default="https://direct.shopaikey.com/v1", validation_alias="QWEN_VLM_API_BASE"
+    )
+    qwen_vlm_model: str = Field(default="qwen3-vl-flash", validation_alias="QWEN_VLM_MODEL")
+
+    # 3. OpenAI Vision trực tiếp
+    openai_vlm_model: str = Field(default="gpt-4o-mini", validation_alias="OPENAI_VLM_MODEL")
+
+    # 4. Tương thích ngược / Custom override trực tiếp
+    vlm_model: str = "qwen3-vl-flash"
+    vlm_api_base: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    vlm_api_key: str = ""
+    vlm_timeout_s: float = Field(default=300.0, gt=0.0)
+    # Số trang gọi VLM song song khi đọc nhiều trang (nạp SGK mục lục, đọc đề nhiều trang).
+    # Giữ vừa phải (3-5) để không dính rate-limit 429/503 của provider.
+    vlm_max_concurrency: int = Field(default=4, ge=1, le=8)
+    # Số trang PDF đưa vào 1 lần gọi VLM khi quét TOÀN CUỐN SGK (nhiều ảnh/request) —
+    # lô càng lớn càng ít call nhưng payload nặng hơn.
+    vlm_sweep_pages_per_call: int = Field(default=3, ge=1, le=10)
 
     # Database
     database_url: str = "sqlite:///./data/app.db"
