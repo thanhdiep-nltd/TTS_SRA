@@ -195,18 +195,6 @@ pip install -r requirements.txt
 cp .env.example .env
 # Chỉnh sửa thông tin DATABASE_URL, OPENAI_API_KEY, JWT_SECRET_KEY trong file .env
 
-# 4. (Tùy chọn) Chạy Qdrant Vector DB cục bộ bằng Docker
-docker run -d -p 6333:6333 -v ./data/qdrant:/qdrant/storage qdrant/qdrant
-
-# 5. Chạy Database Migrations
-alembic upgrade head
-
-# 6. Khởi tạo dữ liệu mẫu đa chiều (DWH, Sổ điểm, Môn nhận xét, EWS)
-python scripts/seed_remark_subjects.py
-python scripts/seed_mock_dwh_data.py
-python scripts/seed_mock_toan6_gaps.py
-python scripts/create_admin.py --email admin@admin.edu.vn --password "<your-strong-password>"
-
 # 7. Khởi chạy Backend Server
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -240,8 +228,6 @@ npm run dev
 | Nhóm Nghiệp Vụ | Mẫu câu hỏi tương tác mẫu |
 | :--- | :--- |
 | **Tra cứu Hồ sơ & Sổ điểm** | • *"Hiển thị bảng điểm chi tiết môn Toán học kỳ 1 của lớp 9A."*<br>• *"Cho tôi xem danh sách học sinh lớp 6B và giáo viên chủ nhiệm."* |
-| **Phân tích Thống kê & Sư phạm** | • *"Tính chỉ số lạm phát điểm (GDI) và độ lệch điểm $\Delta G$ môn Tiếng Anh khối 8."*<br>• *"Lớp nào có động lượng học tập (Learning Momentum) tiến bộ nhất sau kỳ thi giữa kỳ?"* |
-| **Tra cứu SGK & Chương trình** | • *"Định nghĩa số nguyên tố và hợp số trong SGK Toán 6 Cánh Diều là gì?"*<br>• *"Nêu các yêu cầu cần đạt của bài Phương trình bậc nhất một ẩn môn Toán 8."* |
 | **Xuất Báo Cáo Tự Động** | • *"Xuất báo cáo tổng kết tình hình học tập học kỳ 1 của khối 9 dạng Word (DOCX)."*<br>• *"Tổng hợp báo cáo các môn có tỷ lệ học sinh chưa đạt trên 15%."* |
 
 ---
