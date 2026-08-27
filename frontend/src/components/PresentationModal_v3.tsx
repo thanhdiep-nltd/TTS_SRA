@@ -1283,13 +1283,13 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
             </div>
           </div>
 
-          {/* HÀNG 2: CÔNG THỨC NĂNG LỰC & GIẢI MÃ BREADTH + DEPTH */}
+          {/* HÀNG 2: CÔNG THỨC NĂNG LỰC & 3 THÀNH PHẦN BLOOM */}
           <div className={`p-3 md:p-3.5 rounded-2xl border ${isDark ? "bg-[#070e1a]/80 border-[#263750]" : "bg-white border-[#dcd7cc] shadow-sm"}`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <BarChart2 className="w-4 h-4 text-[#8c763e] dark:text-[#c2ae78]" />
                 <h4 className={`text-xs md:text-sm font-extrabold ${isDark ? "text-slate-200" : "text-[#0f1e36]"}`}>
-                  Công Thức Năng Lực: Mastery<sub>bài</sub> = (Đúng / Tổng) × BreadthRatio × (1 + DepthFactor)
+                  Công Thức Năng Lực: Mastery<sub>bài</sub> = Tỷ Lệ Đúng (Bloom-Weighted) × BreadthRatio × (1 + DepthFactor)
                 </h4>
               </div>
               <span className={`text-[9.5px] font-mono px-2.5 py-0.5 rounded-full font-bold ${isDark ? "bg-[#2d6a4f]/20 text-[#52b788]" : "bg-[#f0faf4] text-[#2d6a4f]"}`}>
@@ -1297,43 +1297,64 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Box 1: BreadthRatio */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              {/* Box 1: Tỷ Lệ Đúng Bloom-Weighted */}
+              <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <strong className={`text-[11px] md:text-xs font-extrabold ${isDark ? "text-amber-400" : "text-amber-700"}`}>
+                      1. Tỷ Lệ Đúng (Bloom-Weighted)
+                    </strong>
+                  </div>
+                  <span className="text-[8.5px] font-mono text-slate-400 font-bold">Không cào bằng</span>
+                </div>
+                <div className={`p-1.5 rounded-lg border font-mono text-[9px] md:text-[9.5px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-amber-300" : "bg-amber-50/60 border-amber-200 text-amber-800"}`}>
+                  M<sub>scope</sub> = Σ(p<sub>k</sub> × β<sub>k</sub>) / Σ(β<sub>k</sub>)
+                </div>
+                <p className={`text-[9px] md:text-[9.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  • <strong>p<sub>k</sub>:</strong> Tỷ lệ làm đúng ở riêng bậc Bloom <em>k</em> (Đúng / Tổng của bậc đó).<br />
+                  • <strong>β<sub>k</sub> (Độ khó):</strong> B1: 0.5 · B2: 0.7 · B3: 1.0 · B4: 1.3 · B5: 1.6 · B6: 2.0 (B6 gấp 4 lần B1).<br />
+                  • <strong>Suy luận Guttman:</strong> Đúng câu khó bậc cao → Kế thừa công nhận bậc cơ bản dưới.
+                </p>
+              </div>
+
+              {/* Box 2: BreadthRatio */}
               <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                    <strong className={`text-[11.5px] md:text-xs font-extrabold ${isDark ? "text-blue-400" : "text-blue-700"}`}>
-                      1. BreadthRatio (Độ Rộng Bao Phủ Bloom)
+                    <strong className={`text-[11px] md:text-xs font-extrabold ${isDark ? "text-blue-400" : "text-blue-700"}`}>
+                      2. BreadthRatio (Độ Rộng)
                     </strong>
                   </div>
-                  <span className="text-[9px] font-mono text-slate-400 font-bold">Chiều Rộng</span>
+                  <span className="text-[8.5px] font-mono text-slate-400 font-bold">Chiều Rộng</span>
                 </div>
-                <div className={`p-1.5 rounded-lg border font-mono text-[10px] md:text-[11px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-blue-300" : "bg-blue-50/60 border-blue-200 text-blue-800"}`}>
-                  BreadthRatio = (Số bậc Bloom đã làm) / (Tổng số bậc Bloom bài có)
+                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] md:text-[10px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-blue-300" : "bg-blue-50/60 border-blue-200 text-blue-800"}`}>
+                  Breadth = (Số bậc đã làm) / (Tổng bậc bài có)
                 </div>
-                <p className={`text-[10px] md:text-[10.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                  • <strong>Bản chất:</strong> Đo độ đầy đủ của phổ nhận thức trong dữ liệu bài làm LMS mà học sinh đã trải qua.<br />
-                  • <strong>Tác dụng:</strong> Tránh <em>kết luận sớm</em> khi dữ liệu mới chỉ có câu hỏi ở mức cơ bản (Nhận biết/Thông hiểu). Đảm bảo chỉ đánh giá "Vững toàn diện" khi đã khảo sát đủ các bậc Bloom của bài.
+                <p className={`text-[9.5px] md:text-[10px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  • <strong>Bản chất:</strong> Đo độ đầy đủ của phổ nhận thức trong dữ liệu bài làm LMS.<br />
+                  • <strong>Tác dụng:</strong> Tránh kết luận sớm khi dữ liệu mới chỉ có câu hỏi cơ bản (Nhận biết / Thông hiểu).
                 </p>
               </div>
 
-              {/* Box 2: DepthFactor */}
+              {/* Box 3: DepthFactor */}
               <div className={`p-2.5 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                    <strong className={`text-[11.5px] md:text-xs font-extrabold ${isDark ? "text-emerald-400" : "text-emerald-700"}`}>
-                      2. DepthFactor (Độ Sâu Nhận Thức)
+                    <strong className={`text-[11px] md:text-xs font-extrabold ${isDark ? "text-emerald-400" : "text-emerald-700"}`}>
+                      3. DepthFactor (Độ Sâu)
                     </strong>
                   </div>
-                  <span className="text-[9px] font-mono text-slate-400 font-bold">Chiều Sâu</span>
+                  <span className="text-[8.5px] font-mono text-slate-400 font-bold">Chiều Sâu</span>
                 </div>
-                <div className={`p-1.5 rounded-lg border font-mono text-[10px] md:text-[11px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-emerald-300" : "bg-emerald-50/60 border-emerald-200 text-emerald-800"}`}>
-                  DepthFactor = +20% × min(1.0, Max_Bloom_Đạt_Được / 4.0)
+                <div className={`p-1.5 rounded-lg border font-mono text-[9.5px] md:text-[10px] mb-1 ${isDark ? "bg-slate-900/60 border-slate-700 text-emerald-300" : "bg-emerald-50/60 border-emerald-200 text-emerald-800"}`}>
+                  Depth = +20% × min(1.0, Max_Bloom / 4.0)
                 </div>
-                <p className={`text-[10px] md:text-[10.5px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
-                  • <strong>Bản chất:</strong> Ghi nhận và <strong>thưởng thêm</strong> khi bài làm chứng minh học sinh đã chinh phục câu hỏi mức độ cao (Bloom 3–6: Vận dụng, Phân tích, Sáng tạo).<br />
+                <p className={`text-[9.5px] md:text-[10px] leading-relaxed ${isDark ? "text-slate-400" : "text-[#4a5568]"}`}>
+                  • <strong>Bản chất:</strong> Thưởng thêm khi bài làm chinh phục câu hỏi mức độ cao (Bloom 3–6).<br />
                   • <strong>Tác dụng:</strong> Phân hóa chính xác học sinh có tư duy giải quyết vấn đề phức tạp.
                 </p>
               </div>
