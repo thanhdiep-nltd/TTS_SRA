@@ -1,7 +1,0 @@
-# Embedding sidecar — chỉ những gì cần để chạy BGE-m3 + serve HTTP.
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
-pydantic>=2.10.0
-# BGE-m3. torch CPU-only được cài riêng trong Dockerfile (tránh bản CUDA ~6GB).
-# Phải KHỚP version với pipeline để vector không lệch.
-sentence-transformers>=3.0
