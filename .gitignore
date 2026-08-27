@@ -43,6 +43,9 @@ desktop.ini
 .code-review-graph/
 .playwright-mcp/
 .mcp.json
+GEMINI.md
+dev.bat
+dev.ps1
 scratch/
 plans/
 
