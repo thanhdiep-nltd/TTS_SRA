@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import text
@@ -377,22 +378,43 @@ CONFIDENCE_TO_INT: dict[str, int] = {
 }
 
 
+def estimate_week_cutoff_date(week_number: int, semester_index: int = 1, school_year: int = 2025) -> datetime:
+    """Ước tính ngày cutoff tương ứng với tuần học để lọc bài làm LMS và sổ điểm.
+    - HK1: Bắt đầu 01/09/2025. Tuần W kết thúc vào Chủ nhật cuối tuần W (23:59:59).
+    - HK2: Bắt đầu 19/01/2026.
+    """
+    if semester_index == 1 or week_number <= 18:
+        base_date = datetime(school_year, 9, 1, 0, 0, 0)
+        # Tuần W: lấy mốc cuối ngày Chủ Nhật của tuần đó
+        return base_date + timedelta(weeks=max(0, week_number - 1), days=6, hours=23, minutes=59, seconds=59)
+    else:
+        base_date = datetime(school_year + 1, 1, 19, 0, 0, 0)
+        w_offset = max(0, week_number - 19) if week_number >= 19 else max(0, week_number - 1)
+        return base_date + timedelta(weeks=w_offset, days=6, hours=23, minutes=59, seconds=59)
+
+
 def recalc_unit_mastery(
     db: any,
     subject_id: int,
     semester_index: int,
     school_id: int | None = None,
+    week_number: int = 0,
+    cutoff_date: Any | None = None,
 ) -> int:
     """Tính lại và ghi student_unit_mastery từ lms_question_response + lms_question_unit.
 
-    1. Map câu hỏi sang unit_id qua lms_question_unit (weight).
-    1b. Đọc bank_bloom_map: phạm vi Bloom thực tế có trong ngân hàng câu hỏi của từng unit.
-    2. Đọc responses sạch (is_best_attempt = TRUE, integrity_flag = 0).
-    3. Nhóm theo (student_code, unit_id) -> list[ItemResult].
-    4. Tính finalize_mastery (có bank_bloom_set + suy luận Guttman) cho từng unit của từng học sinh.
-    5. UPSERT vào public.student_unit_mastery.
-    6. Trả về tổng số bản ghi đã tính toán và cập nhật.
+    1. Tự động xác định cutoff_date nếu week_number > 0 và cutoff_date chưa được truyền.
+    2. Map câu hỏi sang unit_id qua lms_question_unit (weight).
+    3. Đọc responses sạch (is_best_attempt = TRUE, integrity_flag = 0) đến trước cutoff_date.
+    4. Nhóm theo (student_code, unit_id) -> list[ItemResult].
+    5. Tính finalize_mastery (có bank_bloom_set + suy luận Guttman) cho từng unit của từng học sinh.
+    6. UPSERT vào public.student_unit_mastery (kèm week_number, 0 = Mới nhất).
+    7. Trả về tổng số bản ghi đã tính toán và cập nhật.
     """
+    # Tự động ước tính cutoff_date nếu tính snapshot theo tuần mà chưa truyền cutoff_date
+    if week_number > 0 and cutoff_date is None:
+        cutoff_date = estimate_week_cutoff_date(week_number, semester_index)
+
     # 1. Map câu → [(unit_id, weight)]
     unit_rows = db.execute(text("SELECT question_id, unit_id, weight FROM public.lms_question_unit")).fetchall()
     unit_map: dict[int, list[tuple[int, float]]] = {}
@@ -421,9 +443,12 @@ def recalc_unit_mastery(
 
     # 2. Đọc responses sạch của môn (kèm tenant nếu có) qua JOIN lms_question_bank
     school_cond = "AND lqr.so_school_id = :school_id" if school_id else ""
+    time_cond = "AND COALESCE(lqr.attempt_date, lqr.created_at) <= :cutoff_date" if (week_number > 0 and cutoff_date is not None) else ""
     params: dict = {"sid": subject_id}
     if school_id:
         params["school_id"] = school_id
+    if time_cond:
+        params["cutoff_date"] = cutoff_date
 
     resp_rows = db.execute(
         text(f"""
@@ -435,6 +460,7 @@ def recalc_unit_mastery(
               AND lqr.is_best_attempt = TRUE
               AND (lqr.integrity_flag IS NULL OR lqr.integrity_flag = 0)
               {school_cond}
+              {time_cond}
             ORDER BY lqr.student_code, lqr.question_id
         """),
         params,
@@ -473,9 +499,12 @@ def recalc_unit_mastery(
     exam_mastery_by_student: dict[str, float] = {}
     try:
         grade_cond = "AND fg.so_school_id = :school_id" if school_id else ""
+        grade_time_cond = "AND fg.created_at <= :cutoff_date" if (week_number > 0 and cutoff_date is not None) else ""
         g_params: dict = {"sid": subject_id, "sem": semester_index}
         if school_id:
             g_params["school_id"] = school_id
+        if grade_time_cond:
+            g_params["cutoff_date"] = cutoff_date
 
         grade_rows = db.execute(
             text(f"""
@@ -493,6 +522,7 @@ def recalc_unit_mastery(
                 WHERE fg.subject_id = :sid
                   AND fg.semester_index = :sem
                   {grade_cond}
+                  {grade_time_cond}
                 ORDER BY fg.created_at DESC
             """),
             g_params,
@@ -514,16 +544,16 @@ def recalc_unit_mastery(
     # 4. Tính toán & UPSERT theo batch
     upsert_sql = text("""
         INSERT INTO public.student_unit_mastery
-            (student_code, subject_id, so_school_id, unit_id, semester_index,
+            (student_code, subject_id, so_school_id, unit_id, semester_index, week_number,
              raw_mastery, n_items, n_correct, coverage, lm_weight, exam_weight,
              adjusted_mastery, confidence, evidence_source, integrity_status,
              evidence_detail, updated_at)
         VALUES
-            (:st_code, :subject_id, :so_school_id, :unit_id, :semester_index,
+            (:st_code, :subject_id, :so_school_id, :unit_id, :semester_index, :week_number,
              :raw_mastery, :n_items, :n_correct, :coverage, :lm_weight, :exam_weight,
              :adjusted_mastery, :confidence, :evidence_source, :integrity_status,
              CAST(:evidence_detail AS jsonb), NOW())
-        ON CONFLICT (so_school_id, student_code, subject_id, unit_id, semester_index) DO UPDATE
+        ON CONFLICT (so_school_id, student_code, subject_id, unit_id, semester_index, week_number) DO UPDATE
           SET raw_mastery = EXCLUDED.raw_mastery,
               adjusted_mastery = EXCLUDED.adjusted_mastery,
               n_items = EXCLUDED.n_items,
@@ -554,6 +584,7 @@ def recalc_unit_mastery(
                 "so_school_id": st_school,
                 "unit_id": uid,
                 "semester_index": semester_index,
+                "week_number": week_number,
                 "raw_mastery": m.raw_mastery,
                 "n_items": m.n_items,
                 "n_correct": m.n_correct,

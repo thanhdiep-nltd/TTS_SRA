@@ -811,6 +811,7 @@ def gd5_mastery(cur, students: list[dict], profiles: list[dict], lessons_by_chap
                         SUBJECT_ID,
                         lesson_id,
                         SEMESTER,
+                        0,  # week_number = 0 (Mới nhất)
                         round(mastery_val, 4),
                         n_items,
                         n_correct,
@@ -830,12 +831,12 @@ def gd5_mastery(cur, students: list[dict], profiles: list[dict], lessons_by_chap
     cur.executemany(
         """
         INSERT INTO public.student_unit_mastery
-            (so_school_id, student_code, subject_id, unit_id, semester_index,
+            (so_school_id, student_code, subject_id, unit_id, semester_index, week_number,
              raw_mastery, n_items, n_correct, coverage, lm_weight, exam_weight,
              adjusted_mastery, confidence, evidence_source, integrity_status,
              evidence_detail, detected_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (so_school_id, student_code, subject_id, unit_id, semester_index) DO UPDATE
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (so_school_id, student_code, subject_id, unit_id, semester_index, week_number) DO UPDATE
           SET raw_mastery = EXCLUDED.raw_mastery,
               n_items = EXCLUDED.n_items,
               n_correct = EXCLUDED.n_correct,

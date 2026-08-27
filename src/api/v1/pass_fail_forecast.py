@@ -56,6 +56,7 @@ def _calculate_forecast(
     school_year_id: int,
     semester_index: int,
     school_id: int | None = None,
+    week_number: int = 0,
 ) -> PassFailForecastResult:
     units = _load_exam_units(db, exam_paper_id)
     cdi = _load_cdi(db, exam_paper_id)
@@ -77,9 +78,9 @@ def _calculate_forecast(
     ).fetchall()
     lesson_to_chapter = {int(r.id): int(r.parent_id) for r in parent_rows}
 
-    # Năng lực LMS cấp bài — 1 query batch cho toàn bộ học sinh (không N+1), kèm tenant.
+    # Năng lực LMS cấp bài — 1 query batch cho toàn bộ học sinh (không N+1), kèm tenant & week_number (0 = Mới nhất).
     school_cond_sum = "AND sum.so_school_id = :school_id" if school_id else ""
-    sum_params: dict = {"sid": subject_id, "sem": semester_index}
+    sum_params: dict = {"sid": subject_id, "sem": semester_index, "week": week_number}
     if school_id:
         sum_params["school_id"] = school_id
     sum_rows = db.execute(
@@ -88,6 +89,7 @@ def _calculate_forecast(
             SELECT sum.student_code, sum.unit_id, sum.raw_mastery, sum.integrity_status, sum.evidence_detail
             FROM public.student_unit_mastery sum
             WHERE sum.subject_id = :sid AND sum.semester_index = :sem
+              AND sum.week_number = :week
               AND sum.raw_mastery IS NOT NULL
               {school_cond_sum}
             """
@@ -263,6 +265,7 @@ def forecast_by_subject(
     grade_id: int | None = Query(None, description="Khối lớp (tùy chọn)"),
     school_year_id: int | None = Query(None, description="Năm học"),
     semester_index: int = Query(1, description="Học kỳ"),
+    week_number: int = Query(0, ge=0, le=52, description="Tuần học năng lực (0 = Mới nhất/Latest)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -291,7 +294,7 @@ def forecast_by_subject(
     if not exam_row:
         return PassFailForecastResult(exam_paper_id=0, total=0, pass_count=0, fail_count=0)
 
-    return _calculate_forecast(db, int(exam_row.id), subject_id, sy_id, semester_index, school_id)
+    return _calculate_forecast(db, int(exam_row.id), subject_id, sy_id, semester_index, school_id, week_number=week_number)
 
 
 @router.get("/{exam_paper_id}", response_model=PassFailForecastResult)
@@ -300,11 +303,12 @@ def forecast_pass_fail(
     subject_id: int = Query(..., description="ID môn học (s360.dim_subject.id)"),
     school_year_id: int | None = Query(None, description="Năm học"),
     semester_index: int = Query(1),
+    week_number: int = Query(0, ge=0, le=52, description="Tuần học năng lực (0 = Mới nhất/Latest)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
     """Dự đoán pass/fail cho 1 đề cuối kỳ đã map unit."""
     sy_id = _resolve_school_year(db, school_year_id)
     school_id = getattr(current_user, "so_school_id", None)
-    return _calculate_forecast(db, exam_paper_id, subject_id, sy_id, semester_index, school_id)
+    return _calculate_forecast(db, exam_paper_id, subject_id, sy_id, semester_index, school_id, week_number=week_number)
 

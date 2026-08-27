@@ -45,38 +45,22 @@ class StudentForecast(BaseModel):
 def resolve_abilities(
     raw_by_lesson: dict[int, float],
     lesson_ids: list[int],
-    lesson_to_chapter: dict[int, int],
-) -> dict[int, float] | None:
-    """Điền ability (0..10) cho từng bài theo chuỗi fallback; None nếu HS không có LMS nào.
-
-    raw_by_lesson: {lesson_id: raw_mastery 0..1} — chỉ các bài HS có dữ liệu.
-    lesson_ids: các bài xuất hiện trong đề (exam_competencies).
-    lesson_to_chapter: {lesson_id: chapter_id}.
-    Chuỗi: bài có dữ liệu → raw×10; thiếu → TB chương của HS; chương trống →
-    TB toàn môn; toàn bộ trống → None (INSUFFICIENT).
+    lesson_to_chapter: dict[int, int] | None = None,
+) -> dict[int, float | None] | None:
+    """Điền ability (0..10) cho từng bài có dữ liệu LMS.
+    
+    Không fallback: Bài chưa có LMS sẽ gán None (không bịa điểm hoặc gán trung bình).
+    Nếu học sinh hoàn toàn không có bất kỳ bài LMS nào -> trả về None (INSUFFICIENT).
     """
     if not raw_by_lesson:
         return None
-    subject_avg = sum(raw_by_lesson.values()) / len(raw_by_lesson)
 
-    # TB theo chương cho từng chương có ≥1 bài dữ liệu
-    chapter_raw: dict[int, list[float]] = {}
-    for lesson_id, raw in raw_by_lesson.items():
-        ch = lesson_to_chapter.get(lesson_id)
-        if ch is not None:
-            chapter_raw.setdefault(ch, []).append(raw)
-    chapter_avg = {ch: sum(v) / len(v) for ch, v in chapter_raw.items()}
-
-    abilities: dict[int, float] = {}
+    abilities: dict[int, float | None] = {}
     for lesson_id in lesson_ids:
         if lesson_id in raw_by_lesson:
             abilities[lesson_id] = raw_by_lesson[lesson_id] * 10.0
-            continue
-        ch = lesson_to_chapter.get(lesson_id)
-        if ch is not None and ch in chapter_avg:
-            abilities[lesson_id] = chapter_avg[ch] * 10.0
-            continue
-        abilities[lesson_id] = subject_avg * 10.0
+        else:
+            abilities[lesson_id] = None
     return abilities
 
 

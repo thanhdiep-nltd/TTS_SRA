@@ -114,6 +114,7 @@ _MINI_MIGRATIONS: list[tuple[str, str]] = [
             so_school_id INTEGER NOT NULL,
             unit_id BIGINT NOT NULL REFERENCES public.curriculum_units(id),
             semester_index INTEGER NOT NULL,
+            week_number SMALLINT DEFAULT 0 NOT NULL,
             raw_mastery NUMERIC(5,4),
             n_items INT DEFAULT 0,
             n_correct INT DEFAULT 0,
@@ -127,13 +128,29 @@ _MINI_MIGRATIONS: list[tuple[str, str]] = [
             evidence_detail JSONB,
             detected_at TIMESTAMPTZ DEFAULT NOW(),
             updated_at TIMESTAMPTZ DEFAULT NOW(),
-            CONSTRAINT uq_sum_mastery UNIQUE (so_school_id, student_code, subject_id, unit_id, semester_index)
+            CONSTRAINT uq_sum_mastery_week UNIQUE (so_school_id, student_code, subject_id, unit_id, semester_index, week_number)
         )""",
-        "student_unit_mastery (bảng tổng hợp mastery theo chương)",
+        "student_unit_mastery (bảng tổng hợp mastery theo chương & tuần)",
+    ),
+    (
+        "ALTER TABLE public.student_unit_mastery ADD COLUMN IF NOT EXISTS week_number SMALLINT DEFAULT 0 NOT NULL",
+        "student_unit_mastery.week_number (mặc định 0 = Mới nhất)",
+    ),
+    (
+        "ALTER TABLE public.student_unit_mastery DROP CONSTRAINT IF EXISTS uq_sum_mastery",
+        "student_unit_mastery drop legacy 5-col constraint uq_sum_mastery",
+    ),
+    (
+        "ALTER TABLE public.student_unit_mastery ADD CONSTRAINT uq_sum_mastery_week UNIQUE (so_school_id, student_code, subject_id, unit_id, semester_index, week_number)",
+        "student_unit_mastery add 6-col constraint uq_sum_mastery_week",
     ),
     (
         "CREATE INDEX IF NOT EXISTS idx_sum_std ON public.student_unit_mastery(student_code, subject_id, unit_id)",
         "student_unit_mastery (student, subject, unit) index",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_sum_std_week ON public.student_unit_mastery(student_code, subject_id, unit_id, week_number)",
+        "student_unit_mastery (student, subject, unit, week) index",
     ),
 ]
 

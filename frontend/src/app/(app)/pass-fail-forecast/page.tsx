@@ -9,6 +9,7 @@ import {
     Award,
     BarChart3,
     BookOpen,
+    Calendar,
     CheckCircle2,
     ChevronDown,
     ChevronRight,
@@ -90,6 +91,8 @@ export default function PassFailForecastPage() {
     const [subjectId, setSubjectId] = useState<string>(querySubjectId ?? "");
     const [gradeLevel, setGradeLevel] = useState<string>("6");
     const [semester, setSemester] = useState<string>(querySemester ?? "1");
+    const [availableWeeks, setAvailableWeeks] = useState<{ week_number: number; label: string; is_latest: boolean; has_data?: boolean }[]>([]);
+    const [selectedWeek, setSelectedWeek] = useState<number>(0);
     const [activeTab, setActiveTab] = useState<"existing" | "upload">("existing");
 
     // ——— Forecast state ———
@@ -156,6 +159,21 @@ export default function PassFailForecastPage() {
             .catch(() => setError("Không tải được danh sách môn học."));
     }, []);
 
+    // Load available weeks khi đổi môn/HK
+    useEffect(() => {
+        if (!subjectId) return;
+        api
+            .get<{ week_number: number; label: string; is_latest: boolean; has_data?: boolean }[]>(
+                `/knowledge-gaps/available-weeks?subject_id=${subjectId}&semester_index=${semester}`
+            )
+            .then((weeks) => {
+                setAvailableWeeks(weeks ?? [{ week_number: 0, label: "✨ Mới nhất (Hiện tại)", is_latest: true }]);
+            })
+            .catch(() => {
+                setAvailableWeeks([{ week_number: 0, label: "✨ Mới nhất (Hiện tại)", is_latest: true }]);
+            });
+    }, [subjectId, semester]);
+
     // Load exams khi đổi môn/HK
     const loadExams = useCallback(async () => {
         if (!subjectId) {
@@ -212,6 +230,7 @@ export default function PassFailForecastPage() {
                 const params = new URLSearchParams({
                     subject_id: subjectId,
                     semester_index: semester,
+                    week_number: String(selectedWeek),
                 });
                 if (gradeLevel) params.append("grade_id", gradeLevel);
                 const data = await api.get<PassFailForecastResult>(
@@ -225,12 +244,19 @@ export default function PassFailForecastPage() {
                 setLoading(false);
             }
         },
-        [subjectId, gradeLevel, semester]
+        [subjectId, gradeLevel, semester, selectedWeek]
     );
 
     const runForecast = useCallback(() => {
         if (selectedExamId) runForecastWithId(selectedExamId);
     }, [selectedExamId, runForecastWithId]);
+
+    // Tự động chạy lại dự đoán khi đổi tuần nếu đã có đề
+    useEffect(() => {
+        if (selectedExamId && subjectId && result) {
+            runForecastWithId(selectedExamId);
+        }
+    }, [selectedWeek]);
 
     // Tự động chạy dự đoán nếu được điều hướng từ trang exam-difficulty
     useEffect(() => {
@@ -444,6 +470,15 @@ export default function PassFailForecastPage() {
                                 value={semester}
                                 onChange={setSemester}
                                 className="min-w-[95px]"
+                            />
+                        </div>
+                        <div className="min-w-[200px]">
+                            <SearchableSelect
+                                options={availableWeeks.map((w) => ({ value: String(w.week_number), label: w.label }))}
+                                value={String(selectedWeek)}
+                                onChange={(v) => setSelectedWeek(Number(v))}
+                                placeholder="Nguồn năng lực..."
+                                className="min-w-[200px]"
                             />
                         </div>
                     </div>

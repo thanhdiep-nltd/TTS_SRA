@@ -8,6 +8,7 @@ import {
     Award,
     BookOpen,
     Brain,
+    Calendar,
     CheckCircle2,
     Filter,
     GraduationCap,
@@ -61,6 +62,8 @@ export default function KnowledgeGapsPage() {
     const router = useRouter();
     const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
     const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+    const [availableWeeks, setAvailableWeeks] = useState<{ week_number: number; label: string; is_latest: boolean }[]>([]);
+    const [selectedWeek, setSelectedWeek] = useState<number>(0);
 
     const [subjectId, setSubjectId] = useState<string>("");
     const [classId, setClassId] = useState<string>("");
@@ -92,6 +95,23 @@ export default function KnowledgeGapsPage() {
             .catch(() => setError("Không tải được danh sách môn học."));
     }, []);
 
+    // 1.1 Load available weeks khi subject thay đổi
+    const refreshAvailableWeeks = useCallback(async () => {
+        if (!subjectId) return;
+        try {
+            const weeks = await api.get<{ week_number: number; label: string; is_latest: boolean; has_data?: boolean }[]>(
+                `/knowledge-gaps/available-weeks?subject_id=${subjectId}&semester_index=1`
+            );
+            setAvailableWeeks(weeks ?? [{ week_number: 0, label: "✨ Mới nhất (Hiện tại)", is_latest: true }]);
+        } catch {
+            setAvailableWeeks([{ week_number: 0, label: "✨ Mới nhất (Hiện tại)", is_latest: true }]);
+        }
+    }, [subjectId]);
+
+    useEffect(() => {
+        refreshAvailableWeeks();
+    }, [refreshAvailableWeeks]);
+
     // 2. Load classes từ s360
     useEffect(() => {
         api
@@ -106,14 +126,14 @@ export default function KnowledgeGapsPage() {
             .catch(() => setError("Không tải được danh sách lớp."));
     }, []);
 
-    // 3. Tự động tải Roster khi đã có cả Subject và Class
+    // 3. Tự động tải Roster khi đã có cả Subject, Class và Week
     const loadRoster = useCallback(async () => {
         if (!classId || !subjectId) return;
         setLoading(true);
         setError(null);
         try {
             const data = await api.get<ClassRosterResponse>(
-                `/knowledge-gaps/classes/${classId}/roster?subject_id=${subjectId}&semester_index=1`
+                `/knowledge-gaps/classes/${classId}/roster?subject_id=${subjectId}&semester_index=1&week_number=${selectedWeek}`
             );
             setRosterData(data);
         } catch (e: any) {
@@ -121,13 +141,13 @@ export default function KnowledgeGapsPage() {
         } finally {
             setLoading(false);
         }
-    }, [classId, subjectId]);
+    }, [classId, subjectId, selectedWeek]);
 
     useEffect(() => {
         if (classId && subjectId) {
             loadRoster();
         }
-    }, [classId, subjectId, loadRoster]);
+    }, [classId, subjectId, selectedWeek, loadRoster]);
 
     // 3.1 Tính toán lại toàn bộ student_unit_mastery từ LMS item-response
     const handleRecalcMastery = async () => {
@@ -137,9 +157,10 @@ export default function KnowledgeGapsPage() {
         setRecalcMsg(null);
         try {
             const res = await api.post<{ success: boolean; records_calculated: number; message: string }>(
-                `/knowledge-gaps/recalc-mastery?subject_id=${subjectId}&semester_index=1`
+                `/knowledge-gaps/recalc-mastery?subject_id=${subjectId}&semester_index=1&week_number=${selectedWeek}`
             );
             setRecalcMsg(res.message || `Đã tính toán lại năng lực thành công (${res.records_calculated} bản ghi).`);
+            await refreshAvailableWeeks();
             await loadRoster();
             setTimeout(() => setRecalcMsg(null), 6000);
         } catch (e: any) {
@@ -218,6 +239,20 @@ export default function KnowledgeGapsPage() {
                     />
                 </div>
 
+                <div className="min-w-[190px] flex-1 sm:flex-initial">
+                    <label className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                        Nguồn năng lực
+                    </label>
+                    <SearchableSelect
+                        options={availableWeeks.map((w) => ({ value: String(w.week_number), label: w.label }))}
+                        value={String(selectedWeek)}
+                        onChange={(v) => setSelectedWeek(Number(v))}
+                        placeholder="Chọn tuần..."
+                        className="w-full"
+                    />
+                </div>
+
                 <button
                     onClick={loadRoster}
                     disabled={loading || !classId || !subjectId}
@@ -231,10 +266,10 @@ export default function KnowledgeGapsPage() {
                     onClick={handleRecalcMastery}
                     disabled={isRecalculating || !subjectId}
                     className="px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-sm font-semibold shadow-xs disabled:opacity-50 transition-all flex items-center gap-2"
-                    title="Tính toán lại toàn bộ độ thành thạo học sinh từ kết quả làm bài LMS mới nhất"
+                    title={selectedWeek > 0 ? `Tính toán snapshot năng lực cho Tuần ${selectedWeek}` : "Tính toán lại toàn bộ độ thành thạo học sinh từ kết quả làm bài LMS mới nhất"}
                 >
                     <Sparkles className={`w-4 h-4 text-indigo-600 dark:text-indigo-400 ${isRecalculating ? "animate-spin" : ""}`} />
-                    {isRecalculating ? "Đang tính..." : "Tính lại năng lực"}
+                    {isRecalculating ? "Đang tính..." : selectedWeek > 0 ? `Tính năng lực Tuần ${selectedWeek}` : "Tính lại năng lực"}
                 </button>
             </div>
 
@@ -562,9 +597,25 @@ export default function KnowledgeGapsPage() {
                                 </table>
                             </div>
                         ) : (
-                            <div className="py-12 text-center text-sm text-slate-400 space-y-2">
+                            <div className="py-12 text-center text-sm text-slate-400 space-y-3">
                                 <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
-                                <p>Không tìm thấy học sinh nào phù hợp với bộ lọc hiện tại.</p>
+                                <p className="max-w-md mx-auto">
+                                    {selectedWeek > 0
+                                        ? `Tuần ${selectedWeek} chưa có dữ liệu snapshot năng lực.`
+                                        : "Không tìm thấy học sinh nào phù hợp với bộ lọc hiện tại."}
+                                </p>
+                                {selectedWeek > 0 && (
+                                    <div>
+                                        <button
+                                            onClick={handleRecalcMastery}
+                                            disabled={isRecalculating || !subjectId}
+                                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+                                        >
+                                            <Sparkles className={`w-3.5 h-3.5 ${isRecalculating ? "animate-spin" : ""}`} />
+                                            {isRecalculating ? "Đang tạo snapshot..." : `⚡ Bấm để Tính ngay năng lực Tuần ${selectedWeek}`}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

@@ -27,7 +27,11 @@ from src.schemas.knowledge_gap import (
     StudentUnitBloomDrilldownResponse,
     StudentUnitQuestionItem,
 )
-from src.services.item_mastery import generate_confidence_reason, recalc_unit_mastery
+from src.services.item_mastery import (
+    estimate_week_cutoff_date,
+    generate_confidence_reason,
+    recalc_unit_mastery,
+)
 from src.services.knowledge_gap import UnitWeight, compute_unit_mastery
 from src.services.lms_question_analyzer import job_manager, run_analysis_job_in_background
 
@@ -136,6 +140,55 @@ def list_s360_students(
         for r in rows
         if r.student_name
     ]
+
+
+@router.get("/available-weeks", response_model=list[dict])
+def get_available_weeks(
+    subject_id: int = Query(..., description="ID môn học"),
+    semester_index: int = Query(1, description="Học kỳ"),
+    current_user: CurrentUser = None,
+    db: Session = Depends(get_db),
+):
+    """Danh sách tất cả 35 tuần học trong năm học (Tuần 1-35) kèm trạng thái đã có snapshot hay chưa."""
+    school_id = getattr(current_user, "so_school_id", None)
+    school_cond = "AND so_school_id = :school_id" if school_id else ""
+    params = {"sid": subject_id}
+    if school_id:
+        params["school_id"] = school_id
+
+    rows = db.execute(
+        text(f"""
+            SELECT DISTINCT week_number
+            FROM public.student_unit_mastery
+            WHERE subject_id = :sid
+              {school_cond}
+            ORDER BY week_number ASC
+        """),
+        params,
+    ).fetchall()
+
+    weeks_found = {int(r.week_number) for r in (rows or []) if r.week_number is not None}
+    
+    # 1. Mốc Mới nhất (Hiện tại)
+    result = [{
+        "week_number": 0,
+        "label": "✨ Mới nhất (Hiện tại)",
+        "is_latest": True,
+        "has_data": 0 in weeks_found or len(weeks_found) > 0,
+    }]
+    
+    # 2. Toàn bộ 35 tuần của năm học (Tuần 1-35)
+    for w in range(1, 36):
+        has_d = w in weeks_found
+        suffix = " • Đã có dữ liệu" if has_d else " • Chưa tính"
+        sem_tag = "HK1" if w <= 18 else "HK2"
+        result.append({
+            "week_number": w,
+            "label": f"Tuần {w} ({sem_tag}){suffix}",
+            "is_latest": False,
+            "has_data": has_d,
+        })
+    return result
 
 
 @router.get("/lms-question-bank", response_model=list[LmsQuestionBankItem])
@@ -424,6 +477,7 @@ def get_student_knowledge_gaps(
     subject_id: int = Query(..., description="ID môn học (s360.dim_subject.id)"),
     school_year_id: int | None = Query(None, description="Năm học (để trống để lấy năm hiện tại)"),
     semester_index: int = Query(1),
+    week_number: int = Query(0, ge=0, le=52, description="Tuần học năng lực (0 = Mới nhất/Latest)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -437,7 +491,7 @@ def get_student_knowledge_gaps(
 
     # === Nguồn 1: student_unit_mastery (LMS item-level, đối soát) — ưu tiên nếu có. ===
     sum_cond = "AND sum.so_school_id = :school_id" if school_id else ""
-    sum_params = {"sc": student_code, "sid": subject_id, "sem": semester_index}
+    sum_params = {"sc": student_code, "sid": subject_id, "sem": semester_index, "week": week_number}
     if school_id:
         sum_params["school_id"] = school_id
     sum_rows = db.execute(
@@ -448,6 +502,7 @@ def get_student_knowledge_gaps(
             FROM public.student_unit_mastery sum
             WHERE sum.student_code = :sc AND sum.subject_id = :sid
               AND sum.semester_index = :sem
+              AND sum.week_number = :week
               {sum_cond}
         """),
         sum_params,
@@ -540,48 +595,18 @@ def get_student_knowledge_gaps(
             gaps=tree_gaps,
         )
 
-    # === Nguồn 2 (fallback): điểm tổng + exam_competencies — chỉ khi chưa có LMS mastery. ===
-    units = _load_exam_units(db, subject_id, semester_index, school_id)
-    score_row = _latest_locked_score(db, student_code, subject_id, sy_id, semester_index, school_id)
-    if not units or score_row is None or score_row.final_grade is None:
-        return StudentKnowledgeGaps(
-            student_code=student_code,
-            subject_id=subject_id,
-            school_year_id=sy_id,
-            semester_index=semester_index,
-            gaps=[],
-        )
-
-    total_score = float(score_row.final_grade)
-    max_score = float(score_row.max_grade) if score_row.max_grade else 10.0
-    mastery_list = compute_unit_mastery(total_score, max_score, units)
-    meta = _unit_meta(db, [m.unit_id for m in mastery_list])
-    raw_items = [
-        _enrich_gap_item_confidence(
-            KnowledgeGapItem(
-                unit_id=m.unit_id,
-                parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
-                unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
-                chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
-                lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
-                summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
-                keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
-                gap_score=m.gap_score,
-                mastery=m.mastery,
-                confidence="LOW",
-                evidence_source="EXAM",
-            ),
-            total_score=total_score,
-        )
-        for m in mastery_list
-    ]
-    tree_gaps = _build_mastery_tree(raw_items)
+    # Nếu không có bản ghi LMS -> trả về INSUFFICIENT (không fallback ước lượng)
+    reason = f"Tuần {week_number} chưa có bản ghi snapshot năng lực." if week_number > 0 else "Học sinh chưa có dữ liệu bài tập LMS."
     return StudentKnowledgeGaps(
         student_code=student_code,
         subject_id=subject_id,
         school_year_id=sy_id,
         semester_index=semester_index,
-        gaps=tree_gaps,
+        confidence="INSUFFICIENT",
+        confidence_score=0.0,
+        confidence_reason=reason,
+        evidence_source="NONE",
+        gaps=[],
     )
 
 
@@ -697,6 +722,7 @@ def get_class_diagnostic_roster(
     subject_id: int = Query(..., description="ID môn học (s360.dim_subject.id)"),
     school_year_id: int | None = Query(None, description="Năm học (để trống để lấy năm hiện tại)"),
     semester_index: int = Query(1),
+    week_number: int = Query(0, ge=0, le=52, description="Tuần học năng lực (0 = Mới nhất/Latest)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
@@ -758,7 +784,7 @@ def get_class_diagnostic_roster(
 
     # 3. Lấy dữ liệu student_unit_mastery của toàn bộ học sinh trong lớp (batch)
     sum_cond = "AND sum.so_school_id = :school_id" if school_id else ""
-    sum_params = {"codes": student_codes, "sid": subject_id, "sem": semester_index}
+    sum_params = {"codes": student_codes, "sid": subject_id, "sem": semester_index, "week": week_number}
     if school_id:
         sum_params["school_id"] = school_id
     sum_rows = db.execute(
@@ -770,10 +796,28 @@ def get_class_diagnostic_roster(
             FROM public.student_unit_mastery sum
             WHERE sum.student_code = ANY(:codes) AND sum.subject_id = :sid
               AND sum.semester_index = :sem
+              AND sum.week_number = :week
               {sum_cond}
         """),
         sum_params,
     ).fetchall()
+
+    # Nếu đang xem tuần snapshot lịch sử (week_number > 0) và tuần này chưa được tính -> trả về roster rỗng
+    if week_number > 0 and not sum_rows:
+        return ClassRosterResponse(
+            class_id=class_id,
+            class_name=class_name,
+            subject_id=subject_id,
+            subject_name=subject_name,
+            school_year_id=sy_id,
+            semester_index=semester_index,
+            total_students=len(students_rows),
+            mastered_all_count=0,
+            need_support_count=0,
+            cheating_alert_count=0,
+            low_engagement_count=0,
+            students=[],
+        )
 
     # Gom mastery theo student_code
     sum_by_student: dict[str, list] = {}
@@ -783,11 +827,7 @@ def get_class_diagnostic_roster(
             sum_by_student.setdefault(r.student_code, []).append(r)
             all_unit_ids.add(r.unit_id)
 
-    # 4. Fallback: Đề thi cho học sinh chưa có LMS
-    exam_units = _load_exam_units(db, subject_id, semester_index, school_id)
-    all_unit_ids.update(u.unit_id for u in exam_units)
-
-    # Metadata của toàn bộ unit
+    # Metadata của toàn bộ unit có LMS
     meta = _unit_meta(db, list(all_unit_ids)) if all_unit_ids else {}
 
     # 4b. Lấy Bloom breakdown cho toàn bộ học sinh và unit trong lớp (batch aggregation)
@@ -874,32 +914,7 @@ def get_class_diagnostic_roster(
                 )
                 for r in s_sum_rows
             ]
-        else:
-            # Nguồn 2: Fallback điểm thi trên lớp
-            score_row = _latest_locked_score(db, sc, subject_id, sy_id, semester_index, school_id)
-            if exam_units and score_row and score_row.final_grade is not None:
-                total_score = float(score_row.final_grade)
-                max_score = float(score_row.max_grade) if score_row.max_grade else 10.0
-                mastery_list = compute_unit_mastery(total_score, max_score, exam_units)
-                raw_items = [
-                    _enrich_gap_item_confidence(
-                        KnowledgeGapItem(
-                            unit_id=m.unit_id,
-                            parent_id=meta.get(m.unit_id, (None, None, None, None, None, None))[5],
-                            unit_name=meta.get(m.unit_id, (None, None, None, None, None, None))[0],
-                            chapter=meta.get(m.unit_id, (None, None, None, None, None, None))[1],
-                            lesson=meta.get(m.unit_id, (None, None, None, None, None, None))[2],
-                            summary=meta.get(m.unit_id, (None, None, None, None, None, None))[3],
-                            keywords=meta.get(m.unit_id, (None, None, None, None, None, None))[4],
-                            gap_score=m.gap_score,
-                            mastery=m.mastery,
-                            confidence="LOW",
-                            evidence_source="EXAM",
-                        ),
-                        total_score=total_score,
-                    )
-                    for m in mastery_list
-                ]
+
 
         tree_gaps = _build_mastery_tree(raw_items)
 
@@ -1029,18 +1044,27 @@ def get_class_diagnostic_roster(
 def recalc_mastery_endpoint(
     subject_id: int = Query(..., description="ID môn học cần tính lại năng lực"),
     semester_index: int = Query(1, description="Học kỳ"),
+    week_number: int = Query(0, ge=0, le=52, description="Tuần học cần snapshot (0 = Mới nhất/Latest)"),
     current_user: CurrentUser = None,
     db: Session = Depends(get_db),
 ):
     """Tính toán lại toàn bộ student_unit_mastery từ lms_question_response cho môn học."""
     school_id = getattr(current_user, "so_school_id", None)
-    count = recalc_unit_mastery(db, subject_id=subject_id, semester_index=semester_index, school_id=school_id)
+    cutoff = estimate_week_cutoff_date(week_number, semester_index) if week_number > 0 else None
+    count = recalc_unit_mastery(
+        db,
+        subject_id=subject_id,
+        semester_index=semester_index,
+        school_id=school_id,
+        week_number=week_number,
+        cutoff_date=cutoff,
+    )
     return RecalcMasteryResult(
         success=True,
         records_calculated=count,
         subject_id=subject_id,
         semester_index=semester_index,
-        message=f"Đã tính toán và cập nhật thành công {count} bản ghi năng lực học sinh",
+        message=f"Đã tính toán và cập nhật thành công {count} bản ghi năng lực học sinh (Tuần {week_number if week_number > 0 else 'Mới nhất'})",
     )
 
 
@@ -1118,6 +1142,7 @@ BLOOM_NAMES: dict[int, str] = {
 def get_student_unit_bloom_drilldown(
     student_code: str,
     unit_id: int,
+    week_number: int = Query(0, ge=0, le=52, description="Tuần học năng lực (0 = Mới nhất/Latest)"),
     db: Session = Depends(get_db),
     current_user: CurrentUser = None,
 ) -> StudentUnitBloomDrilldownResponse:
@@ -1133,18 +1158,24 @@ def get_student_unit_bloom_drilldown(
     unit_name = unit_row.unit_name if unit_row else f"Bài học {unit_id}"
     chapter_name = unit_row.chapter_name if unit_row else "Chương"
 
-    # 2. Lấy thông tin student_unit_mastery
+    # 2. Lấy thông tin student_unit_mastery theo week_number
     mastery_sql = text("""
         SELECT raw_mastery, n_items, n_correct
         FROM public.student_unit_mastery
-        WHERE student_code = :student_code AND unit_id = :unit_id
+        WHERE student_code = :student_code AND unit_id = :unit_id AND week_number = :week_number
         ORDER BY semester_index DESC LIMIT 1
     """)
-    m_row = db.execute(mastery_sql, {"student_code": student_code, "unit_id": unit_id}).fetchone()
+    m_row = db.execute(mastery_sql, {"student_code": student_code, "unit_id": unit_id, "week_number": week_number}).fetchone()
     raw_mastery = float(m_row.raw_mastery) if m_row and m_row.raw_mastery is not None else 0.0
 
-    # 3. Lấy toàn bộ câu hỏi trắc nghiệm của bài học này mà học sinh đã làm
-    q_sql = text("""
+    # 3. Lấy toàn bộ câu hỏi trắc nghiệm của bài học này mà học sinh đã làm (kèm cutoff thời gian nếu xem tuần lịch sử)
+    cutoff = estimate_week_cutoff_date(week_number) if week_number > 0 else None
+    time_filter = "AND COALESCE(qr.attempt_date, qr.created_at) <= :cutoff_date" if cutoff is not None else ""
+    q_params: dict = {"unit_id": unit_id, "student_code": student_code}
+    if cutoff is not None:
+        q_params["cutoff_date"] = cutoff
+
+    q_sql = text(f"""
         SELECT 
             qb.question_id,
             qb.assignment_id,
@@ -1161,13 +1192,14 @@ def get_student_unit_bloom_drilldown(
         FROM public.lms_question_bank qb
         JOIN public.lms_question_unit qu ON qb.question_id = qu.question_id AND qu.unit_id = :unit_id
         LEFT JOIN s360.dim_so_assignment dsa ON qb.assignment_id = dsa.assignment_id
-        LEFT JOIN public.lms_question_response qr
-            ON qb.question_id = qr.question_id
-           AND qr.student_code = :student_code
+        LEFT JOIN public.lms_question_response qr 
+            ON qb.question_id = qr.question_id 
+           AND qr.student_code = :student_code 
            AND qr.is_best_attempt = true
+           {time_filter}
         ORDER BY qb.bloom_level ASC, qb.question_id ASC
     """)
-    rows = db.execute(q_sql, {"unit_id": unit_id, "student_code": student_code}).fetchall()
+    rows = db.execute(q_sql, q_params).fetchall()
 
     questions: list[StudentUnitQuestionItem] = []
     bloom_counts: dict[int, dict[str, int]] = {

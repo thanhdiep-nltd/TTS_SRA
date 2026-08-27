@@ -1276,8 +1276,8 @@ export default function PresentationModalV3({ isOpen, onClose, theme }: Presenta
                   <div className="text-[9.5px] text-slate-400 mt-0.5">Đồng thuận lớp học</div>
                 </div>
                 <div className={`p-2 rounded-xl border ${isDark ? "bg-[#070e1a] border-[#263750]" : "bg-[#faf8f5] border-[#ebdcb0]"}`}>
-                  <span className="text-[11px] font-extrabold text-[#8c763e] dark:text-[#c2ae78]">B4: Roster</span>
-                  <div className="text-[9.5px] text-slate-400 mt-0.5">Bảng lớp & Drawer</div>
+                  <span className="text-[11px] font-extrabold text-[#8c763e] dark:text-[#c2ae78]">B4: Roster & Tuần</span>
+                  <div className="text-[9.5px] text-slate-400 mt-0.5">Snapshot theo Tuần</div>
                 </div>
               </div>
             </div>
