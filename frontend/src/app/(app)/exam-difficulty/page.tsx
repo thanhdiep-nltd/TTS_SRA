@@ -44,17 +44,15 @@ const FLAG_CONFIG: Record<string, { label: string; cls: string; desc: string; ic
   },
 };
 
-// Tab bar giống Dashboard: tab 1 = bảng tam giác hóa TEVI, tab 2 = test 1 câu hỏi,
-// tab 3 = ngân hàng câu hỏi LMS.
-const TABS: { key: "tevi" | "upload-analyze" | "question-test" | "lms-bank"; label: string; icon: React.ElementType }[] = [
-  { key: "tevi", label: "Phân tích độ khó đề thi (TEVI)", icon: Gauge },
+// Tab bar: tạm ẩn tab TEVI theo yêu cầu
+const TABS: { key: "upload-analyze" | "question-test" | "lms-bank"; label: string; icon: React.ElementType }[] = [
   { key: "upload-analyze", label: "Tải lên & Phân tích từng câu", icon: Upload },
   { key: "question-test", label: "Kiểm tra câu hỏi", icon: FileQuestion },
   { key: "lms-bank", label: "Ngân hàng câu hỏi LMS", icon: Database },
 ];
 
 export default function ExamDifficultyPage() {
-  const [activeTab, setActiveTab] = useState<"tevi" | "upload-analyze" | "question-test" | "lms-bank">("tevi");
+  const [activeTab, setActiveTab] = useState<"upload-analyze" | "question-test" | "lms-bank">("upload-analyze");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [subjectId, setSubjectId] = useState<string>("");
   const [gradeId, setGradeId] = useState<string>("6");
@@ -152,19 +150,19 @@ export default function ExamDifficultyPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 border border-brand-100 dark:border-brand-900/50">
-              <Gauge className="w-5 h-5" />
+              <Upload className="w-5 h-5" />
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              Phân tích độ khó đề thi (TEVI)
+              Phân tích đề thi & Ngân hàng câu hỏi
             </h2>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Tam giác hóa Độ khó thực nghiệm (EDI) vs Độ khó nội dung AI (CDI) để phát hiện lệch chuẩn & lỗ hổng kiến thức.
+            Phân tích chi tiết từng câu hỏi, định vị bài học SGK, kiểm tra câu hỏi & quản lý ngân hàng câu hỏi LMS.
           </p>
         </div>
       </header>
 
-      {/* Tab bar — giống Dashboard */}
+      {/* Tab bar */}
       <div className="flex flex-wrap gap-2">
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -186,7 +184,7 @@ export default function ExamDifficultyPage() {
         })}
       </div>
 
-      {activeTab === "tevi" && (
+      {(activeTab as string) === "tevi" && (
         <>
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

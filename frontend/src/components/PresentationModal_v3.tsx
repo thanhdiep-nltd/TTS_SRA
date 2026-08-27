@@ -67,16 +67,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
     },
     {
       id: 4,
-      title: "5. TEVI (Độ Khó & Công Bằng Điểm)",
-      desc: "Đối soát chéo giữa độ khó thiết kế đề thi (CDI từ ma trận Bloom) và độ khó thực nghiệm (EDI từ phổ điểm học sinh thật). Tự động phát hiện đề ra quá khó (HAMMER), lạm phát điểm (INFLATED) và các dấu hiệu bất thường như nghi ưu ái hoặc chèn ép điểm số.",
-      color: "text-[#2d6a4f] dark:text-[#52b788]",
-      stroke: isDark ? "#52b788" : "#2d6a4f",
-      activeNodes: ["input_exam_validity", "tevi_engine", "school_db", "tevi_output"],
-      activeLines: ["tevi-in-engine", "db-tevi-engine", "engine-tevi-out"]
-    },
-    {
-      id: 5,
-      title: "6. Chẩn Đoán Lỗ Hổng Kiến Thức",
+      title: "5. Chẩn Đoán Lỗ Hổng Kiến Thức",
       desc: "Tổng hợp toàn bộ câu trả lời LMS của học sinh, nhân hệ số bao phủ Bloom (Breadth Ratio) & Vận dụng cao (Depth Factor), đối soát chéo với điểm thi thật (Δ = LMS - Exam), áp dụng Majority Rule gộp trạng thái cấp học sinh và xuất bảng Roster lỗ hổng chi tiết.",
       color: "text-[#2d6a4f] dark:text-[#52b788]",
       stroke: isDark ? "#52b788" : "#2d6a4f",
@@ -97,23 +88,20 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
     { id: "data-db", d: "M 455 77.5 L 485 77.5" },
     { id: "know-qdrant", d: "M 455 127.5 L 485 185" },
     { id: "db-chat", d: "M 555 77.5 L 590 77.5" },
-    { id: "ews-engine", d: "M 180 140 L 215 222.5" },
+    { id: "ews-engine", d: "M 180 147.5 L 215 222.5" },
     { id: "dwh-engine", d: "M 485 300 L 465 222.5" },
     { id: "engine-db", d: "M 465 222.5 L 485 100" },
-    { id: "engine-ews-out", d: "M 465 222.5 L 590 140" },
-    { id: "curriculum-vlm", d: "M 180 200 L 215 267.5" },
+    { id: "engine-ews-out", d: "M 465 222.5 L 590 147.5" },
+    { id: "curriculum-vlm", d: "M 180 217.5 L 215 267.5" },
     { id: "vlm-qdrant", d: "M 465 267.5 L 485 200" },
     { id: "vlm-db", d: "M 465 267.5 L 485 120" },
-    { id: "qdrant-curriculum-out", d: "M 555 200 L 590 200" },
-    { id: "forecast-in-engine", d: "M 180 260 L 215 312.5" },
+    { id: "qdrant-curriculum-out", d: "M 555 200 L 590 217.5" },
+    { id: "forecast-in-engine", d: "M 180 287.5 L 215 312.5" },
     { id: "db-forecast-engine", d: "M 485 130 L 465 312.5" },
-    { id: "engine-forecast-out", d: "M 465 312.5 L 590 260" },
-    { id: "tevi-in-engine", d: "M 180 320 L 215 357.5" },
-    { id: "db-tevi-engine", d: "M 485 140 L 465 357.5" },
-    { id: "engine-tevi-out", d: "M 465 357.5 L 590 320" },
-    { id: "gap-in-engine", d: "M 180 380 L 215 402.5" },
-    { id: "db-gap-engine", d: "M 485 150 L 465 402.5" },
-    { id: "engine-gap-out", d: "M 465 402.5 L 590 380" }
+    { id: "engine-forecast-out", d: "M 465 312.5 L 590 287.5" },
+    { id: "gap-in-engine", d: "M 180 357.5 L 215 357.5" },
+    { id: "db-gap-engine", d: "M 485 150 L 465 357.5" },
+    { id: "engine-gap-out", d: "M 465 357.5 L 590 357.5" }
   ];
 
   return (
@@ -151,7 +139,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               x="480"
               y="40"
               width="80"
-              height="375"
+              height="350"
               rx="12"
               stroke={isNodeActive("school_db") || isNodeActive("qdrant_db") || isNodeActive("dwh_db") ? (isDark ? "#52b788" : "#2d6a4f") : (isDark ? "#263750" : "#dcd7cc")}
               strokeWidth="1.25"
@@ -182,7 +170,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               return null;
             })}
 
-            {/* LEFT NODES (6 Real Technical Inputs) */}
+            {/* LEFT NODES (5 Core Technical Inputs) */}
             {/* Input 1: Chatbot Input */}
             <foreignObject x="30" y="55" width="150" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("input_chat") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(0)}>
@@ -195,7 +183,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
             </foreignObject>
 
             {/* Input 2: EWS Job Trigger */}
-            <foreignObject x="30" y="117" width="150" height="45" className="pointer-events-auto">
+            <foreignObject x="30" y="125" width="150" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("input_ews") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(1)}>
                 <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
@@ -206,7 +194,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
             </foreignObject>
 
             {/* Input 3: PDF Sách Giáo Khoa */}
-            <foreignObject x="30" y="177" width="150" height="45" className="pointer-events-auto">
+            <foreignObject x="30" y="195" width="150" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all duration-300 ${isNodeActive("input_pdf_curriculum") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(2)}>
                 <BookOpen className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
@@ -217,7 +205,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
             </foreignObject>
 
             {/* Input 4: Đề thi & LMS */}
-            <foreignObject x="30" y="237" width="150" height="45" className="pointer-events-auto">
+            <foreignObject x="30" y="265" width="150" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("input_exam_forecast") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(3)}>
                 <TrendingUp className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
@@ -227,20 +215,9 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               </div>
             </foreignObject>
 
-            {/* Input 5: Sổ điểm & Đề kiểm tra */}
-            <foreignObject x="30" y="297" width="150" height="45" className="pointer-events-auto">
-              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("input_exam_validity") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(4)}>
-                <Target className="w-3.5 h-3.5 shrink-0" />
-                <div className="text-left min-w-0">
-                  <div className="text-[8.5px] font-bold truncate">Sổ Điểm & Đề Thi</div>
-                  <div className="text-[7px] font-mono text-slate-500 truncate">Điểm TX, GK, CK</div>
-                </div>
-              </div>
-            </foreignObject>
-
-            {/* Input 6: Hàng ngàn câu làm bài LMS */}
-            <foreignObject x="30" y="357" width="150" height="45" className="pointer-events-auto">
-              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("input_knowledge_gaps") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(5)}>
+            {/* Input 5: Hàng ngàn câu làm bài LMS */}
+            <foreignObject x="30" y="335" width="150" height="45" className="pointer-events-auto">
+              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("input_knowledge_gaps") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(4)}>
                 <Activity className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
                   <div className="text-[8.5px] font-bold truncate">LMS Items & Bài Thi</div>
@@ -305,7 +282,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               </div>
             </foreignObject>
 
-            {/* MIDDLE: 5 TECHNICAL PIPELINE ENGINES */}
+            {/* MIDDLE: 4 TECHNICAL PIPELINE ENGINES */}
             {/* EWS Engine */}
             <foreignObject x="215" y="205" width="245" height="35" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all duration-300 ${isNodeActive("ews_engine") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(1)}>
@@ -339,20 +316,9 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               </div>
             </foreignObject>
 
-            {/* TEVI Engine */}
-            <foreignObject x="215" y="340" width="245" height="35" className="pointer-events-auto">
-              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all duration-300 ${isNodeActive("tevi_engine") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(4)}>
-                <Target className="w-3.5 h-3.5 shrink-0" />
-                <div className="text-left min-w-0">
-                  <div className="text-[8px] font-bold truncate">TEVI Triangulation (EDI vs CDI & Cảnh Báo)</div>
-                  <div className="text-[6.5px] font-mono text-slate-500 truncate">Divergence CDI−EDI · Nghi Ưu Ái / Chèn Ép Điểm</div>
-                </div>
-              </div>
-            </foreignObject>
-
             {/* Gap Cross-Validation Engine */}
-            <foreignObject x="215" y="385" width="245" height="35" className="pointer-events-auto">
-              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all duration-300 ${isNodeActive("gap_engine") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(5)}>
+            <foreignObject x="215" y="340" width="245" height="35" className="pointer-events-auto">
+              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-2 cursor-pointer transition-all duration-300 ${isNodeActive("gap_engine") ? nodeActiveClass : nodeInactiveClass}`} onMouseEnter={() => setActiveFlow(4)}>
                 <Activity className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
                   <div className="text-[8px] font-bold truncate">Knowledge Gap Engine (Bloom & Cross-Val)</div>
@@ -389,7 +355,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               </div>
             </foreignObject>
 
-            {/* RIGHT OUTPUT NODES (6 Real Technical Outputs) */}
+            {/* RIGHT OUTPUT NODES (5 Core Technical Outputs) */}
             {/* Output 1: Chat Response */}
             <foreignObject x="590" y="55" width="165" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("chat_response") ? nodeActiveClass : nodeInactiveClass}`}>
@@ -402,7 +368,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
             </foreignObject>
 
             {/* Output 2: EWS Warnings */}
-            <foreignObject x="590" y="117" width="165" height="45" className="pointer-events-auto">
+            <foreignObject x="590" y="125" width="165" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("ews_output") ? nodeActiveClass : nodeInactiveClass}`}>
                 <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
@@ -413,7 +379,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
             </foreignObject>
 
             {/* Output 3: Curriculum Chunks */}
-            <foreignObject x="590" y="177" width="165" height="45" className="pointer-events-auto">
+            <foreignObject x="590" y="195" width="165" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("curriculum_output") ? nodeActiveClass : nodeInactiveClass}`}>
                 <BookOpen className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
@@ -424,7 +390,7 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
             </foreignObject>
 
             {/* Output 4: Pass/Fail Output */}
-            <foreignObject x="590" y="237" width="165" height="45" className="pointer-events-auto">
+            <foreignObject x="590" y="265" width="165" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("forecast_output") ? nodeActiveClass : nodeInactiveClass}`}>
                 <TrendingUp className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
@@ -434,19 +400,8 @@ function SolutionDiagram({ isDark }: { isDark: boolean }) {
               </div>
             </foreignObject>
 
-            {/* Output 5: TEVI Validity */}
-            <foreignObject x="590" y="297" width="165" height="45" className="pointer-events-auto">
-              <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("tevi_output") ? nodeActiveClass : nodeInactiveClass}`}>
-                <Target className="w-3.5 h-3.5 shrink-0" />
-                <div className="text-left min-w-0">
-                  <div className="text-[8.5px] font-bold truncate">Cảnh Báo TEVI & Công Bằng</div>
-                  <div className="text-[7px] font-mono text-slate-500 truncate">HAMMER / INFLATED / Ưu ái</div>
-                </div>
-              </div>
-            </foreignObject>
-
-            {/* Output 6: Knowledge Gaps */}
-            <foreignObject x="590" y="357" width="165" height="45" className="pointer-events-auto">
+            {/* Output 5: Knowledge Gaps */}
+            <foreignObject x="590" y="335" width="165" height="45" className="pointer-events-auto">
               <div className={`w-full h-full p-1.5 rounded-xl border flex items-center gap-1.5 cursor-pointer transition-all duration-300 ${isNodeActive("gap_output") ? nodeActiveClass : nodeInactiveClass}`}>
                 <Activity className="w-3.5 h-3.5 shrink-0" />
                 <div className="text-left min-w-0">
